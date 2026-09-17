@@ -1,0 +1,27 @@
+{
+	"pages": [
+		{
+			"path": "pages/login",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#000000"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "aiRing",
+		"navigationBarBackgroundColor": "#000000",
+		"backgroundColor": "#000000"
+	},
+	"uniIdRouter": {}
+}

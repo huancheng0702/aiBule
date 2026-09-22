@@ -9,18 +9,10 @@
 
 		<view class="tabbar-wrap">
 			<view class="tabbar">
-				<view
-					v-for="(item, index) in tabList"
-					:key="item.text"
-					class="tabbar-item"
-					@click="switchTab(index)"
-				>
+				<view v-for="(item, index) in tabList" :key="item.text" class="tabbar-item" @click="switchTab(index)">
 					<view class="icon-wrap" :class="{ active: current === index }">
-						<image
-							class="tab-icon"
-							:src="current === index ? item.selectedIconPath : item.iconPath"
-							mode="aspectFit"
-						/>
+						<image class="tab-icon" :src="current === index ? item.selectedIconPath : item.iconPath"
+							mode="aspectFit" />
 					</view>
 					<text class="tab-text" :class="{ active: current === index }">{{ item.text }}</text>
 				</view>
@@ -46,8 +38,7 @@
 		data() {
 			return {
 				current: 0,
-				tabList: [
-					{
+				tabList: [{
 						text: '首页',
 						iconPath: '/static/tabbar/index.png',
 						selectedIconPath: '/static/tabbar/indexSelect.png'
@@ -131,6 +122,7 @@
 		justify-content: center;
 		border-radius: 50%;
 	}
+
 	.tab-icon {
 		width: 48rpx;
 		height: 48rpx;

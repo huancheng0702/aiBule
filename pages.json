@@ -1,6 +1,9 @@
 {
-	"pages": [
-		{
+	"easycom": {
+		"^u-(.*)": "@/uni_modules/uview-ui/components/u-$1/u-$1.vue",
+		"qiun-data-charts": "@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue"
+	},
+	"pages": [{
 			"path": "pages/login",
 			"style": {
 				"navigationBarTitleText": "",
@@ -14,6 +17,76 @@
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "white",
 				"backgroundColor": "#000000"
+			}
+		},
+		{
+			"path": "pages/index/todayStep",
+			"style": {
+				"navigationBarTitleText": "今日步数",
+				"backgroundColor": "#000000"
+			}
+		},
+		{
+			"path": "pages/index/yesterdaynight",
+			"style": {
+				"navigationBarTitleText": "昨夜睡眠",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/heartRate",
+			"style": {
+				"navigationBarTitleText": "心率",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/heartSuccess",
+			"style": {
+				"navigationBarTitleText": "",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/boold",
+			"style": {
+				"navigationBarTitleText": "血氧",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/booldSuccess",
+			"style": {
+				"navigationBarTitleText": "",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/stress",
+			"style": {
+				"navigationBarTitleText": "压力",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/hrv",
+			"style": {
+				"navigationBarTitleText": "HRV",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
 			}
 		}
 	],

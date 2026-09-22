@@ -1,0 +1,31 @@
+---
+description: App 端 CSS 禁止使用 calc，尤其是 safe-area 相关写法
+globs: **/*.{vue,scss,css}
+alwaysApply: true
+---
+
+# CSS：禁止使用 calc
+
+本项目为 uni-app，**App 端不识别 `calc()`**。写样式时不要使用 `calc`。
+
+## 禁止
+
+```scss
+/* ❌ BAD：App 不识别 */
+padding: 40rpx 32rpx calc(36rpx + constant(safe-area-inset-bottom));
+padding: 40rpx 32rpx calc(36rpx + env(safe-area-inset-bottom));
+height: calc(100vh - 100rpx);
+width: calc(50% - 10rpx);
+```
+
+## 正确做法
+
+- 用固定 `rpx` / `%` / `vh` 等可直接解析的值
+- 需要安全区时，优先用页面/容器额外 `padding`，或用固定底部留白，不要用 `calc` 拼 `safe-area`
+- 布局间距用 flex / margin，避免 `calc` 做减法
+
+```scss
+/* ✅ GOOD */
+padding: 40rpx 32rpx 36rpx;
+width: 50%;
+```

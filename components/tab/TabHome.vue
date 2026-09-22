@@ -1,7 +1,7 @@
 <template>
 	<view class="tab-page">
-		<!-- 顶部问候 -->
-		<view class="header">
+		<!-- 顶部问候：paddingTop 用系统状态栏高度适配不同机型 -->
+		<view class="header" :style="{ paddingTop: statusBarHeight + 'px' }">
 			<view class="header-left">
 				<text class="greet">{{ greetText }}</text>
 				<text class="greet-sub">今天也要关心自己</text>
@@ -14,31 +14,20 @@
 
 		<!-- 智能戒指横幅 -->
 		<view class="hero-banner">
-			<view class="hero-left">
-				<text class="hero-title">健康变化一眼掌握</text>
-				<text class="hero-desc">汇总每日关键指标，用清晰趋势帮助你了解身体节奏。</text>
-			</view>
-			<image class="hero-ring" mode="aspectFit"></image>
+			<image src="/static/swiper.png" mode=""></image>
 		</view>
 
 		<!-- 健康管家 -->
-		<view class="butler-card">
-			<image class="butler-avatar" mode="aspectFill"></image>
-			<view class="butler-info">
-				<text class="butler-title">健康管家</text>
-				<text class="butler-desc">专属健康咨询 · 报告解读 · 定制建议</text>
-			</view>
-			<text class="butler-arrow">›</text>
-		</view>
+		<image src="/static/indexKefu.png" class="indexkefu" mode="" @click="openButlerPopup"></image>
 
 		<!-- 身体状态 -->
 		<view class="section">
 			<text class="section-title">现在了解身体状态</text>
 			<view class="status-grid">
 				<!-- 今日步数 -->
-				<view class="status-card">
+				<view class="status-card" @click="goTodayStep">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/bushu.png" mode="aspectFit"></image>
 						<text class="card-label">今日步数</text>
 					</view>
 					<view class="card-value-row">
@@ -52,9 +41,9 @@
 				</view>
 
 				<!-- 昨夜睡眠 -->
-				<view class="status-card">
+				<view class="status-card" @click="goNight">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/shuimian.png" mode="aspectFit"></image>
 						<text class="card-label">昨夜睡眠</text>
 					</view>
 					<view class="card-value-row">
@@ -65,16 +54,25 @@
 					</view>
 					<text class="card-sub">4.8km · 288kcal</text>
 					<view class="sleep-bars">
-						<view class="sleep-bar orange"></view>
-						<view class="sleep-bar purple"></view>
-						<view class="sleep-bar cyan"></view>
+						<view class="sleep-bar orange">
+							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-glow"></view>
+						</view>
+						<view class="sleep-bar purple">
+							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-glow"></view>
+						</view>
+						<view class="sleep-bar cyan">
+							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-glow"></view>
+						</view>
 					</view>
 				</view>
 
 				<!-- 心率 -->
-				<view class="status-card">
+				<view class="status-card" @click="goHeart">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/xinlv.png" mode="aspectFit"></image>
 						<text class="card-label">心率</text>
 					</view>
 					<view class="metric-body">
@@ -85,7 +83,19 @@
 							</view>
 						</view>
 						<view class="metric-chart">
-							<image class="chart-img" mode="aspectFit"></image>
+							<view class="chart-box">
+								<qiun-data-charts
+									v-if="chartReady"
+									type="area"
+									canvasId="homeHeartRate"
+									:opts="heartRateOpts"
+									:chartData="heartRateData"
+									:tooltipShow="false"
+									:ontap="false"
+									:animation="false"
+								/>
+							</view>
+							<view class="chart-axis-line"></view>
 							<view class="chart-time">
 								<text>00:00</text>
 								<text>24:00</text>
@@ -95,9 +105,9 @@
 				</view>
 
 				<!-- 血氧 -->
-				<view class="status-card">
+				<view class="status-card" @click="goBoold">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/xueyang.png" mode="aspectFit"></image>
 						<text class="card-label">血氧</text>
 					</view>
 					<view class="metric-body">
@@ -108,7 +118,18 @@
 							</view>
 						</view>
 						<view class="metric-chart">
-							<image class="chart-img" mode="aspectFit"></image>
+							<view class="chart-box">
+								<qiun-data-charts
+									v-if="chartReady"
+									type="column"
+									canvasId="homeBloodOxygen"
+									:opts="bloodOxygenOpts"
+									:chartData="bloodOxygenData"
+									:tooltipShow="false"
+									:ontap="false"
+									:animation="false"
+								/>
+							</view>
 							<view class="chart-time">
 								<text>00:00</text>
 								<text>24:00</text>
@@ -118,9 +139,9 @@
 				</view>
 
 				<!-- HRV -->
-				<view class="status-card">
+				<view class="status-card" @click="goHrv">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/hrv.png" mode="aspectFit"></image>
 						<text class="card-label">HRV</text>
 					</view>
 					<view class="metric-body">
@@ -131,7 +152,18 @@
 							</view>
 						</view>
 						<view class="metric-chart">
-							<image class="chart-img" mode="aspectFit"></image>
+							<view class="chart-box">
+								<qiun-data-charts
+									v-if="chartReady"
+									type="area"
+									canvasId="homeHrv"
+									:opts="hrvOpts"
+									:chartData="hrvData"
+									:tooltipShow="false"
+									:ontap="false"
+									:animation="false"
+								/>
+							</view>
 							<view class="chart-time">
 								<text>00:00</text>
 								<text>24:00</text>
@@ -141,9 +173,9 @@
 				</view>
 
 				<!-- 压力 -->
-				<view class="status-card">
+				<view class="status-card" @click="goStress">
 					<view class="card-head">
-						<image class="card-icon" mode="aspectFit"></image>
+						<image class="card-icon" src="/static/yali.png" mode="aspectFit"></image>
 						<text class="card-label">压力</text>
 					</view>
 					<view class="metric-body">
@@ -153,7 +185,18 @@
 							</view>
 						</view>
 						<view class="metric-chart">
-							<image class="chart-img" mode="aspectFit"></image>
+							<view class="chart-box">
+								<qiun-data-charts
+									v-if="chartReady"
+									type="column"
+									canvasId="homeStress"
+									:opts="stressOpts"
+									:chartData="stressData"
+									:tooltipShow="false"
+									:ontap="false"
+									:animation="false"
+								/>
+							</view>
 							<view class="chart-time">
 								<text>00:00</text>
 								<text>24:00</text>
@@ -171,14 +214,12 @@
 				<text class="section-action" @click="openManagePopup">管理显示</text>
 			</view>
 			<view class="record-grid">
-				<view
-					v-for="item in visibleRecords"
-					:key="item.key"
-					class="record-card"
-				>
-					<image class="record-icon" mode="aspectFit"></image>
+				<view v-for="(item,index) in visibleRecords" :key="index" class="record-card">
+					<view class="reTop">
+						<image class="record-icon" :src="item.icon" mode="aspectFit"></image>
+						<view class="record-label">{{ item.homeLabel }}</view>
+					</view>
 					<view class="record-info">
-						<text class="record-label">{{ item.homeLabel }}</text>
 						<text class="record-value" :class="{ empty: !item.value }">{{ item.value || '暂无数据' }}</text>
 					</view>
 				</view>
@@ -196,23 +237,38 @@
 						<text class="popup-desc">隐藏项目仍可在健康档案中继续记录</text>
 					</view>
 					<view class="popup-list">
-						<view
-							v-for="(item, index) in recordList"
-							:key="item.key"
-							class="popup-item"
-						>
+						<view v-for="(item, index) in recordList" :key="item.key" class="popup-item">
 							<view class="popup-item-left">
 								<text class="popup-item-title">{{ item.manageLabel }}</text>
 								<text class="popup-item-sub">显示在首页</text>
 							</view>
-							<switch
-								:checked="item.visible"
-								color="#3b82f6"
-								@change="onToggleChange(index, $event)"
-							/>
+							<switch :checked="item.visible" color="#3b82f6" @change="onToggleChange(index, $event)" />
 						</view>
 					</view>
 					<view class="popup-btn" @click="confirmManagePopup">完成</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 健康管家弹窗 -->
+		<view v-if="showButlerPopup" class="popup-mask butler-mask" @click="closeButlerPopup">
+			<view class="butler-sheet" @click.stop>
+				<!-- 背景图，自行补充 src -->
+				<image class="popup-bg" src="/static/kefuBg.png" mode=""></image>
+				<view class="butler-content">
+					<text class="butler-title">健康管家</text>
+					<view class="butler-qr-wrap">
+						<!-- 二维码图，自行补充 src -->
+						<image class="butler-qr" mode="aspectFit"></image>
+					</view>
+					<text class="butler-tip">微信扫码添加专属健康管家</text>
+					<view class="butler-footer">
+						<view class="butler-phone">
+							<text class="butler-phone-label">管家联系电话</text>
+							<text class="butler-phone-num">{{ butlerPhone }}</text>
+						</view>
+						<image src="/static/copyPhone.png" @click="copyButlerPhone" class="butler-copy-btn" mode=""></image>
+					</view>
 				</view>
 			</view>
 		</view>
@@ -220,19 +276,215 @@
 </template>
 
 <script>
+	import qiunDataCharts from '@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue'
+
+	function createChartOpts(extra = {}) {
+		return {
+			color: [],
+			padding: [2, 2, 2, 2],
+			legend: { show: false },
+			dataLabel: false,
+			dataPointShape: false,
+			enableScroll: false,
+			xAxis: {
+				disabled: true,
+				disableGrid: true,
+				axisLine: false,
+				boundaryGap: 'center'
+			},
+			yAxis: {
+				disabled: true,
+				disableGrid: true
+			},
+			...extra,
+			xAxis: {
+				disabled: true,
+				disableGrid: true,
+				axisLine: false,
+				boundaryGap: 'center',
+				...(extra.xAxis || {})
+			},
+			yAxis: {
+				disabled: true,
+				disableGrid: true,
+				...(extra.yAxis || {})
+			},
+			extra: extra.extra || {}
+		}
+	}
+
 	export default {
 		name: 'TabHome',
+		components: {
+			qiunDataCharts
+		},
 		data() {
 			return {
+				statusBarHeight: 20,
 				showManagePopup: false,
-				recordList: [
-					{ key: 'weight', manageLabel: '体重', homeLabel: '体重', value: '45 kg', visible: true },
-					{ key: 'sugar', manageLabel: '血糖', homeLabel: '血糖', value: '', visible: true },
-					{ key: 'temp', manageLabel: '体温', homeLabel: '体温', value: '36.5 ℃', visible: true },
-					{ key: 'bp', manageLabel: '血压', homeLabel: '血压', value: '116/74 mmHg', visible: true },
-					{ key: 'period', manageLabel: '经期', homeLabel: '生理周期', value: '', visible: false }
+				showButlerPopup: false,
+				butlerPhone: '400-820-1624',
+				chartReady: false,
+				heartRateData: {
+					categories: Array.from({ length: 30 }, () => ''),
+					series: [{
+						name: '心率',
+						data: [
+							72, 95, 68, 110, 78, 125, 88, 102, 70, 118, 85, 98,
+							76, 132, 90, 108, 74, 115, 82, 128, 94, 105, 80, 120
+						]
+					}]
+				},
+				heartRateOpts: createChartOpts({
+					color: ['#FF5E7B'],
+					xAxis: { boundaryGap: 'justify' },
+					yAxis: {
+						disabled: true,
+						disableGrid: true,
+						data: [{
+							min: 0,
+							max: 200
+						}]
+					},
+					extra: {
+						area: {
+							type: 'straight',
+							opacity: 0.45,
+							addLine: true,
+							width: 1.5,
+							gradient: true,
+							activeType: 'hollow'
+						}
+					}
+				}),
+				bloodOxygenData: {
+					categories: Array.from({ length: 15 }, () => ''),
+					series: [{
+						name: '血氧',
+						data: [62, 78, 55, 88, 70, 92, 48, 85, 66, 90, 58, 80, 72,]
+					}]
+				},
+				bloodOxygenOpts: createChartOpts({
+					color: ['#83DABF'],
+					extra: {
+						column: {
+							type: 'group',
+							width: 2.5,
+							categoryGap: 1,
+							activeBgColor: 'transparent',
+							activeBgOpacity: 0
+						}
+					}
+				}),
+				hrvData: {
+					categories: Array.from({ length: 30 }, () => ''),
+					series: [{
+						name: 'HRV',
+						data: [35, 48, 72, 88, 70, 52, 40, 55, 78, 92, 80, 58, 42, 50, 68, 85, 75, 55, 38, 48, 62, 70, 58, 45]
+					}]
+				},
+				hrvOpts: createChartOpts({
+					color: ['#E1A2FF'],
+					xAxis: { boundaryGap: 'justify' },
+					yAxis: {
+						disabled: true,
+						disableGrid: true,
+						data: [{
+							min: 0,
+							max: 200
+						}]
+					},
+					extra: {
+						area: {
+							type: 'curve',
+							opacity: 0.35,
+							addLine: true,
+							width: 1.5,
+							gradient: true,
+							activeType: 'none'
+						}
+					}
+				}),
+				stressData: {
+					categories: ['1', '2', '3', '4', '5', '6'],
+					series: [{
+						name: '压力',
+						data: [
+							{ value: 88, color: '#FF9F0A' },
+							{ value: 52, color: '#BF5AF2' },
+							{ value: 78, color: '#64D2FF' },
+							{ value: 92, color: '#0A84FF' },
+							{ value: 48, color: '#5E5CE6' },
+							{ value: 70, color: '#FF6B6B' }
+						]
+					}]
+				},
+				stressOpts: createChartOpts({
+					color: ['#FF9F0A'],
+					extra: {
+						column: {
+							type: 'group',
+							width: 10,
+							categoryGap: 6,
+							barBorderCircle: true,
+							activeBgColor: 'transparent',
+							activeBgOpacity: 0
+						}
+					}
+				}),
+				recordList: [{
+						key: 'weight',
+						manageLabel: '体重',
+						homeLabel: '体重',
+						value: '45 kg',
+						visible: true,
+						icon:'/static/tizhong.png'
+					},
+					{
+						key: 'sugar',
+						manageLabel: '血糖',
+						homeLabel: '血糖',
+						value: '',
+						visible: true,
+						icon:'/static/xuetang.png'
+					},
+					{
+						key: 'temp',
+						manageLabel: '体温',
+						homeLabel: '体温',
+						value: '36.5 ℃',
+						visible: true,
+						icon:'/static/tiwen.png'
+					},
+					{
+						key: 'bp',
+						manageLabel: '血压',
+						homeLabel: '血压',
+						value: '116/74 mmHg',
+						visible: true,
+						icon:'/static/xueya.png'
+					},
+					{
+						key: 'period',
+						manageLabel: '经期',
+						homeLabel: '生理周期',
+						value: '',
+						visible: false,
+						icon:'/static/jingqi.png'
+					}
 				]
 			}
+		},
+		created() {
+			const sys = uni.getSystemInfoSync()
+			this.statusBarHeight = sys.statusBarHeight || 20
+		},
+		mounted() {
+			this.$nextTick(() => {
+				setTimeout(() => {
+					this.chartReady = true
+				}, 80)
+			})
 		},
 		computed: {
 			greetText() {
@@ -248,6 +500,36 @@
 			}
 		},
 		methods: {
+			goTodayStep() {
+				uni.navigateTo({
+					url: '/pages/index/todayStep'
+				})
+			},
+			goNight(){
+				uni.navigateTo({
+					url: '/pages/index/yesterdaynight'
+				})
+			},
+			goHeart(){
+				uni.navigateTo({
+					url:'/pages/index/heartRate'
+				})
+			},
+			goBoold(){
+				uni.navigateTo({
+					url:'/pages/index/boold'
+				})
+			},
+			goHrv(){
+				uni.navigateTo({
+					url:'/pages/index/hrv'
+				})
+			},
+			goStress(){
+				uni.navigateTo({
+					url:'/pages/index/stress'
+				})
+			},
 			openManagePopup() {
 				this.showManagePopup = true
 			},
@@ -257,6 +539,23 @@
 			confirmManagePopup() {
 				this.showManagePopup = false
 			},
+			openButlerPopup() {
+				this.showButlerPopup = true
+			},
+			closeButlerPopup() {
+				this.showButlerPopup = false
+			},
+			copyButlerPhone() {
+				uni.setClipboardData({
+					data: this.butlerPhone,
+					success: () => {
+						uni.showToast({
+							title: '已复制',
+							icon: 'none'
+						})
+					}
+				})
+			},
 			onToggleChange(index, e) {
 				this.$set(this.recordList[index], 'visible', e.detail.value)
 			}
@@ -264,10 +563,10 @@
 	}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 	.tab-page {
 		min-height: 100%;
-		padding: calc(var(--status-bar-height) + 24rpx) 28rpx 40rpx;
+		padding: 0 28rpx 40rpx;
 		box-sizing: border-box;
 		background: #000000;
 		color: #ffffff;
@@ -277,7 +576,7 @@
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		margin-bottom: 28rpx;
+		padding-bottom: 28rpx;
 	}
 
 	.header-left {
@@ -322,91 +621,19 @@
 	}
 
 	.hero-banner {
-		position: relative;
-		display: flex;
-		align-items: center;
-		min-height: 200rpx;
-		padding: 36rpx 28rpx;
-		border-radius: 28rpx;
-		background: linear-gradient(135deg, #d9e8ff 0%, #c5d9f7 45%, #b8ccee 100%);
-		overflow: hidden;
-		box-sizing: border-box;
+		width: 100%;
+		height: 300rpx;
+
+		image {
+			width: 100%;
+			height: 100%;
+		}
 	}
 
-	.hero-left {
-		flex: 1;
-		padding-right: 180rpx;
-		z-index: 1;
-	}
-
-	.hero-title {
-		display: block;
-		font-size: 34rpx;
-		font-weight: 700;
-		color: #1a1a1a;
-		line-height: 48rpx;
-	}
-
-	.hero-desc {
-		display: block;
-		margin-top: 12rpx;
-		font-size: 22rpx;
-		color: #4a5568;
-		line-height: 34rpx;
-	}
-
-	.hero-ring {
-		position: absolute;
-		right: 8rpx;
-		bottom: -10rpx;
-		width: 220rpx;
-		height: 220rpx;
-	}
-
-	.butler-card {
-		display: flex;
-		align-items: center;
-		margin-top: 20rpx;
-		padding: 24rpx 28rpx;
-		border-radius: 28rpx;
-		background: linear-gradient(90deg, #1a3a6b 0%, #16325c 50%, #122848 100%);
-		box-sizing: border-box;
-	}
-
-	.butler-avatar {
-		width: 80rpx;
-		height: 80rpx;
-		border-radius: 50%;
-		flex-shrink: 0;
-		background: rgba(255, 255, 255, 0.12);
-	}
-
-	.butler-info {
-		flex: 1;
-		margin-left: 20rpx;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.butler-title {
-		font-size: 30rpx;
-		font-weight: 600;
-		color: #ffffff;
-		line-height: 42rpx;
-	}
-
-	.butler-desc {
-		margin-top: 4rpx;
-		font-size: 22rpx;
-		color: rgba(255, 255, 255, 0.65);
-		line-height: 32rpx;
-	}
-
-	.butler-arrow {
-		font-size: 40rpx;
-		color: rgba(255, 255, 255, 0.5);
-		line-height: 1;
-		padding-left: 12rpx;
+	.indexkefu {
+		width: 100%;
+		height: 140rpx;
+		margin-top: 36rpx;
 	}
 
 	.section {
@@ -444,12 +671,13 @@
 	}
 
 	.status-card {
-		width:334rpx;
+		width: 334rpx;
 		margin-bottom: 28rpx;
 		padding: 24rpx;
 		border-radius: 24rpx;
 		background: #1A1B25;
 		box-sizing: border-box;
+		overflow: hidden;
 	}
 
 	.card-head {
@@ -504,43 +732,80 @@
 		margin-top: 20rpx;
 		height: 10rpx;
 		border-radius: 5rpx;
-		background: rgba(77, 163, 255, 0.15);
+		background: rgba(44, 137, 255, 0.1);
 		overflow: hidden;
 	}
 
 	.progress-inner {
 		height: 100%;
 		border-radius: 5rpx;
-		background: #4da3ff;
+		background: linear-gradient(180deg, #54B7F7 0%, #1A53EC 100%);
 	}
 
 	.sleep-bars {
 		display: flex;
-		align-items: flex-end;
+		align-items: flex-start;
 		margin-top: 20rpx;
-		height: 28rpx;
+		height: 44rpx;
 	}
 
 	.sleep-bar {
-		height: 12rpx;
-		border-radius: 4rpx;
+		height: 100%;
 		margin-right: 6rpx;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.sleep-bar-solid {
+		width: 100%;
+		height: 12rpx;
+		flex-shrink: 0;
+	}
+
+	.sleep-bar-glow {
+		width: 100%;
+		flex: 1;
 	}
 
 	.sleep-bar.orange {
 		width: 28%;
+	}
+
+	.sleep-bar.orange .sleep-bar-solid {
 		background: #ff9f0a;
+		border-top-left-radius: 30rpx;
+		border-bottom-left-radius: 30rpx;
+	}
+
+	.sleep-bar.orange .sleep-bar-glow {
+		background: linear-gradient(180deg, rgba(255, 159, 10, 0.55) 0%, rgba(255, 159, 10, 0) 100%);
 	}
 
 	.sleep-bar.purple {
 		width: 40%;
+	}
+
+	.sleep-bar.purple .sleep-bar-solid {
 		background: #bf5af2;
+	}
+
+	.sleep-bar.purple .sleep-bar-glow {
+		background: linear-gradient(180deg, rgba(191, 90, 242, 0.55) 0%, rgba(191, 90, 242, 0) 100%);
 	}
 
 	.sleep-bar.cyan {
 		width: 24%;
 		margin-right: 0;
+	}
+
+	.sleep-bar.cyan .sleep-bar-solid {
 		background: #64d2ff;
+		border-top-right-radius: 30rpx;
+		border-bottom-right-radius: 30rpx;
+	}
+
+	.sleep-bar.cyan .sleep-bar-glow {
+		background: linear-gradient(180deg, rgba(100, 210, 255, 0.55) 0%, rgba(100, 210, 255, 0) 100%);
 	}
 
 	.metric-body {
@@ -548,31 +813,50 @@
 		align-items: flex-end;
 		justify-content: space-between;
 		margin-top: 8rpx;
+		overflow: hidden;
 	}
 
 	.metric-left {
 		flex-shrink: 0;
+		z-index: 1;
 	}
 
 	.metric-chart {
-		flex: 1;
-		margin-left: 12rpx;
+		width: 168rpx;
+		flex-shrink: 0;
+		margin-left: 8rpx;
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
+		overflow: hidden;
 	}
 
-	.chart-img {
+	.chart-box {
+		width: 168rpx;
+		height: 88rpx;
+		overflow: hidden;
+		position: relative;
+	}
+
+	.chart-box ::v-deep .chartsview {
+		width: 100% !important;
+		height: 100% !important;
+		flex: none !important;
+	}
+
+	.chart-axis-line {
 		width: 100%;
-		height: 64rpx;
+		height: 0;
+		margin-top: 2rpx;
+		border-bottom: 1px dashed rgba(142, 142, 147, 0.5);
 	}
 
 	.chart-time {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 4rpx;
+		margin-top: 6rpx;
 		font-size: 18rpx;
-		color: #636366;
+		color: #8e8e93;
 		line-height: 24rpx;
 	}
 
@@ -582,6 +866,11 @@
 		justify-content: space-between;
 		margin-top: 20rpx;
 	}
+	.reTop{
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+	}
 
 	.record-card {
 		width: calc(50% - 10rpx);
@@ -589,14 +878,12 @@
 		padding: 28rpx 24rpx;
 		border-radius: 24rpx;
 		background: #1A1B25;
-		display: flex;
-		align-items: center;
 		box-sizing: border-box;
 	}
 
 	.record-icon {
-		width: 56rpx;
-		height: 56rpx;
+		width: 43rpx;
+		height: 43rpx;
 		flex-shrink: 0;
 		margin-right: 16rpx;
 	}
@@ -616,10 +903,11 @@
 
 	.record-value {
 		margin-top: 6rpx;
-		font-size: 28rpx;
+		font-size: 36rpx;
 		font-weight: 600;
 		color: #ffffff;
 		line-height: 40rpx;
+		margin-top: 20rpx;
 	}
 
 	.record-value.empty {
@@ -733,5 +1021,90 @@
 		font-weight: 600;
 		color: #ffffff;
 		background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+	}
+
+	.butler-mask {
+		align-items: flex-end;
+	}
+
+	.butler-sheet {
+		position: relative;
+		width: 100%;
+		border-radius: 40rpx;
+		overflow: hidden;
+		background: #1A1B25;
+		margin: 30rpx;
+	}
+
+	.butler-content {
+		position: relative;
+		z-index: 1;
+		padding: 48rpx 40rpx 44rpx;
+		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.butler-title {
+		font-size: 36rpx;
+		font-weight: 600;
+		color: #ffffff;
+		line-height: 50rpx;
+	}
+
+	.butler-qr-wrap {
+		margin-top: 40rpx;
+		width: 356rpx;
+		height: 353.32rpx;
+		border: 2rpx dashed rgba(255, 255, 255, 0.20);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+
+	.butler-qr {
+		width: 282rpx;
+		height: 282rpx;
+	}
+
+	.butler-tip {
+		margin-top: 28rpx;
+		font-size: 26rpx;
+		color: #4da3ff;
+		line-height: 36rpx;
+	}
+
+	.butler-footer {
+		margin-top: 48rpx;
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.butler-phone {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.butler-phone-label {
+		font-size: 24rpx;
+		color: #8e8e93;
+		line-height: 34rpx;
+	}
+
+	.butler-phone-num {
+		margin-top: 8rpx;
+		font-size: 36rpx;
+		font-weight: 700;
+		color: #ffffff;
+		line-height: 50rpx;
+	}
+
+	.butler-copy-btn {
+		width:172rpx;
+		height: 64rpx;
 	}
 </style>

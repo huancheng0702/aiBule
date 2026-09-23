@@ -88,6 +88,51 @@
 				"navigationBarBackgroundColor": "#000000",
 				"navigationBarTextStyle": "white"
 			}
+		},
+		{
+			"path": "pages/index/weight",
+			"style": {
+				"navigationBarTitleText": "体重",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/sugar",
+			"style": {
+				"navigationBarTitleText": "血糖",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/temperature",
+			"style": {
+				"navigationBarTitleText": "体温",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/pressure",
+			"style": {
+				"navigationBarTitleText": "血压",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/health/healthBody",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#050914"
+			}
 		}
 	],
 	"globalStyle": {

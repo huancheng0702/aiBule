@@ -7,7 +7,7 @@
 		</view>
 
 		<!-- 健康画像 -->
-		<view class="portrait-card">
+		<view class="portrait-card" @click="navHealth">
 			<image src="/static/helthTopImg.png" class="cardImg" mode=""></image>
 		</view>
 
@@ -50,6 +50,13 @@
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+		},
+		methods:{
+			navHealth(){
+				uni.navigateTo({
+					url:'/pages/health/healthBody'
+				})
+			}
 		}
 	}
 </script>

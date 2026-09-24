@@ -133,6 +133,33 @@
 				"navigationBarTextStyle": "white",
 				"backgroundColor": "#050914"
 			}
+		},
+		{
+			"path": "pages/index/period",
+			"style": {
+				"navigationBarTitleText": "经期",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/setPeriod",
+			"style": {
+				"navigationBarTitleText": "",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/index/lookPeriod",
+			"style": {
+				"navigationBarTitleText": "认识生理周期",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white"
+			}
 		}
 	],
 	"globalStyle": {

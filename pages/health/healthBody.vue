@@ -30,6 +30,27 @@
 				<view class="body-visual">
 					<image class="body-img" :src="bodyImgSrc" mode=""></image>
 					<image class="body-base" src="/static/bodyBg.png" mode=""></image>
+
+					<!-- 从上到下检测线 -->
+					<view v-if="scanning" class="scan-band">
+						<view class="scan-line"></view>
+					</view>
+
+					<!-- 检测完成后弹幕状态标签 -->
+					<view v-if="showBubbles" class="status-bubble-layer">
+						<view
+							v-for="(item, index) in statusBubbles"
+							:key="index"
+							class="status-bubble"
+							:style="{
+								left: item.left,
+								top: item.top,
+								animationDelay: item.delay
+							}"
+						>
+							<text class="status-bubble-text">{{ item.text }}</text>
+						</view>
+					</view>
 				</view>
 			</view> 
 
@@ -297,6 +318,16 @@
 				],
 				showArchivePopup: false,
 				showHistoryPopup: false,
+				scanning: true,
+				showBubbles: false,
+				scanTimer: null,
+				statusBubbles: [
+					{ text: '体脂偏低', left: '58%', top: '42%', delay: '0s' },
+					{ text: '心率正常', left: '8%', top: '28%', delay: '0.15s' },
+					{ text: '睡眠良好', left: '62%', top: '22%', delay: '0.3s' },
+					{ text: '压力平稳', left: '12%', top: '55%', delay: '0.45s' },
+					{ text: '血氧正常', left: '55%', top: '62%', delay: '0.6s' }
+				],
 				historyList: [
 					{ date: '今天', status: '整体良好', flag: '已更新' },
 					{ date: '昨天', status: '状态平稳', flag: '完整' },
@@ -508,8 +539,29 @@
 			start.setDate(end.getDate() - 6)
 			start.setHours(0, 0, 0, 0)
 			this.rangeStart = start
+			this.startBodyScan()
+		},
+		onUnload() {
+			this.clearScanTimer()
 		},
 		methods: {
+			clearScanTimer() {
+				if (this.scanTimer) {
+					clearTimeout(this.scanTimer)
+					this.scanTimer = null
+				}
+			},
+			startBodyScan() {
+				this.clearScanTimer()
+				this.scanning = true
+				this.showBubbles = false
+				// 与 CSS 检测线动画时长对齐
+				this.scanTimer = setTimeout(() => {
+					this.scanning = false
+					this.showBubbles = true
+					this.scanTimer = null
+				}, 2000)
+			},
 			goBack() {
 				const pages = getCurrentPages()
 				if (pages.length > 1) {
@@ -731,6 +783,110 @@
 		height: 458.83px;
 		position: relative;
 		z-index: 2;
+	}
+
+	.scan-band {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 96rpx;
+		z-index: 8;
+		pointer-events: none;
+		background: linear-gradient(
+			180deg,
+			rgba(90, 170, 255, 0) 0%,
+			rgba(90, 170, 255, 0.06) 45%,
+			rgba(160, 210, 255, 0.22) 100%
+		);
+		animation: scanDown 2s ease-in-out forwards;
+	}
+
+	.scan-line {
+		position: absolute;
+		left: 10%;
+		right: 10%;
+		bottom: 0;
+		height: 3rpx;
+		border-radius: 3rpx;
+		background: linear-gradient(
+			90deg,
+			rgba(255, 255, 255, 0) 0%,
+			rgba(200, 230, 255, 0.55) 18%,
+			#ffffff 50%,
+			rgba(200, 230, 255, 0.55) 82%,
+			rgba(255, 255, 255, 0) 100%
+		);
+		box-shadow:
+			0 0 6rpx rgba(255, 255, 255, 0.85),
+			0 0 14rpx rgba(120, 190, 255, 0.65),
+			0 0 28rpx rgba(70, 150, 255, 0.35);
+	}
+
+	@keyframes scanDown {
+		0% {
+			top: 0;
+			opacity: 0;
+		}
+		8% {
+			opacity: 1;
+		}
+		92% {
+			opacity: 1;
+		}
+		100% {
+			top: 100%;
+			opacity: 0;
+		}
+	}
+
+	.status-bubble-layer {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		z-index: 9;
+		pointer-events: none;
+	}
+
+	.status-bubble {
+		position: absolute;
+		z-index: 9;
+		padding: 10rpx 22rpx;
+		border-radius: 28rpx;
+		background: linear-gradient(90deg, #1a6dff 0%, #3d9bff 100%);
+		box-shadow: 0 6rpx 18rpx rgba(40, 120, 255, 0.35);
+		opacity: 0;
+		animation: bubbleIn 0.55s ease-out forwards, bubbleFloat 2.8s ease-in-out 0.55s infinite;
+	}
+
+	.status-bubble-text {
+		font-size: 22rpx;
+		line-height: 32rpx;
+		color: #ffffff;
+		white-space: nowrap;
+	}
+
+	@keyframes bubbleIn {
+		0% {
+			opacity: 0;
+			transform: translateX(24rpx) scale(0.9);
+		}
+		100% {
+			opacity: 1;
+			transform: translateX(0) scale(1);
+		}
+	}
+
+	@keyframes bubbleFloat {
+		0%,
+		100% {
+			transform: translateY(0);
+		}
+		50% {
+			transform: translateY(-10rpx);
+		}
 	}
 
 	.bottom-panel {

@@ -11,15 +11,15 @@
 		</view>
 
 		<!-- 设备状态卡 -->
-		<view class="device-card">
+		<view class="device-card" @click="onManage">
 			<image src="/static/ringStatusBg.png" class="ringBg" mode=""></image>
 			<view class="devCon">
 				<view class="device-left">
 					<view class="device-name-row">
-						<view class="status-dot"></view>
-						<text class="device-name">Ring A01</text>
+						<view class="status-dot" :class="{ off: !connected }"></view>
+						<text class="device-name">{{ deviceName }}</text>
 					</view>
-					<text class="device-status">已连接 · 电量 86%</text>
+					<text class="device-status">{{ deviceStatusText }}</text>
 				</view>
 				<image class="device-img" mode="aspectFit"></image>
 				<view class="manage-btn" @click.stop="onManage">
@@ -64,11 +64,19 @@
 </template>
 
 <script>
+	import BleService from '@/common/ble-service.js'
+
 	export default {
 		name: 'TabMine',
 		data() {
 			return {
 				statusBarHeight: 20,
+				connected: false,
+				deviceName: '未连接设备',
+				batteryLevel: null,
+				batteryCharging: false,
+				boundDevice: null,
+				unsub: null,
 				featureList: [{
 						title: '紧急联系人',
 						desc: '已设置1人',
@@ -103,13 +111,59 @@
 				]
 			}
 		},
+		computed: {
+			deviceStatusText() {
+				if (!this.connected && !this.boundDevice) {
+					return '未连接 · 点击添加设备'
+				}
+				if (!this.connected) {
+					return '未连接'
+				}
+				if (this.batteryLevel != null) {
+					return this.batteryCharging
+						? `已连接 · 电量 ${this.batteryLevel}% · 充电中`
+						: `已连接 · 电量 ${this.batteryLevel}%`
+				}
+				return this.batteryCharging ? '已连接 · 充电中' : '已连接'
+			}
+		},
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+			this.unsub = BleService.subscribe((s) => {
+				this.connected = !!s.connected
+				this.batteryLevel = s.batteryLevel
+				this.batteryCharging = !!s.batteryCharging
+				this.boundDevice = s.device
+				this.deviceName = (s.device && s.device.name) || (s.connected ? '智能戒指' : '未连接设备')
+			})
+		},
+		beforeDestroy() {
+			if (this.unsub) {
+				this.unsub()
+				this.unsub = null
+			}
 		},
 		methods: {
-			onProfile() {},
-			onManage() {},
+			onProfile() {
+				uni.navigateTo({
+					url: '/pages/mine/myInfo'
+				})
+			},
+			onManage() {
+				const s = BleService.getState()
+				if (s.device || s.connected) {
+					const name = encodeURIComponent((s.device && s.device.name) || '智能戒指')
+					const battery = s.batteryLevel != null ? s.batteryLevel : ''
+					uni.navigateTo({
+						url: `/pages/mine/deviceInfo?name=${name}&battery=${battery}`
+					})
+					return
+				}
+				uni.navigateTo({
+					url: '/pages/mine/deviceManage'
+				})
+			},
 			onMenu() {}
 		}
 	}
@@ -213,6 +267,11 @@
 		background: #34c759;
 		margin-right: 38rpx;
 		flex-shrink: 0;
+	}
+
+	.status-dot.off {
+		background: rgba(255, 255, 255, 0.35);
+		box-shadow: none;
 	}
 
 	.device-name {

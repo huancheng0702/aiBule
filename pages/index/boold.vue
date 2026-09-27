@@ -16,7 +16,7 @@
 				<!-- 血氧装饰图，自行补充 src -->
 				<image class="hero-o2" mode="aspectFit"></image>
 				<view class="measure-btn" @click="onStartMeasure">
-					<text class="measure-btn-text">开始测量</text>
+					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
 				</view>
 			</view>
 		</view>
@@ -77,45 +77,7 @@
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
-						<svg v-if="chartW > 0" class="trend-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-							preserveAspectRatio="none">
-							<line
-								:x1="0"
-								:y1="thresholdY"
-								:x2="chartW"
-								:y2="thresholdY"
-								stroke="rgba(167, 139, 250, 0.9)"
-								stroke-width="1"
-								stroke-dasharray="4 5"
-							/>
-							<rect
-								v-for="(bar, index) in chartBars"
-								:key="index"
-								:x="bar.x"
-								:y="bar.y"
-								:width="bar.w"
-								:height="bar.h"
-								:fill="bar.color"
-								rx="1"
-							/>
-							<line
-								v-if="touchActive && touchPoint"
-								:x1="touchPoint.x"
-								:y1="0"
-								:x2="touchPoint.x"
-								:y2="chartH"
-								stroke="rgba(255,255,255,0.35)"
-								stroke-width="1"
-							/>
-							<line
-								:x1="0"
-								:y1="chartH - 1"
-								:x2="chartW"
-								:y2="chartH - 1"
-								stroke="rgba(255,255,255,0.28)"
-								stroke-width="1"
-							/>
-						</svg>
+						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view class="threshold-label" :style="{ top: thresholdLabelTop }">≥95%</view>
 						<view
 							v-if="touchActive && touchPoint"
@@ -282,7 +244,8 @@
 						<view class="ripple-disc d1"></view>
 						<view class="ripple-core"></view>
 					</view>
-					<text class="measuring-text">检测中...</text>
+					<text class="measuring-text">{{ liveSpo2 ? ('检测中 ' + liveSpo2 + '%') : '检测中...' }}</text>
+					<text class="measuring-sub">请保持手指静止，等待戒指返回数据</text>
 				</view>
 			</view>
 		</view>
@@ -308,11 +271,18 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import BleService from '@/common/ble-service.js'
+
 	const CHART_H = 220
 	const Y_MIN = 94
 	const Y_MAX = 100
 	const THRESHOLD = 95
 	const DAY_END_MIN = 22 * 60 + 40
+	const MEASURE_TIMEOUT_MS = 45000
+	const MEASURE_MIN_SAMPLES = 2
+	const MEASURE_STABLE_MS = 8000
 
 	function clamp(value, min, max) {
 		return Math.max(min, Math.min(max, value))
@@ -328,6 +298,56 @@
 		if (value >= 90) return '#3B82F6'
 		if (value >= 80) return '#F5C451'
 		return '#FF7A45'
+	}
+
+	function extractO2Values(data) {
+		const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+		const values = []
+		list.forEach((item) => {
+			if (typeof item === 'number') {
+				if (item > 0 && item <= 100) values.push(item)
+				return
+			}
+			if (!item || typeof item !== 'object') return
+			const candidates = [
+				item.value,
+				item.o2,
+				item.O2,
+				item.spo2,
+				item.SpO2,
+				item.oxygen,
+				item.bloodOxygen,
+				item.oxygenValue
+			]
+			for (let i = 0; i < candidates.length; i++) {
+				const n = Number(candidates[i])
+				if (!Number.isNaN(n) && n > 0 && n <= 100) {
+					values.push(n)
+					return
+				}
+			}
+			if (item.raw != null) {
+				const s = String(item.raw)
+				const named = s.match(/(?:o2|spo2|oxygen|bloodOxygen|value)[=:\s]+(\d{2,3})/i)
+				const plain = s.match(/\b(100|[7-9]\d)\b/)
+				const n = Number((named && named[1]) || (plain && plain[1]))
+				if (!Number.isNaN(n) && n > 0 && n <= 100) values.push(n)
+			}
+		})
+		return values
+	}
+
+	function spo2StatusText(spo2) {
+		if (spo2 >= 95) return '正常范围'
+		if (spo2 >= 90) return '略低'
+		if (spo2 >= 80) return '偏低'
+		return '偏低'
+	}
+
+	function formatLatestTime(date = new Date()) {
+		const h = String(date.getHours()).padStart(2, '0')
+		const m = String(date.getMinutes()).padStart(2, '0')
+		return `今天 ${h}:${m}`
 	}
 
 	export default {
@@ -367,7 +387,12 @@
 				showMeasureTip: false,
 				showMeasuring: false,
 				showCancelConfirm: false,
+				measuring: false,
+				liveSpo2: 0,
+				measureSamples: [],
 				measureTimer: null,
+				measureStableTimer: null,
+				bloodOxygenUnsub: null,
 				measureTips: [
 					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
 					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
@@ -416,6 +441,22 @@
 						color: barColor(value)
 					}
 				})
+			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH || !this.chartBars.length) return ''
+				const bars = this.chartBars.map((bar) =>
+					`<rect x="${bar.x}" y="${bar.y}" width="${bar.w}" height="${bar.h}" fill="${bar.color}" rx="1"/>`
+				).join('')
+				let touch = ''
+				if (this.touchActive && this.touchPoint) {
+					touch = `<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`
+				}
+				const inner =
+					`<line x1="0" y1="${this.thresholdY}" x2="${this.chartW}" y2="${this.thresholdY}" stroke="rgba(167,139,250,0.9)" stroke-width="1" stroke-dasharray="4 5"/>` +
+					bars +
+					touch +
+					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
 				if (this.touchIndex < 0 || !this.chartBars[this.touchIndex]) return null
@@ -479,8 +520,11 @@
 		},
 		mounted() {
 			this.$nextTick(() => {
-				this.measureChart()
+				this.measureChart(0)
 			})
+		},
+		onReady() {
+			this.measureChart(0)
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -488,15 +532,18 @@
 			return true
 		},
 		onUnload() {
-			this.clearMeasureTimer()
+			this.stopRealMeasure(false)
 		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.trend-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureChart(retry + 1), 80)
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height || CHART_H
 						this.chartLeft = rect.left || 0
@@ -571,39 +618,154 @@
 				this.showCalendar = false
 			},
 			onStartMeasure() {
+				if (this.measuring) return
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					uni.showModal({
+						title: '未连接戒指',
+						content: '请先连接智能戒指后再开始测量',
+						confirmText: '去连接',
+						success: (res) => {
+							if (res.confirm) {
+								uni.navigateTo({
+									url: '/pages/mine/deviceManage'
+								})
+							}
+						}
+					})
+					return
+				}
 				this.showMeasureTip = true
 			},
 			closeMeasureTip() {
 				this.showMeasureTip = false
 			},
-			onMeasureNext() {
+			async onMeasureNext() {
 				this.showMeasureTip = false
-				this.showMeasuring = true
-				this.clearMeasureTimer()
-				this.measureTimer = setTimeout(() => {
-					this.finishMeasure()
-				}, 3000)
+				await this.startRealMeasure()
 			},
 			clearMeasureTimer() {
-				if (!this.measureTimer) return
-				clearTimeout(this.measureTimer)
-				this.measureTimer = null
+				if (this.measureTimer) {
+					clearTimeout(this.measureTimer)
+					this.measureTimer = null
+				}
+				if (this.measureStableTimer) {
+					clearTimeout(this.measureStableTimer)
+					this.measureStableTimer = null
+				}
 			},
-			finishMeasure() {
+			unbindBloodOxygen() {
+				if (this.bloodOxygenUnsub) {
+					this.bloodOxygenUnsub()
+					this.bloodOxygenUnsub = null
+				}
+			},
+			async startRealMeasure() {
+				if (this.measuring) return
+				this.measuring = true
+				this.showMeasuring = true
+				this.showCancelConfirm = false
+				this.liveSpo2 = 0
+				this.measureSamples = []
 				this.clearMeasureTimer()
+				this.unbindBloodOxygen()
+
+				this.bloodOxygenUnsub = CoolWearBLE.on('onBloodOxygen', (data) => {
+					this.onBloodOxygenData(data)
+				})
+
+				try {
+					await CoolWearBLE.setBloodOxygenSwitch(true)
+					console.log('[boold] 已开启血氧检测')
+				} catch (e) {
+					console.error('[boold] 开启血氧失败', e)
+					this.stopRealMeasure(false)
+					uni.showToast({
+						title: (e && e.message) || '开启血氧失败',
+						icon: 'none'
+					})
+					return
+				}
+
+				this.measureTimer = setTimeout(() => {
+					if (!this.measuring) return
+					if (this.liveSpo2 > 0) {
+						this.finishMeasure(this.liveSpo2)
+						return
+					}
+					this.stopRealMeasure(true)
+					uni.showToast({
+						title: '未收到血氧数据，请确认佩戴后重试',
+						icon: 'none',
+						duration: 2500
+					})
+				}, MEASURE_TIMEOUT_MS)
+			},
+			onBloodOxygenData(data) {
+				if (!this.measuring) return
+				const values = extractO2Values(data)
+				if (!values.length) {
+					console.log('[boold] onBloodOxygen 原始数据无法解析', data)
+					return
+				}
+				values.forEach((v) => this.measureSamples.push(v))
+				const latest = values[values.length - 1]
+				this.liveSpo2 = latest
+				console.log('[boold] 实时血氧', latest, 'samples=', this.measureSamples.length)
+
+				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
+					this.measureStableTimer = setTimeout(() => {
+						if (!this.measuring) return
+						const spo2 = this.liveSpo2 || this.measureSamples[this.measureSamples.length - 1]
+						this.finishMeasure(spo2)
+					}, MEASURE_STABLE_MS)
+				}
+			},
+			async stopRealMeasure(turnOffSwitch = true) {
+				this.clearMeasureTimer()
+				this.unbindBloodOxygen()
+				this.measuring = false
 				this.showMeasuring = false
 				this.showCancelConfirm = false
+				this.liveSpo2 = 0
+				this.measureSamples = []
+				if (turnOffSwitch) {
+					try {
+						await CoolWearBLE.setBloodOxygenSwitch(false)
+					} catch (e) {
+						console.log('[boold] 关闭血氧失败', e)
+					}
+				}
+			},
+			async finishMeasure(spo2) {
+				const value = Number(spo2) || this.liveSpo2
+				if (!value) {
+					await this.stopRealMeasure(true)
+					uni.showToast({
+						title: '测量失败，请重试',
+						icon: 'none'
+					})
+					return
+				}
+				this.latestValue = value
+				this.latestStatus = spo2StatusText(value)
+				this.latestTime = formatLatestTime()
+				this.recentList = [{
+					time: this.latestTime,
+					source: '戒指采集',
+					duration: '即时测量'
+				}].concat(this.recentList).slice(0, 10)
+
+				await this.stopRealMeasure(true)
 				uni.navigateTo({
-					url: '/pages/index/booldSuccess?spo2=' + this.latestValue
+					url: '/pages/index/booldSuccess?spo2=' + value
 				})
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
 			},
-			confirmCancelMeasure() {
-				this.clearMeasureTimer()
-				this.showCancelConfirm = false
-				this.showMeasuring = false
+			async confirmCancelMeasure() {
+				await this.stopRealMeasure(true)
 			},
 			keepMeasuring() {
 				this.showCancelConfirm = false
@@ -1469,6 +1631,14 @@
 		font-size: 30rpx;
 		color: #4da3ff;
 		line-height: 42rpx;
+	}
+
+	.measuring-sub {
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.45);
+		text-align: center;
 	}
 
 	@keyframes disc-breathe {

@@ -61,7 +61,25 @@
 				]
 			}
 		},
+		onLoad() {
+			this.checkEntry()
+		},
 		methods: {
+			checkEntry() {
+				const token = uni.getStorageSync('token')
+				if (!token) {
+					uni.reLaunch({
+						url: '/pages/login'
+					})
+					return
+				}
+				// 首次登录未完成引导：完善信息 → 蓝牙权限
+				if (!uni.getStorageSync('onboardingDone')) {
+					uni.reLaunch({
+						url: '/pages/mine/myInfo'
+					})
+				}
+			},
 			switchTab(index) {
 				if (index === this.current) return
 				this.current = index

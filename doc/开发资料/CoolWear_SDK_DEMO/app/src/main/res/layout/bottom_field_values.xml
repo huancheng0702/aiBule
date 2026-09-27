@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="20dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="@dimen/dp_40"
+        android:text="域值"
+        android:textColor="@color/black"
+        android:textSize="17sp" />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_centerInParent="true"
+            android:layout_marginStart="32dp"
+            android:layout_marginEnd="32dp"
+            />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="60dp"
+            android:textSize="20sp"
+            android:layout_centerVertical="true"
+            android:layout_toEndOf="@+id/npv_select_single"
+            android:textColor="@color/black"
+            android:text="" />
+
+        <com.coolwear.bluesdk.widget.PlanPickerView
+            android:id="@+id/npv_select_single"
+            android:layout_width="100dp"
+            android:layout_height="250dp"
+            android:layout_centerHorizontal="true"
+            android:layout_gravity="center"
+            android:background="@color/xui_transparent"
+            android:contentDescription="test_number_picker_view"
+            app:npv_DividerColor="@color/black"
+            app:npv_ItemPaddingHorizontal="3dp"
+            app:npv_ItemPaddingVertical="50dp"
+            app:npv_RespondChangeOnDetached="false"
+            app:npv_ShowDivider="true"
+            app:npv_TextColorNormal='@color/black'
+            app:npv_TextColorSelected="#15ABEE"
+            app:npv_TextSizeNormal="32sp"
+            app:npv_TextSizeSelected="32sp"
+            app:npv_WrapSelectorWheel="true" />
+    </RelativeLayout>
+
+</LinearLayout>

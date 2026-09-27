@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">آسف ، لا يمكنني الرد على الهاتف.</string>
+    <string name="call_me_later">لا يمكنك الرد الآن ، هل يمكنك الاتصال بي لاحقًا؟</string>
+    <string name="call_you_later">اتصل بك لاحقا ، حسنا؟</string>
+    <string name="will_arrive_soon">سيصل قريبا.</string>
+    <string name="will_contact_you_later">الاجتماع الآن ، وسوف نتصل بك في وقت لاحق.</string>
+</resources>

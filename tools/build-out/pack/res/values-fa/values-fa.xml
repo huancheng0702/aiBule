@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">با عرض پوزش، من قادر به پاسخگویی به تلفن نیستم.</string>
+    <string name="call_me_later">الان نمی تونی جواب بدی بعدا می تونی با من تماس بگیری؟</string>
+    <string name="call_you_later">بعدا بهت زنگ میزنم، باشه؟</string>
+    <string name="will_arrive_soon">به زودی می رسد.</string>
+    <string name="will_contact_you_later">در حال حاضر جلسه، بعداً با شما تماس خواهد گرفت.</string>
+</resources>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingTop="48dp"
+    tools:context=".activity.MainActivity">
+
+    <include
+        android:id="@+id/includeTitle"
+        layout="@layout/title_view" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="@dimen/dp_40"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <com.coolwear.bluesdk.widget.StateButton
+            android:id="@+id/bt_green"
+            android:layout_width="165dp"
+            android:layout_height="50dp"
+            android:gravity="center"
+            android:stateListAnimator="@null"
+            android:text="绿光域值更改"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:normalBackgroundColor="#25B870"
+            app:pressedBackgroundColor="#25B870"
+            app:radius="30dp"
+            app:unableBackgroundColor="#25B870" />
+
+        <com.coolwear.bluesdk.widget.StateButton
+            android:id="@+id/bt_red"
+            android:layout_width="165dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center"
+            android:layout_marginTop="16dp"
+            android:stateListAnimator="@null"
+            android:text="红光域值更改"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:normalBackgroundColor="#FF5893"
+            app:pressedBackgroundColor="#FF5893"
+            app:radius="30dp"
+            app:unableBackgroundColor="#15ABEE" />
+
+        <com.coolwear.bluesdk.widget.StateButton
+            android:id="@+id/bt_infrared"
+            android:layout_width="165dp"
+            android:layout_height="50dp"
+            android:layout_gravity="center"
+            android:layout_marginTop="16dp"
+            android:stateListAnimator="@null"
+            android:text="红外域值更改"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:normalBackgroundColor="#EE1212"
+            app:pressedBackgroundColor="#EE1212"
+            app:radius="30dp" />
+    </LinearLayout>
+</LinearLayout>

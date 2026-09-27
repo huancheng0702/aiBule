@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingTop="48dp"
+    tools:context=".activity.MainActivity">
+
+    <include
+        android:id="@+id/includeTitle"
+        layout="@layout/title_view" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="28dp"
+        android:layout_marginTop="24dp"
+        android:gravity="center"
+        android:text="注意事项:"
+        android:textColor="#333333"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="28dp"
+        android:layout_marginTop="4dp"
+        android:text="· 请严格参照使用说明，将设备至于测试治具上或对应的环境内；\n· 阈值更改将变更测试工具的通过判断标准；\n· 测试漏光数据仅对特定版本软件及设备有效；"
+        android:textColor="#666666"
+        android:textSize="16sp" />
+
+    <View
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:textColor="#dd5555"
+        android:textSize="16sp"
+        android:text="注意：域值是否要调整" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="@dimen/dp_40"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <com.coolwear.bluesdk.widget.StateButton
+            android:id="@+id/bt_cfv"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="14dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:stateListAnimator="@null"
+            android:text="更改域值"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:normalBackgroundColor="#25B870"
+            app:pressedBackgroundColor="#25B870"
+            app:radius="30dp"
+            app:unableBackgroundColor="#25B870" />
+
+        <com.coolwear.bluesdk.widget.StateButton
+            android:id="@+id/bt_start"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:layout_weight="1"
+            android:stateListAnimator="@null"
+            android:text="开始测试"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            app:normalBackgroundColor="#15ABEE"
+            app:pressedBackgroundColor="#65ABEE"
+            app:radius="30dp"
+            app:unableBackgroundColor="#15ABEE" />
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,42 @@
+AI戒指本地插件 - Android 真机调试签名信息
+========================================
+
+一、包名
+  com.airing.ring
+
+二、证书文件
+  android-signing/ai-ring-debug.jks
+
+三、证书密码
+  证书库密码(storePassword): aiRing@123
+  证书别名(keyAlias):       ai-ring-debug
+  私钥密码(keyPassword):    aiRing@123
+
+四、HBuilderX 配置步骤
+  1. 打开 manifest.json → App 常用其他配置 → Android 包名
+     填写: com.airing.ring
+
+  2. 打开 manifest.json → App 打包配置 → Android 打包
+     - 使用自有证书
+     - 证书文件: 选择 android-signing/ai-ring-debug.jks
+     - 证书库密码: aiRing@123
+     - 证书别名: ai-ring-debug
+     - 证书私钥密码: aiRing@123
+
+  3. 运行 → 运行到手机或模拟器 → 制作自定义调试基座
+     勾选本地插件 CoolWear-BLE，使用上述证书打包
+
+  4. 运行 → 运行到手机 → 使用自定义基座运行
+
+  5. 若控制台出现「基座版本相同，跳过更新」且插件按钮无反应：
+     - 需重新「制作自定义调试基座」并安装（当前应用版本 1.0.3）
+     - 打开 App 后应直接进入「蓝牙测试」页，顶部横幅显示插件状态
+     - HBuilderX 控制台应能看到 [ble-test] 开头的日志
+
+  6. 若报错 mUniSDKInstance 字段不存在：
+     - 说明旧版 AAR 与 HBuilderX 5.x 不兼容，请确保使用最新 CoolWear-BLE.aar 后重做基座
+
+五、注意事项
+  - 此证书仅用于开发调试，不可用于应用市场上架
+  - YDBleContentProvider 的 authorities 会自动使用包名 com.airing.ring
+  - 修改包名后需重新制作自定义基座

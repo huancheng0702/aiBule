@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="CE_Email">Email</string>
+    <string name="CE_Facebook">Facebook</string>
+    <string name="CE_Instagram">Instagram</string>
+    <string name="CE_Line">Line</string>
+    <string name="CE_Linked_in">LinkedIn</string>
+    <string name="CE_Message">SMS</string>
+    <string name="CE_Other">Other</string>
+    <string name="CE_QQ">QQ</string>
+    <string name="CE_Skype">Skype</string>
+    <string name="CE_Twitter">Twitter</string>
+    <string name="CE_Wechat">Wechat</string>
+    <string name="CE_WhatsApp">Whats App</string>
+    <string name="Phone">Phone</string>
+    <string name="YD_AppMessaging">Messaging</string>
+    <string name="answer_the_phone">Sorry, I\'m not able to answer the phone.</string>
+    <string name="app_name">cenewbluesdk</string>
+    <string name="call_me_later">Can\'t answer now, can you call me later?</string>
+    <string name="call_you_later">Call you later, ok?</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="push_kakao_talk">KakaoTalk</string>
+    <string name="push_play_store">Play store</string>
+    <string name="push_telegram">Telegram</string>
+    <string name="will_arrive_soon">Will arrive soon.</string>
+    <string name="will_contact_you_later">Meeting now, will contact you later.</string>
+</resources>

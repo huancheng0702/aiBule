@@ -67,47 +67,7 @@
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
-						<svg v-if="chartW > 0" class="trend-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-							preserveAspectRatio="none">
-							<line
-								v-for="(y, i) in gridYs"
-								:key="'g' + i"
-								:x1="0"
-								:y1="y"
-								:x2="chartW"
-								:y2="y"
-								stroke="rgba(255,255,255,0.12)"
-								stroke-width="1"
-								stroke-dasharray="4 5"
-							/>
-							<rect
-								v-for="(bar, index) in chartBars"
-								:key="index"
-								:x="bar.x"
-								:y="bar.y"
-								:width="bar.w"
-								:height="bar.h"
-								:fill="bar.color"
-								rx="2"
-							/>
-							<line
-								v-if="touchActive && touchPoint"
-								:x1="touchPoint.x"
-								:y1="0"
-								:x2="touchPoint.x"
-								:y2="chartH"
-								stroke="rgba(255,255,255,0.35)"
-								stroke-width="1"
-							/>
-							<line
-								:x1="0"
-								:y1="chartH - 1"
-								:x2="chartW"
-								:y2="chartH - 1"
-								stroke="rgba(255,255,255,0.28)"
-								stroke-width="1"
-							/>
-						</svg>
+						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view
 							v-if="touchActive && touchPoint"
 							class="chart-tip"
@@ -295,6 +255,8 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+
 	const CHART_H = 220
 	const Y_MIN = 0
 	const Y_MAX = 120
@@ -394,6 +356,25 @@
 					}
 				})
 			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH || !this.chartBars.length) return ''
+				const grids = (this.gridYs || []).map((y) =>
+					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
+				).join('')
+				const bars = this.chartBars.map((bar) =>
+					`<rect x="${bar.x}" y="${bar.y}" width="${bar.w}" height="${bar.h}" fill="${bar.color}" rx="2"/>`
+				).join('')
+				let touch = ''
+				if (this.touchActive && this.touchPoint) {
+					touch = `<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`
+				}
+				const inner =
+					grids +
+					bars +
+					touch +
+					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
+			},
 			touchPoint() {
 				if (this.touchIndex < 0 || !this.chartBars[this.touchIndex]) return null
 				const bar = this.chartBars[this.touchIndex]
@@ -452,8 +433,11 @@
 		},
 		mounted() {
 			this.$nextTick(() => {
-				this.measureChart()
+				this.measureChart(0)
 			})
+		},
+		onReady() {
+			this.measureChart(0)
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -461,12 +445,15 @@
 			return true
 		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.trend-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureChart(retry + 1), 80)
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height || CHART_H
 						this.chartLeft = rect.left || 0

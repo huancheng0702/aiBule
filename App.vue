@@ -1,10 +1,20 @@
 <script>
+	import BleService from '@/common/ble-service.js'
+
 	export default {
 		onLaunch: function() {
 			console.log('App Launch')
+			BleService.bootstrap()
+			BleService.tryAutoReconnect().catch((e) => {
+				console.log('[App] auto reconnect on launch', e && e.message)
+			})
 		},
 		onShow: function() {
 			console.log('App Show')
+			// 从后台回前台：有绑定且未连接则自动重连（解绑后无本地设备，不会重连）
+			BleService.tryAutoReconnect().catch((e) => {
+				console.log('[App] auto reconnect on show', e && e.message)
+			})
 		},
 		onHide: function() {
 			console.log('App Hide')

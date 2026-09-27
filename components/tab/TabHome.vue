@@ -8,7 +8,7 @@
 			</view>
 			<view class="battery">
 				<image class="battery-icon" mode="aspectFit"></image>
-				<text class="battery-text">86%</text>
+				<text class="battery-text">{{ batteryText }}</text>
 			</view>
 		</view>
 
@@ -277,6 +277,7 @@
 
 <script>
 	import qiunDataCharts from '@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue'
+	import BleService from '@/common/ble-service.js'
 
 	function createChartOpts(extra = {}) {
 		return {
@@ -321,6 +322,10 @@
 		data() {
 			return {
 				statusBarHeight: 20,
+				batteryLevel: null,
+				batteryCharging: false,
+				bleConnected: false,
+				unsubBle: null,
 				showManagePopup: false,
 				showButlerPopup: false,
 				butlerPhone: '400-820-1624',
@@ -478,6 +483,17 @@
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+			this.unsubBle = BleService.subscribe((s) => {
+				this.bleConnected = !!s.connected
+				this.batteryLevel = s.batteryLevel
+				this.batteryCharging = !!s.batteryCharging
+			})
+		},
+		beforeDestroy() {
+			if (this.unsubBle) {
+				this.unsubBle()
+				this.unsubBle = null
+			}
 		},
 		mounted() {
 			this.$nextTick(() => {
@@ -487,6 +503,15 @@
 			})
 		},
 		computed: {
+			batteryText() {
+				if (this.batteryLevel != null) {
+					return this.batteryCharging
+						? `${this.batteryLevel}% 充电中`
+						: `${this.batteryLevel}%`
+				}
+				if (this.batteryCharging) return '充电中'
+				return this.bleConnected ? '--%' : '--'
+			},
 			greetText() {
 				const hour = new Date().getHours()
 				if (hour < 6) return '夜深了'

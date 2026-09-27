@@ -1,0 +1,58 @@
+{
+  "name": "CoolWear-BLE",
+  "id": "CoolWear-BLE",
+  "version": "1.0.0",
+  "description": "CoolWear AI Ring Bluetooth SDK native plugin for UniApp",
+  "_dp_type": "nativeplugin",
+  "_dp_nativeplugin": {
+    "android": {
+      "plugins": [
+        {
+          "type": "module",
+          "name": "CoolWear-BLE",
+          "class": "com.coolwear.uniplugin.CoolWearBLEModule"
+        }
+      ],
+      "integrateType": "aar",
+      "minSdkVersion": 23,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.INTERNET"
+      ],
+      "abis": [
+        "armeabi-v7a",
+        "arm64-v8a"
+      ]
+    },
+    "ios": {
+      "plugins": [
+        {
+          "type": "module",
+          "name": "CoolWear-BLE",
+          "class": "CoolWearBLEModule"
+        }
+      ],
+      "integrateType": "framework",
+      "frameworks": [
+        "BluetoothLibrary.framework"
+      ],
+      "deploymentTarget": "13.0",
+      "privacies": [
+        "NSBluetoothAlwaysUsageDescription"
+      ],
+      "capabilities": {
+        "entitlements": {},
+        "plists": {
+          "UIBackgroundModes": [
+            "bluetooth-central"
+          ]
+        }
+      }
+    }
+  }
+}

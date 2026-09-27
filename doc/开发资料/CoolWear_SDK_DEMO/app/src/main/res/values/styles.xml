@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="loadingDialog" parent="Theme.AppCompat.Dialog">
+    <!--去掉边框-->
+    <item name="android:windowFrame">@null</item>
+    <!--悬浮-->
+    <item name="android:windowIsFloating">true</item>
+    <!--半透明-->
+    <item name="android:windowIsTranslucent">false</item>
+    <!--不需要标题-->
+    <item name="android:windowNoTitle">true</item>
+    <!--背景透明-->
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <!--允许模糊-->
+    <item name="android:backgroundDimEnabled">false</item>
+    <!--全屏幕-->
+    <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <style name="NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="LineHorizontal">
+        <item name="android:layout_height">0.5dp</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:background">#C7C7C7</item>
+    </style>
+
+    <style name="LineVertical">
+        <item name="android:layout_width">0.5dp</item>
+        <item name="android:background">#C7C7C7</item>
+    </style>
+</resources>

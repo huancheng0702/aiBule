@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:background="@color/white"
+    android:layout_height="match_parent">
+    <TextView
+        android:id="@+id/tv_mac"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="10dp"
+        android:gravity="center_horizontal"
+        android:layout_marginBottom="10dp"
+        android:textColor="@color/black"
+        android:textSize="20sp"
+        android:text="xxxxxxxxxx" />
+
+    <TextView
+        android:id="@+id/tv_rev_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:gravity="center"
+        android:text="00"
+        android:textColor="@color/teal_200"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/tv_path"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/tv_rev_time"
+        android:layout_centerInParent="true"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:text="文件保存路径：/Android/data/com.coolwear.ctest/files/log/appLog 下以SleepMonitor.log命名的文件"
+        android:textColor="#676879"
+        android:textSize="16sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:gravity="center"
+        android:layout_alignParentBottom="true"
+        android:text="提示：时间一直在刷新说明数据还在导出中..."
+        android:layout_marginBottom="16dp"
+        android:textColor="#dd5555"
+        android:textSize="16sp" />
+
+</RelativeLayout>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    android:orientation="vertical"
+    android:paddingTop="48dp">
+
+    <include
+        android:id="@+id/includeTitle"
+        layout="@layout/title_view" />
+
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:id="@+id/ll_report_detail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="7dp"
+                android:layout_weight="2"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="@dimen/dp_10"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="@dimen/dp_40"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.coolwear.bluesdk.widget.StateButton
+                    android:id="@+id/bt_complete"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:stateListAnimator="@null"
+                    android:text="完成"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
+                    app:normalBackgroundColor="#15ABEE"
+                    app:pressedBackgroundColor="#65ABEE"
+                    app:radius="30dp"
+                    app:unableBackgroundColor="#15ABEE" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_check_report"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="131dp"
+                android:layout_height="128dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="86dp"
+                android:src="@mipmap/ic_report" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:text="下载完成"
+                android:textColor="@color/black"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/tv_show_path"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:text="请前往“XXXXX”查看"
+                android:textColor="@color/grey_666"
+                android:textSize="14sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <com.coolwear.bluesdk.widget.StateButton
+                android:id="@+id/bt_back_last"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:gravity="center"
+                android:stateListAnimator="@null"
+                android:text="返回上一页"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                app:normalBackgroundColor="#15ABEE"
+                app:pressedBackgroundColor="#65ABEE"
+                app:radius="30dp"
+                app:unableBackgroundColor="#15ABEE" />
+
+            <com.coolwear.bluesdk.widget.StateButton
+                android:id="@+id/bt_back_h"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="@dimen/dp_40"
+                android:gravity="center"
+                android:stateListAnimator="@null"
+                android:text="返回首页"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                app:normalBackgroundColor="#15ABEE"
+                app:pressedBackgroundColor="#65ABEE"
+                app:radius="30dp"
+                app:unableBackgroundColor="#15ABEE" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

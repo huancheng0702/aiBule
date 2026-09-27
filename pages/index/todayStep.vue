@@ -16,64 +16,7 @@
 			<view class="summary-top">
 				<!-- 真实三环进度图：底部起笔、渐变、外粗内细 -->
 				<view class="rings">
-					<svg class="rings-svg" viewBox="0 0 200 200">
-						<defs>
-							<linearGradient id="gradYellow" x1="0%" y1="100%" x2="100%" y2="0%">
-								<stop offset="0%" stop-color="#BE8A1A" />
-								<stop offset="50%" stop-color="#795D22" />
-								<stop offset="100%" stop-color="#BE8A1A" />
-							</linearGradient>
-							<linearGradient id="gradRed" x1="0%" y1="100%" x2="100%" y2="0%">
-								<stop offset="0%" stop-color="#FF6961" />
-								<stop offset="50%" stop-color="#FF453A" />
-								<stop offset="100%" stop-color="#FF2D55" />
-							</linearGradient>
-							<linearGradient id="gradBlue" x1="0%" y1="100%" x2="100%" y2="0%">
-								<stop offset="0%" stop-color="#64D2FF" />
-								<stop offset="50%" stop-color="#0A84FF" />
-								<stop offset="100%" stop-color="#0055FF" />
-							</linearGradient>
-						</defs>
-						<!-- 外环：轨道（含内外边框）+ 进度 -->
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringOuter.r + ringOuter.stroke / 2"
-							stroke-width="1.2" :stroke="ringOuter.edge" />
-						<circle class="ring-track" cx="100" cy="100" :r="ringOuter.r" :stroke-width="ringOuter.stroke"
-							:stroke="ringOuter.track" />
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringOuter.r - ringOuter.stroke / 2"
-							stroke-width="1.2" :stroke="ringOuter.edge" />
-						<circle class="ring-progress-border" cx="100" cy="100" :r="ringOuter.r"
-							:stroke-width="ringOuter.stroke + 2.5" :stroke="ringOuter.border"
-							:stroke-dasharray="ringOuter.dash" stroke-linecap="round" />
-						<circle class="ring-progress" cx="100" cy="100" :r="ringOuter.r"
-							:stroke-width="ringOuter.stroke" stroke="url(#gradYellow)"
-							:stroke-dasharray="ringOuter.dash" stroke-linecap="round" />
-						<!-- 中环 -->
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringMiddle.r + ringMiddle.stroke / 2"
-							stroke-width="1.2" :stroke="ringMiddle.edge" />
-						<circle class="ring-track" cx="100" cy="100" :r="ringMiddle.r" :stroke-width="ringMiddle.stroke"
-							:stroke="ringMiddle.track" />
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringMiddle.r - ringMiddle.stroke / 2"
-							stroke-width="1.2" :stroke="ringMiddle.edge" />
-						<circle class="ring-progress-border" cx="100" cy="100" :r="ringMiddle.r"
-							:stroke-width="ringMiddle.stroke + 2.5" :stroke="ringMiddle.border"
-							:stroke-dasharray="ringMiddle.dash" stroke-linecap="round" />
-						<circle class="ring-progress" cx="100" cy="100" :r="ringMiddle.r"
-							:stroke-width="ringMiddle.stroke" stroke="url(#gradRed)" :stroke-dasharray="ringMiddle.dash"
-							stroke-linecap="round" />
-						<!-- 内环 -->
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringInner.r + ringInner.stroke / 2"
-							stroke-width="1.2" :stroke="ringInner.edge" />
-						<circle class="ring-track" cx="100" cy="100" :r="ringInner.r" :stroke-width="ringInner.stroke"
-							:stroke="ringInner.track" />
-						<circle class="ring-track-edge" cx="100" cy="100" :r="ringInner.r - ringInner.stroke / 2"
-							stroke-width="1.2" :stroke="ringInner.edge" />
-						<circle class="ring-progress-border" cx="100" cy="100" :r="ringInner.r"
-							:stroke-width="ringInner.stroke + 2.5" :stroke="ringInner.border"
-							:stroke-dasharray="ringInner.dash" stroke-linecap="round" />
-						<circle class="ring-progress" cx="100" cy="100" :r="ringInner.r"
-							:stroke-width="ringInner.stroke" stroke="url(#gradBlue)" :stroke-dasharray="ringInner.dash"
-							stroke-linecap="round" />
-					</svg>
+					<image class="rings-svg" :src="ringsImageSrc" mode="aspectFit" />
 				</view>
 
 				<view class="summary-metrics">
@@ -185,11 +128,23 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+
 	function ringDash(r, percent) {
 		const c = 2 * Math.PI * r
 		const p = Math.max(0, Math.min(1, percent))
-		console.log(`${c * p} ${c}`)
 		return `${c * p} ${c}`
+	}
+
+	function ringGroup(ring, gradId) {
+		// 起笔方向仍由 .rings-svg 的 CSS rotate(90deg) 控制，与原 SVG 一致
+		return (
+			`<circle cx="100" cy="100" r="${ring.r + ring.stroke / 2}" fill="none" stroke-width="1.2" stroke="${ring.edge}"/>` +
+			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke}" stroke="${ring.track}"/>` +
+			`<circle cx="100" cy="100" r="${ring.r - ring.stroke / 2}" fill="none" stroke-width="1.2" stroke="${ring.edge}"/>` +
+			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke + 2.5}" stroke="${ring.border}" stroke-dasharray="${ring.dash}" stroke-linecap="round"/>` +
+			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke}" stroke="url(#${gradId})" stroke-dasharray="${ring.dash}" stroke-linecap="round"/>`
+		)
 	}
 
 	export default {
@@ -285,6 +240,24 @@
 					border: '#7EC8FF',
 					dash: ringDash(r, this.distanceRatio)
 				}
+			},
+			ringsImageSrc() {
+				const inner =
+					`<defs>` +
+					`<linearGradient id="gradYellow" x1="0%" y1="100%" x2="100%" y2="0%">` +
+					`<stop offset="0%" stop-color="#BE8A1A"/><stop offset="50%" stop-color="#795D22"/><stop offset="100%" stop-color="#BE8A1A"/>` +
+					`</linearGradient>` +
+					`<linearGradient id="gradRed" x1="0%" y1="100%" x2="100%" y2="0%">` +
+					`<stop offset="0%" stop-color="#FF6961"/><stop offset="50%" stop-color="#FF453A"/><stop offset="100%" stop-color="#FF2D55"/>` +
+					`</linearGradient>` +
+					`<linearGradient id="gradBlue" x1="0%" y1="100%" x2="100%" y2="0%">` +
+					`<stop offset="0%" stop-color="#64D2FF"/><stop offset="50%" stop-color="#0A84FF"/><stop offset="100%" stop-color="#0055FF"/>` +
+					`</linearGradient>` +
+					`</defs>` +
+					ringGroup(this.ringOuter, 'gradYellow') +
+					ringGroup(this.ringMiddle, 'gradRed') +
+					ringGroup(this.ringInner, 'gradBlue')
+				return toSvgDataUrl(inner, 200, 200)
 			}
 		},
 		created() {

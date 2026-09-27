@@ -57,29 +57,7 @@
 					</view>
 					<view class="trend-plot" @touchstart="onChartTouch" @touchmove.stop.prevent="onChartTouch"
 						@touchend="onChartTouchEnd" @touchcancel="onChartTouchEnd">
-						<svg v-if="chartW > 0" class="trend-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-							preserveAspectRatio="none">
-							<defs>
-								<linearGradient id="hrvAreaGrad" x1="0" y1="0" x2="0" y2="1">
-									<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35" />
-									<stop offset="55%" stop-color="#3B82F6" stop-opacity="0.12" />
-									<stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
-								</linearGradient>
-							</defs>
-							<line v-for="(y, i) in gridYs" :key="'g' + i" :x1="0" :y1="y" :x2="chartW" :y2="y"
-								stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5" />
-							<path :d="areaPath" fill="url(#hrvAreaGrad)" />
-							<path :d="linePath" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"
-								stroke-linejoin="round" />
-							<template v-if="touchActive && touchPoint">
-								<line :x1="touchPoint.x" :y1="0" :x2="touchPoint.x" :y2="chartH"
-									stroke="rgba(255,255,255,0.35)" stroke-width="1" />
-								<circle :cx="touchPoint.x" :cy="touchPoint.y" r="5" fill="#3B82F6" stroke="#ffffff"
-									stroke-width="2" />
-							</template>
-							<line :x1="0" :y1="chartH - 1" :x2="chartW" :y2="chartH - 1" stroke="rgba(255,255,255,0.28)"
-								stroke-width="1" />
-						</svg>
+						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view v-if="touchActive && touchPoint" class="chart-tip" :style="chartTipStyle">
 							<text class="chart-tip-value">{{ touchValue }} ms</text>
 							<text class="chart-tip-time">{{ touchTimeText }}</text>
@@ -257,6 +235,8 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
 	const Y_MIN = 0
@@ -392,6 +372,30 @@
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
 			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH || !this.linePath) return ''
+				const grids = (this.gridYs || []).map((y) =>
+					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
+				).join('')
+				let touch = ''
+				if (this.touchActive && this.touchPoint) {
+					touch =
+						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
+						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#3B82F6" stroke="#ffffff" stroke-width="2"/>`
+				}
+				const inner =
+					`<defs><linearGradient id="hrvAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
+					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
+					`<stop offset="55%" stop-color="#3B82F6" stop-opacity="0.12"/>` +
+					`<stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>` +
+					`</linearGradient></defs>` +
+					grids +
+					`<path d="${this.areaPath}" fill="url(#hrvAreaGrad)"/>` +
+					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+					touch +
+					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
+			},
 			touchPoint() {
 				if (this.touchIndex < 0 || this.touchIndex >= this.chartPoints.length) return null
 				return this.chartPoints[this.touchIndex]
@@ -457,8 +461,11 @@
 		},
 		mounted() {
 			this.$nextTick(() => {
-				this.measureChart()
+				this.measureChart(0)
 			})
+		},
+		onReady() {
+			this.measureChart(0)
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -466,12 +473,15 @@
 			return true
 		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.trend-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureChart(retry + 1), 80)
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height || 220
 						this.chartLeft = rect.left || 0

@@ -44,15 +44,7 @@
 				<view class="cycle-main">
 					<!-- 圆角阶梯面积图 hypnogram -->
 					<view class="cycle-plot">
-						<svg v-if="chartW > 0" class="cycle-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-							preserveAspectRatio="none">
-							<line v-for="(y, i) in gridLineYs" :key="'g' + i" :x1="0" :y1="y" :x2="chartW" :y2="y"
-								stroke="rgba(255,255,255,0.16)" stroke-width="1" stroke-dasharray="3 4" />
-							<line v-for="(connector, i) in hypnogramConnectors" :key="'connector' + i" :x1="connector.x"
-								:y1="connector.y1" :x2="connector.x" :y2="connector.y2" :stroke="connector.stroke"
-								stroke-width="6" stroke-linecap="round" />
-							<path v-for="(area, i) in hypnogramAreas" :key="'area' + i" :d="area.d" :fill="area.fill" />
-						</svg>
+						<image v-if="chartImageSrc" class="cycle-svg" :src="chartImageSrc" mode="scaleToFill" />
 					</view>
 					<view class="cycle-x">
 						<text class="cycle-x-label">{{ sleepStart }}</text>
@@ -121,6 +113,8 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+
 	/**
 	 * 睡眠分期圆角阶梯面积图（hypnogram）
 	 * 上沿按阶段阶梯变化，向下填满；转角圆弧，清醒尖峰圆顶
@@ -347,22 +341,41 @@
 					this.padTop,
 					this.padBottom
 				)
+			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH) return ''
+				const grids = (this.gridLineYs || []).map((y) =>
+					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.16)" stroke-width="1" stroke-dasharray="3 4"/>`
+				).join('')
+				const connectors = (this.hypnogramConnectors || []).map((c) =>
+					`<line x1="${c.x}" y1="${c.y1}" x2="${c.x}" y2="${c.y2}" stroke="${c.stroke}" stroke-width="6" stroke-linecap="round"/>`
+				).join('')
+				const areas = (this.hypnogramAreas || []).map((a) =>
+					`<path d="${a.d}" fill="${a.fill}"/>`
+				).join('')
+				return toSvgDataUrl(grids + connectors + areas, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			}
 		},
 		mounted() {
 			this.$nextTick(() => {
 				setTimeout(() => {
-					this.measureChart()
+					this.measureChart(0)
 				}, 50)
 			})
 		},
+		onReady() {
+			this.measureChart(0)
+		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.cycle-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureChart(retry + 1), 80)
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height
 					})

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="?colorSurface"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <ImageView
+        android:id="@+id/pushItem_icon"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_margin="20px" />
+
+    <TextView
+        android:id="@+id/pushItem_title"
+        android:layout_marginStart="10px"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="caller"
+        android:textColor="#000000"/>
+
+    <com.coolwear.bluesdk.view.MySwitchButton
+        android:id="@+id/pushItem_switch"
+        android:layout_width="50dp"
+        android:layout_height="25dp"
+        android:layout_marginEnd="14dp"
+        android:layout_gravity="center" />
+</LinearLayout>

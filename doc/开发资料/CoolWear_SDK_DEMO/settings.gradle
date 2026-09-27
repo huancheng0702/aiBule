@@ -1,0 +1,4 @@
+include ':app'
+include ':local_repo:connect'
+include ':coolwear_bluesdk'
+rootProject.name = "Ctest"

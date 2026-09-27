@@ -4,26 +4,35 @@
 		"qiun-data-charts": "@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue"
 	},
 	"pages": [{
-			"path": "pages/login",
-			"style": {
-				"navigationBarTitleText": "",
-				"navigationStyle": "custom"
-			}
-		},
-		{
 			"path": "pages/index/index",
 			"style": {
 				"navigationBarTitleText": "",
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "white",
-				"backgroundColor": "#000000"
+				"backgroundColor": "#000000",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/login",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
 			"path": "pages/index/todayStep",
 			"style": {
 				"navigationBarTitleText": "今日步数",
-				"backgroundColor": "#000000"
+				"backgroundColor": "#000000",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -32,7 +41,10 @@
 				"navigationBarTitleText": "昨夜睡眠",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -41,7 +53,10 @@
 				"navigationBarTitleText": "心率",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -50,7 +65,10 @@
 				"navigationBarTitleText": "",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -59,7 +77,10 @@
 				"navigationBarTitleText": "血氧",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -68,7 +89,10 @@
 				"navigationBarTitleText": "",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -77,7 +101,10 @@
 				"navigationBarTitleText": "压力",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -86,7 +113,10 @@
 				"navigationBarTitleText": "HRV",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -95,7 +125,10 @@
 				"navigationBarTitleText": "体重",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -104,7 +137,10 @@
 				"navigationBarTitleText": "血糖",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -113,7 +149,10 @@
 				"navigationBarTitleText": "体温",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -122,7 +161,10 @@
 				"navigationBarTitleText": "血压",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -131,7 +173,10 @@
 				"navigationBarTitleText": "",
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "white",
-				"backgroundColor": "#050914"
+				"backgroundColor": "#050914",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -140,7 +185,10 @@
 				"navigationBarTitleText": "经期",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -149,7 +197,10 @@
 				"navigationBarTitleText": "",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		},
 		{
@@ -158,7 +209,94 @@
 				"navigationBarTitleText": "认识生理周期",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
-				"navigationBarTextStyle": "white"
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/health/healthRecord",
+			"style": {
+				"navigationBarTitleText": "健康记录",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/health/aiReport",
+			"style": {
+				"navigationBarTitleText": "AI报告解读",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/deviceManage",
+			"style": {
+				"navigationBarTitleText": "设备管理",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/deviceInfo",
+			"style": {
+				"navigationBarTitleText": "设备管理",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/deviceDetail",
+			"style": {
+				"navigationBarTitleText": "设备详情",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/myInfo",
+			"style": {
+				"navigationBarTitleText": "个人信息",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/bluePower",
+			"style": {
+				"navigationBarTitleText": "蓝牙权限",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
 			}
 		}
 	],
@@ -167,6 +305,13 @@
 		"navigationBarTitleText": "aiRing",
 		"navigationBarBackgroundColor": "#000000",
 		"backgroundColor": "#000000"
+	},
+	"app-plus": {
+		"safearea": {
+			"bottom": {
+				"offset": "none" // 全局去除底部安全区域
+			}
+		}
 	},
 	"uniIdRouter": {}
 }

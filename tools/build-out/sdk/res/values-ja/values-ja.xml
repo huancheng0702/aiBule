@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">申し訳ありませんが、電話に出ることができません。</string>
+    <string name="call_me_later">今は答えられないので、後で電話してもらえますか?</string>
+    <string name="call_you_later">後で電話しますね。</string>
+    <string name="will_arrive_soon">すぐに到着します。</string>
+    <string name="will_contact_you_later">今打ち合わせ、後で連絡します。</string>
+</resources>

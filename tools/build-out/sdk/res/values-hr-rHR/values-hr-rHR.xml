@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Žao mi je, ne mogu se javiti na telefon.</string>
+    <string name="call_me_later">Ne mogu sada odgovoriti, možeš li me nazvati kasnije?</string>
+    <string name="call_you_later">Nazvati te kasnije, ok?</string>
+    <string name="will_arrive_soon">Stići će uskoro.</string>
+    <string name="will_contact_you_later">Sastanak je sada, javit ćemo vam se kasnije.</string>
+</resources>

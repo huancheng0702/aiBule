@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="message_types">
+        <item>@string/sms</item>
+        <item>@string/qq</item>
+        <item>@string/wechat</item>
+        <item>@string/email</item>
+        <item>@string/facebook</item>
+        <item>@string/twitter</item>
+        <item>@string/whatsapp</item>
+        <item>@string/skype</item>
+        <item>@string/ledthe</item>
+        <item>@string/line</item>
+        <item>@string/other</item>
+        <item>@string/kakao</item>
+        <item>@string/instagram</item>
+        <item>@string/push_telegram</item>
+    </string-array>
+    <string-array name="dial_switch">
+        <item>@string/dial_switch</item>
+        <item>face 1</item>
+        <item>face 2</item>
+        <item>face 3</item>
+        <item>face 4</item>
+        <item>face 5</item>
+    </string-array>
+    <string-array name="dial_color">
+        <item>@string/white</item>
+        <item>@string/black</item>
+        <item>@string/yellow</item>
+        <item>@string/red</item>
+        <item>@string/pink</item>
+        <item>@string/blue</item>
+    </string-array>
+
+    <string-array name="weathers">
+        <item>@string/fair_weather</item>
+        <item>@string/cloudy</item>
+        <item>@string/cloudy_sky</item>
+        <item>@string/shower</item>
+        <item>@string/thundershower</item>
+    </string-array>
+    <string-array name="temperatures">
+        <item>10</item>
+        <item>20</item>
+        <item>21</item>
+        <item>22</item>
+        <item>30</item>
+    </string-array>
+
+    <string-array name="languages">
+        <item>@string/language_settings</item>
+        <item>0-英语-ENGLISH</item>
+        <item>1-中文-CHINESE_SIMPLE</item>
+        <item>2-西班牙语-SPANISH</item>
+        <item>3-意大利语-ITALIAN</item>
+        <item>4-葡萄牙语-PORTUGUESE</item>
+        <item>5-法语-FRENCH</item>
+        <item>6-日语-JAPANESE</item>
+        <item>7-俄语-RUSSIAN</item>
+        <item>8-韩语-KOREAN</item>
+        <item>9-德语-GERMAN</item>
+        <item>10-繁体中文-CHINESE</item>
+        <item>11-阿拉伯语-ARABIC</item>
+        <item>12-印尼语-INDONESIA</item>
+        <item>13-土耳其语-TURKISH</item>
+        <item>14-乌克兰语-UKRAINIAN</item>
+        <item>15-希伯来语-HEBREW</item>
+        <item>16-波兰语-Polish</item>
+        <item>17-印地语-Hindi</item>
+        <item>18-克罗地亚语-Croatian</item>
+        <item>19-希腊语-Greek</item>
+    </string-array>
+</resources>

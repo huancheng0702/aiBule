@@ -15,7 +15,7 @@
 				<!-- 波形装饰图，自行补充 src -->
 				<image class="hero-wave" mode="aspectFit"></image>
 				<view class="measure-btn" @click="onStartMeasure">
-					<text class="measure-btn-text">开始测量</text>
+					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
 				</view>
 			</view>
 		</view>
@@ -72,89 +72,13 @@
 					@touchend="onChartTouchEnd"
 					@touchcancel="onChartTouchEnd"
 				>
-					<svg v-if="chartW > 0" class="trend-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-						preserveAspectRatio="none">
-						<defs>
-							<linearGradient id="hrAreaGrad" x1="0" y1="0" x2="0" y2="1">
-								<stop offset="0%" stop-color="#ffffff" stop-opacity="0.22" />
-								<stop offset="55%" stop-color="#ffffff" stop-opacity="0.08" />
-								<stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
-							</linearGradient>
-						</defs>
-						<!-- 中间灰色虚线网格 -->
-						<line
-							v-for="(y, i) in midGridYs"
-							:key="'g' + i"
-							:x1="0"
-							:y1="y"
-							:x2="chartW"
-							:y2="y"
-							stroke="rgba(255,255,255,0.1)"
-							stroke-width="1"
-							stroke-dasharray="4 5"
-						/>
-						<!-- 上下粉色阈值虚线 -->
-						<line
-							:x1="0"
-							:y1="thresholdTopY"
-							:x2="chartW"
-							:y2="thresholdTopY"
-							stroke="rgba(255,94,123,0.7)"
-							stroke-width="1"
-							stroke-dasharray="4 5"
-						/>
-						<line
-							:x1="0"
-							:y1="thresholdBottomY"
-							:x2="chartW"
-							:y2="thresholdBottomY"
-							stroke="rgba(255,94,123,0.7)"
-							stroke-width="1"
-							stroke-dasharray="4 5"
-						/>
-						<!-- 白色透明面积阴影 -->
-						<path :d="areaPath" fill="url(#hrAreaGrad)" />
-						<!-- 圆滑折线 -->
-						<path :d="linePath" fill="none" stroke="#FF5E7B" stroke-width="2.5" stroke-linecap="round"
-							stroke-linejoin="round" />
-						<!-- 触摸指示器 -->
-						<template v-if="touchActive && touchPoint">
-							<line
-								:x1="touchPoint.x"
-								:y1="0"
-								:x2="touchPoint.x"
-								:y2="chartH"
-								stroke="rgba(255,255,255,0.35)"
-								stroke-width="1"
-							/>
-							<circle
-								:cx="touchPoint.x"
-								:cy="touchPoint.y"
-								r="5"
-								fill="#FF5E7B"
-								stroke="#ffffff"
-								stroke-width="2"
-							/>
-						</template>
-						<!-- Y 轴实线 -->
-						<line
-							:x1="0.5"
-							:y1="0"
-							:x2="0.5"
-							:y2="chartH"
-							stroke="rgba(255,255,255,0.28)"
-							stroke-width="1"
-						/>
-						<!-- X 轴实线 -->
-						<line
-							:x1="0"
-							:y1="chartH - 1"
-							:x2="chartW"
-							:y2="chartH - 1"
-							stroke="rgba(255,255,255,0.28)"
-							stroke-width="1"
-						/>
-					</svg>
+					<!-- App 不支持模板 svg，改用 data-url image 渲染 -->
+					<image
+						v-if="chartImageSrc"
+						class="trend-svg"
+						:src="chartImageSrc"
+						mode="scaleToFill"
+					/>
 					<view class="threshold-label" :style="{ top: thresholdLabelTop }">&lt; 100</view>
 					<!-- 按压数值提示 -->
 					<view
@@ -322,7 +246,8 @@
 						<view class="ripple-disc d1"></view>
 						<view class="ripple-core"></view>
 					</view>
-					<text class="measuring-text">检测中...</text>
+					<text class="measuring-text">{{ liveBpm ? ('检测中 ' + liveBpm + ' bpm') : '检测中...' }}</text>
+					<text class="measuring-sub">请保持手指静止，等待戒指返回数据</text>
 				</view>
 			</view>
 		</view>
@@ -348,17 +273,52 @@
 </template>
 
 <script>
+	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import BleService from '@/common/ble-service.js'
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+
 	const CHART_PAD_TOP = 28
 	const CHART_PAD_BOTTOM = 12
 	const Y_MIN = 40
 	const Y_MAX = 120
 	const THRESHOLD_TOP = 100
 	const THRESHOLD_BOTTOM = 55
+	const MEASURE_TIMEOUT_MS = 45000
+	const MEASURE_MIN_SAMPLES = 2
+	const MEASURE_STABLE_MS = 8000
 
 	function valueToY(value, chartH) {
 		const usableH = chartH - CHART_PAD_TOP - CHART_PAD_BOTTOM
 		const ratio = (Math.max(Y_MIN, Math.min(Y_MAX, value)) - Y_MIN) / (Y_MAX - Y_MIN)
 		return CHART_PAD_TOP + usableH * (1 - ratio)
+	}
+
+	function extractHeartValues(data) {
+		const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+		const values = []
+		list.forEach((item) => {
+			if (typeof item === 'number') {
+				if (item > 0) values.push(item)
+				return
+			}
+			if (!item || typeof item !== 'object') return
+			const raw = item.value != null ? item.value : (item.heartNums != null ? item.heartNums : item.hr)
+			const n = Number(raw)
+			if (!Number.isNaN(n) && n > 0) values.push(n)
+		})
+		return values
+	}
+
+	function bpmStatusText(bpm) {
+		if (bpm < 60) return '偏低'
+		if (bpm > 100) return '偏高'
+		return '正常范围'
+	}
+
+	function formatLatestTime(date = new Date()) {
+		const h = String(date.getHours()).padStart(2, '0')
+		const m = String(date.getMinutes()).padStart(2, '0')
+		return `今天 ${h}:${m}`
 	}
 
 	function toPoints(values, chartW, chartH) {
@@ -427,7 +387,12 @@
 				showMeasureTip: false,
 				showMeasuring: false,
 				showCancelConfirm: false,
+				measuring: false,
+				liveBpm: 0,
+				measureSamples: [],
 				measureTimer: null,
+				measureStableTimer: null,
+				heartRateUnsub: null,
 				measureTips: [
 					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
 					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
@@ -478,6 +443,33 @@
 			},
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
+			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH || !this.linePath) return ''
+				const grids = (this.midGridYs || []).map((y) =>
+					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 5"/>`
+				).join('')
+				let touch = ''
+				if (this.touchActive && this.touchPoint) {
+					touch =
+						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
+						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#FF5E7B" stroke="#ffffff" stroke-width="2"/>`
+				}
+				const inner =
+					`<defs><linearGradient id="hrAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
+					`<stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>` +
+					`<stop offset="55%" stop-color="#ffffff" stop-opacity="0.08"/>` +
+					`<stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>` +
+					`</linearGradient></defs>` +
+					grids +
+					`<line x1="0" y1="${this.thresholdTopY}" x2="${this.chartW}" y2="${this.thresholdTopY}" stroke="rgba(255,94,123,0.7)" stroke-width="1" stroke-dasharray="4 5"/>` +
+					`<line x1="0" y1="${this.thresholdBottomY}" x2="${this.chartW}" y2="${this.thresholdBottomY}" stroke="rgba(255,94,123,0.7)" stroke-width="1" stroke-dasharray="4 5"/>` +
+					`<path d="${this.areaPath}" fill="url(#hrAreaGrad)"/>` +
+					`<path d="${this.linePath}" fill="none" stroke="#FF5E7B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+					touch +
+					`<line x1="0.5" y1="0" x2="0.5" y2="${this.chartH}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>` +
+					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
 				if (this.touchIndex < 0 || this.touchIndex >= this.chartPoints.length) return null
@@ -539,8 +531,11 @@
 		},
 		mounted() {
 			this.$nextTick(() => {
-				this.measureChart()
+				this.measureChart(0)
 			})
+		},
+		onReady() {
+			this.measureChart(0)
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -548,15 +543,20 @@
 			return true
 		},
 		onUnload() {
-			this.clearMeasureTimer()
+			this.stopRealMeasure(false)
 		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.trend-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) {
+								setTimeout(() => this.measureChart(retry + 1), 80)
+							}
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height || 220
 						this.chartLeft = rect.left || 0
@@ -631,39 +631,152 @@
 				this.showCalendar = false
 			},
 			onStartMeasure() {
+				if (this.measuring) return
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					uni.showModal({
+						title: '未连接戒指',
+						content: '请先连接智能戒指后再开始测量',
+						confirmText: '去连接',
+						success: (res) => {
+							if (res.confirm) {
+								uni.navigateTo({
+									url: '/pages/mine/deviceManage'
+								})
+							}
+						}
+					})
+					return
+				}
 				this.showMeasureTip = true
 			},
 			closeMeasureTip() {
 				this.showMeasureTip = false
 			},
-			onMeasureNext() {
+			async onMeasureNext() {
 				this.showMeasureTip = false
-				this.showMeasuring = true
-				this.clearMeasureTimer()
-				this.measureTimer = setTimeout(() => {
-					this.finishMeasure()
-				}, 3000)
+				await this.startRealMeasure()
 			},
 			clearMeasureTimer() {
-				if (!this.measureTimer) return
-				clearTimeout(this.measureTimer)
-				this.measureTimer = null
+				if (this.measureTimer) {
+					clearTimeout(this.measureTimer)
+					this.measureTimer = null
+				}
+				if (this.measureStableTimer) {
+					clearTimeout(this.measureStableTimer)
+					this.measureStableTimer = null
+				}
 			},
-			finishMeasure() {
+			unbindHeartRate() {
+				if (this.heartRateUnsub) {
+					this.heartRateUnsub()
+					this.heartRateUnsub = null
+				}
+			},
+			async startRealMeasure() {
+				if (this.measuring) return
+				this.measuring = true
+				this.showMeasuring = true
+				this.showCancelConfirm = false
+				this.liveBpm = 0
+				this.measureSamples = []
 				this.clearMeasureTimer()
+				this.unbindHeartRate()
+
+				this.heartRateUnsub = CoolWearBLE.on('onHeartRate', (data) => {
+					this.onHeartRateData(data)
+				})
+
+				try {
+					await CoolWearBLE.setHeartRateSwitch(true)
+					console.log('[heartRate] 已开启心率检测')
+				} catch (e) {
+					console.error('[heartRate] 开启心率失败', e)
+					this.stopRealMeasure(false)
+					uni.showToast({
+						title: (e && e.message) || '开启心率失败',
+						icon: 'none'
+					})
+					return
+				}
+
+				this.measureTimer = setTimeout(() => {
+					if (!this.measuring) return
+					if (this.liveBpm > 0) {
+						this.finishMeasure(this.liveBpm)
+						return
+					}
+					this.stopRealMeasure(true)
+					uni.showToast({
+						title: '未收到心率数据，请确认佩戴后重试',
+						icon: 'none',
+						duration: 2500
+					})
+				}, MEASURE_TIMEOUT_MS)
+			},
+			onHeartRateData(data) {
+				if (!this.measuring) return
+				const values = extractHeartValues(data)
+				if (!values.length) return
+				values.forEach((v) => this.measureSamples.push(v))
+				const latest = values[values.length - 1]
+				this.liveBpm = latest
+				console.log('[heartRate] 实时心率', latest, 'samples=', this.measureSamples.length)
+
+				// 收到足够样本后，再稳定采集一小段取最新值结束
+				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
+					this.measureStableTimer = setTimeout(() => {
+						if (!this.measuring) return
+						const bpm = this.liveBpm || this.measureSamples[this.measureSamples.length - 1]
+						this.finishMeasure(bpm)
+					}, MEASURE_STABLE_MS)
+				}
+			},
+			async stopRealMeasure(turnOffSwitch = true) {
+				this.clearMeasureTimer()
+				this.unbindHeartRate()
+				this.measuring = false
 				this.showMeasuring = false
 				this.showCancelConfirm = false
+				this.liveBpm = 0
+				this.measureSamples = []
+				if (turnOffSwitch) {
+					try {
+						await CoolWearBLE.setHeartRateSwitch(false)
+					} catch (e) {
+						console.log('[heartRate] 关闭心率失败', e)
+					}
+				}
+			},
+			async finishMeasure(bpm) {
+				const value = Number(bpm) || this.liveBpm
+				if (!value) {
+					await this.stopRealMeasure(true)
+					uni.showToast({
+						title: '测量失败，请重试',
+						icon: 'none'
+					})
+					return
+				}
+				this.latestBpm = value
+				this.latestStatus = bpmStatusText(value)
+				this.latestTime = formatLatestTime()
+				this.recentList = [{
+					time: this.latestTime,
+					source: '戒指采集',
+					duration: '即时测量'
+				}].concat(this.recentList).slice(0, 10)
+
+				await this.stopRealMeasure(true)
 				uni.navigateTo({
-					url: '/pages/index/heartSuccess?bpm=' + this.latestBpm
+					url: '/pages/index/heartSuccess?bpm=' + value
 				})
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
 			},
-			confirmCancelMeasure() {
-				this.clearMeasureTimer()
-				this.showCancelConfirm = false
-				this.showMeasuring = false
+			async confirmCancelMeasure() {
+				await this.stopRealMeasure(true)
 			},
 			keepMeasuring() {
 				this.showCancelConfirm = false
@@ -1544,6 +1657,14 @@
 		font-size: 30rpx;
 		color: #4da3ff;
 		line-height: 42rpx;
+	}
+
+	.measuring-sub {
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.45);
+		text-align: center;
 	}
 
 	@keyframes disc-breathe {

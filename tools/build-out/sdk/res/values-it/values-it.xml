@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Mi spiace, non riesco a rispondere al telefono.</string>
+    <string name="call_me_later">Non posso rispondere ora, puoi chiamarmi più tardi?</string>
+    <string name="call_you_later">Ti chiamo più tardi, ok?</string>
+    <string name="will_arrive_soon">Arriverà presto.</string>
+    <string name="will_contact_you_later">Incontro ora, ti contatteremo più tardi.</string>
+</resources>

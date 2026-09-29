@@ -9,7 +9,7 @@
 					<text class="hero-label">最近一次 · {{ latestTime }}</text>
 					<view class="hero-value-row">
 						<text class="hero-num">{{ latestValue }}</text>
-						<text class="hero-unit">bpm</text>
+						<text class="hero-unit">ms</text>
 					</view>
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
@@ -209,7 +209,8 @@
 						<view class="ripple-disc d1"></view>
 						<view class="ripple-core"></view>
 					</view>
-					<text class="measuring-text">检测中...</text>
+					<text class="measuring-text">{{ liveHrv ? ('检测中 ' + liveHrv + ' ms') : '检测中...' }}</text>
+					<text class="measuring-sub">请保持手指静止，等待戒指返回数据</text>
 				</view>
 			</view>
 		</view>
@@ -236,16 +237,53 @@
 
 <script>
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import BleService from '@/common/ble-service.js'
 
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
 	const Y_MIN = 0
 	const Y_MAX = 120
+	const MEASURE_TIMEOUT_MS = 45000
+	const MEASURE_MIN_SAMPLES = 2
+	const MEASURE_STABLE_MS = 8000
 
 	function valueToY(value, chartH) {
 		const usableH = chartH - CHART_PAD_TOP - CHART_PAD_BOTTOM
 		const ratio = (Math.max(Y_MIN, Math.min(Y_MAX, value)) - Y_MIN) / (Y_MAX - Y_MIN)
 		return CHART_PAD_TOP + usableH * (1 - ratio)
+	}
+
+	function extractHrvValues(data) {
+		const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+		const values = []
+		list.forEach((item) => {
+			if (typeof item === 'number') {
+				if (item > 0) values.push(item)
+				return
+			}
+			if (!item || typeof item !== 'object') return
+			const raw = item.value != null
+				? item.value
+				: (item.hrvNums != null
+					? item.hrvNums
+					: (item.hrv != null ? item.hrv : item.HRV))
+			const n = Number(raw)
+			if (!Number.isNaN(n) && n > 0) values.push(n)
+		})
+		return values
+	}
+
+	function hrvStatusText(hrv) {
+		if (hrv < 20) return '偏低'
+		if (hrv > 100) return '偏高'
+		return '正常范围'
+	}
+
+	function formatLatestTime(date = new Date()) {
+		const h = String(date.getHours()).padStart(2, '0')
+		const m = String(date.getMinutes()).padStart(2, '0')
+		return `今天 ${h}:${m}`
 	}
 
 	function toPoints(values, chartW, chartH) {
@@ -320,6 +358,12 @@
 				showMeasureTip: false,
 				showMeasuring: false,
 				showCancelConfirm: false,
+				measuring: false,
+				liveHrv: 0,
+				measureSamples: [],
+				measureTimer: null,
+				measureStableTimer: null,
+				hrvUnsub: null,
 				measureTips: [{
 						no: '1',
 						text: '请正确佩戴设备，使设备光路对准指腹或手指两侧'
@@ -472,6 +516,9 @@
 			this.showCancelConfirm = true
 			return true
 		},
+		onUnload() {
+			this.stopRealMeasure(false)
+		},
 		methods: {
 			measureChart(retry = 0) {
 				uni.createSelectorQuery()
@@ -556,21 +603,154 @@
 				this.showCalendar = false
 			},
 			onStartMeasure() {
+				if (this.measuring) return
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					uni.showModal({
+						title: '未连接戒指',
+						content: '请先连接智能戒指后再开始测量',
+						confirmText: '去连接',
+						success: (res) => {
+							if (res.confirm) {
+								uni.navigateTo({
+									url: '/pages/mine/deviceManage'
+								})
+							}
+						}
+					})
+					return
+				}
 				this.showMeasureTip = true
 			},
 			closeMeasureTip() {
 				this.showMeasureTip = false
 			},
-			onMeasureNext() {
+			async onMeasureNext() {
 				this.showMeasureTip = false
+				await this.startRealMeasure()
+			},
+			clearMeasureTimer() {
+				if (this.measureTimer) {
+					clearTimeout(this.measureTimer)
+					this.measureTimer = null
+				}
+				if (this.measureStableTimer) {
+					clearTimeout(this.measureStableTimer)
+					this.measureStableTimer = null
+				}
+			},
+			unbindHrv() {
+				if (this.hrvUnsub) {
+					this.hrvUnsub()
+					this.hrvUnsub = null
+				}
+			},
+			async startRealMeasure() {
+				if (this.measuring) return
+				this.measuring = true
 				this.showMeasuring = true
+				this.showCancelConfirm = false
+				this.liveHrv = 0
+				this.measureSamples = []
+				this.clearMeasureTimer()
+				this.unbindHrv()
+
+				this.hrvUnsub = CoolWearBLE.on('onHRV', (data) => {
+					this.onHrvData(data)
+				})
+
+				try {
+					await CoolWearBLE.setHRVSwitch(true)
+					console.log('[hrv] 已开启 HRV 检测')
+				} catch (e) {
+					console.error('[hrv] 开启 HRV 失败', e)
+					this.stopRealMeasure(false)
+					uni.showToast({
+						title: (e && e.message) || '开启 HRV 失败',
+						icon: 'none'
+					})
+					return
+				}
+
+				this.measureTimer = setTimeout(() => {
+					if (!this.measuring) return
+					if (this.liveHrv > 0) {
+						this.finishMeasure(this.liveHrv)
+						return
+					}
+					this.stopRealMeasure(true)
+					uni.showToast({
+						title: '未收到 HRV 数据，请确认佩戴后重试',
+						icon: 'none',
+						duration: 2500
+					})
+				}, MEASURE_TIMEOUT_MS)
+			},
+			onHrvData(data) {
+				if (!this.measuring) return
+				const values = extractHrvValues(data)
+				if (!values.length) {
+					console.log('[hrv] onHRV 原始数据无法解析', data)
+					return
+				}
+				values.forEach((v) => this.measureSamples.push(v))
+				const latest = values[values.length - 1]
+				this.liveHrv = latest
+				console.log('[hrv] 实时 HRV', latest, 'samples=', this.measureSamples.length)
+
+				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
+					this.measureStableTimer = setTimeout(() => {
+						if (!this.measuring) return
+						const hrv = this.liveHrv || this.measureSamples[this.measureSamples.length - 1]
+						this.finishMeasure(hrv)
+					}, MEASURE_STABLE_MS)
+				}
+			},
+			async stopRealMeasure(turnOffSwitch = true) {
+				this.clearMeasureTimer()
+				this.unbindHrv()
+				this.measuring = false
+				this.showMeasuring = false
+				this.showCancelConfirm = false
+				this.liveHrv = 0
+				this.measureSamples = []
+				if (turnOffSwitch) {
+					try {
+						await CoolWearBLE.setHRVSwitch(false)
+					} catch (e) {
+						console.log('[hrv] 关闭 HRV 失败', e)
+					}
+				}
+			},
+			async finishMeasure(hrv) {
+				const value = Number(hrv) || this.liveHrv
+				if (!value) {
+					await this.stopRealMeasure(true)
+					uni.showToast({
+						title: '测量失败，请重试',
+						icon: 'none'
+					})
+					return
+				}
+				this.latestValue = value
+				this.latestStatus = hrvStatusText(value)
+				this.latestTime = formatLatestTime()
+				this.recentList = [{
+					time: this.latestTime,
+					source: '戒指采集',
+					duration: '即时测量'
+				}].concat(this.recentList).slice(0, 10)
+
+				await this.stopRealMeasure(true)
+				uni.navigateTo({
+					url: '/pages/index/hrvSuccess?hrv=' + value
+				})
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
 			},
-			confirmCancelMeasure() {
-				this.showCancelConfirm = false
-				this.showMeasuring = false
+			async confirmCancelMeasure() {
+				await this.stopRealMeasure(true)
 			},
 			keepMeasuring() {
 				this.showCancelConfirm = false
@@ -1470,6 +1650,14 @@
 		font-size: 30rpx;
 		color: #4da3ff;
 		line-height: 42rpx;
+	}
+
+	.measuring-sub {
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.45);
+		text-align: center;
 	}
 
 	@keyframes disc-breathe {

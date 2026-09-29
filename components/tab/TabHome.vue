@@ -31,12 +31,12 @@
 						<text class="card-label">今日步数</text>
 					</view>
 					<view class="card-value-row">
-						<text class="card-value">68,444</text>
+						<text class="card-value">{{ stepText }}</text>
 						<text class="card-unit">步</text>
 					</view>
-					<text class="card-sub">4.8km · 288kcal</text>
+					<text class="card-sub">{{ stepSubText }}</text>
 					<view class="progress-bar">
-						<view class="progress-inner" style="width: 72%;"></view>
+						<view class="progress-inner" :style="{ width: stepProgress + '%' }"></view>
 					</view>
 				</view>
 
@@ -47,26 +47,27 @@
 						<text class="card-label">昨夜睡眠</text>
 					</view>
 					<view class="card-value-row">
-						<text class="card-value">1</text>
+						<text class="card-value">{{ sleepHours }}</text>
 						<text class="card-unit">小时</text>
-						<text class="card-value">32</text>
+						<text class="card-value">{{ sleepMinutes }}</text>
 						<text class="card-unit">分</text>
 					</view>
-					<text class="card-sub">4.8km · 288kcal</text>
-					<view class="sleep-bars">
+					<text class="card-sub">{{ sleepSubText }}</text>
+					<view v-if="hasSleepData" class="sleep-bars">
 						<view class="sleep-bar orange">
-							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-solid" :style="{ width: sleepBarDeep + '%' }"></view>
 							<view class="sleep-bar-glow"></view>
 						</view>
 						<view class="sleep-bar purple">
-							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-solid" :style="{ width: sleepBarLight + '%' }"></view>
 							<view class="sleep-bar-glow"></view>
 						</view>
 						<view class="sleep-bar cyan">
-							<view class="sleep-bar-solid"></view>
+							<view class="sleep-bar-solid" :style="{ width: sleepBarRem + '%' }"></view>
 							<view class="sleep-bar-glow"></view>
 						</view>
 					</view>
+					<text v-else class="sleep-empty">暂无数据</text>
 				</view>
 
 				<!-- 心率 -->
@@ -214,7 +215,7 @@
 				<text class="section-action" @click="openManagePopup">管理显示</text>
 			</view>
 			<view class="record-grid">
-				<view v-for="(item,index) in visibleRecords" :key="index" class="record-card">
+				<view v-for="(item,index) in visibleRecords" :key="index" class="record-card" @click="goDetail(item)">
 					<view class="reTop">
 						<image class="record-icon" :src="item.icon" mode="aspectFit"></image>
 						<view class="record-label">{{ item.homeLabel }}</view>
@@ -326,6 +327,16 @@
 				batteryCharging: false,
 				bleConnected: false,
 				unsubBle: null,
+				stepCurrent: 0,
+				stepTarget: 8000,
+				calorieCurrent: 0,
+				distanceCurrent: 0,
+				sleepHours: 0,
+				sleepMinutes: 0,
+				sleepScore: 0,
+				sleepDeepRatio: 0,
+				sleepLightRatio: 0,
+				sleepRemRatio: 0,
 				showManagePopup: false,
 				showButlerPopup: false,
 				butlerPhone: '400-820-1624',
@@ -474,7 +485,7 @@
 						manageLabel: '经期',
 						homeLabel: '生理周期',
 						value: '',
-						visible: false,
+						visible: true,
 						icon:'/static/jingqi.png'
 					}
 				]
@@ -487,7 +498,29 @@
 				this.bleConnected = !!s.connected
 				this.batteryLevel = s.batteryLevel
 				this.batteryCharging = !!s.batteryCharging
+				if (s.sport) {
+					this.stepCurrent = Number(s.sport.steps) || 0
+					this.calorieCurrent = Number(s.sport.calories) || 0
+					this.distanceCurrent = s.sport.distanceKm != null
+						? Number(s.sport.distanceKm)
+						: Math.round(((Number(s.sport.distanceM) || 0) / 1000) * 10) / 10
+				}
+				if (s.sleep) this.applyHomeSleep(s.sleep)
 			})
+			try {
+				const goals = uni.getStorageSync('todayStepGoals')
+				if (goals && goals.step > 0) this.stepTarget = goals.step
+			} catch (e) {}
+			const sport = BleService.getSport && BleService.getSport()
+			if (sport) {
+				this.stepCurrent = Number(sport.steps) || 0
+				this.calorieCurrent = Number(sport.calories) || 0
+				this.distanceCurrent = sport.distanceKm != null
+					? Number(sport.distanceKm)
+					: Math.round(((Number(sport.distanceM) || 0) / 1000) * 10) / 10
+			}
+			const sleep = BleService.getSleep && BleService.getSleep()
+			if (sleep) this.applyHomeSleep(sleep)
 		},
 		beforeDestroy() {
 			if (this.unsubBle) {
@@ -520,11 +553,80 @@
 				if (hour < 18) return '下午好'
 				return '晚上好'
 			},
+			stepText() {
+				const n = Number(this.stepCurrent) || 0
+				return n.toLocaleString()
+			},
+			stepSubText() {
+				const km = Number(this.distanceCurrent) || 0
+				const kcal = Number(this.calorieCurrent) || 0
+				return `${km}km · ${kcal}kcal`
+			},
+			stepProgress() {
+				const t = Number(this.stepTarget) || 8000
+				const p = Math.round((Number(this.stepCurrent) || 0) / t * 100)
+				if (p < 0) return 0
+				if (p > 100) return 100
+				return p
+			},
+			sleepSubText() {
+				if (!this.hasSleepData) return ''
+				return this.sleepScore ? `得分 ${this.sleepScore}` : '戒指采集'
+			},
+			hasSleepData() {
+				return !!(Number(this.sleepHours) || Number(this.sleepMinutes))
+			},
+			sleepBarDeep() {
+				return Math.max(8, Math.min(100, Math.round((this.sleepDeepRatio || 0) * 100)))
+			},
+			sleepBarLight() {
+				return Math.max(8, Math.min(100, Math.round((this.sleepLightRatio || 0) * 100)))
+			},
+			sleepBarRem() {
+				return Math.max(8, Math.min(100, Math.round((this.sleepRemRatio || 0) * 100)))
+			},
 			visibleRecords() {
 				return this.recordList.filter(item => item.visible)
 			}
 		},
 		methods: {
+			applyHomeSleep(sleep) {
+				if (!sleep) return
+				this.sleepHours = Number(sleep.hours) || 0
+				this.sleepMinutes = Number(sleep.minutes) || 0
+				this.sleepScore = Number(sleep.score) || 0
+				const total = Math.max(1, Number(sleep.totalMin) || 0)
+				this.sleepDeepRatio = (Number(sleep.deepMin) || 0) / total
+				this.sleepLightRatio = (Number(sleep.lightMin) || 0) / total
+				this.sleepRemRatio = (Number(sleep.remMin) || 0) / total
+			},
+			goDetail(item){
+				if(item.key=='weight'){
+					uni.navigateTo({
+						url:'/pages/index/weight'
+					})
+				}
+				if(item.key=='sugar'){
+					uni.navigateTo({
+						url:'/pages/index/sugar'
+					})
+				}
+				if(item.key=='temp'){
+					uni.navigateTo({
+						url:'/pages/index/temperature'
+					})
+				}
+				if(item.key=='bp'){
+					uni.navigateTo({
+						url:'/pages/index/pressure'
+					})
+				}
+				if(item.key=='period'){
+					uni.navigateTo({
+						url:'/pages/index/period'
+					})
+				}
+			},
 			goTodayStep() {
 				uni.navigateTo({
 					url: '/pages/index/todayStep'
@@ -772,6 +874,13 @@
 		align-items: flex-start;
 		margin-top: 20rpx;
 		height: 44rpx;
+	}
+
+	.sleep-empty {
+		margin-top: 20rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.4);
 	}
 
 	.sleep-bar {

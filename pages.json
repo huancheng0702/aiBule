@@ -108,9 +108,33 @@
 			}
 		},
 		{
+			"path": "pages/index/stressSuccess",
+			"style": {
+				"navigationBarTitleText": "压力测量结果",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
 			"path": "pages/index/hrv",
 			"style": {
 				"navigationBarTitleText": "HRV",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/index/hrvSuccess",
+			"style": {
+				"navigationBarTitleText": "HRV测量结果",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
 				"navigationBarTextStyle": "white",

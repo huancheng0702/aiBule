@@ -2,17 +2,17 @@
 	<view class="page">
 		<!-- 顶部 Tab -->
 		<view class="tab-bar">
-			<view v-for="(item, index) in tabList" :key="item" class="tab-item" :class="{ active: activeTab === index }"
+			<view v-for="(item, index) in tabList" :key="item" class="tab-item" :class="{ active: activeTab == index }"
 				@click="activeTab = index">
 				<!-- 选中背景图，自行补充 src -->
-				<image v-if="activeTab === index" class="tab-item-bg" src="/static/confirmBg.png" mode="scaleToFill">
+				<image v-if="activeTab == index" class="tab-item-bg" src="/static/confirmBg.png" mode="scaleToFill">
 				</image>
 				<text class="tab-text">{{ item }}</text>
 			</view>
 		</view>
 
 		<!-- 健康报告 -->
-		<view v-if="activeTab === 0" class="panel">
+		<view v-if="activeTab == 0" class="panel">
 			<!-- 今日健康日报 -->
 			<view class="daily-card" @click="onDailyDetail">
 				<!-- 卡片背景图，自行补充 src -->
@@ -70,18 +70,18 @@
 		</view>
 
 		<!-- 异常记录 -->
-		<view v-else-if="activeTab === 1" class="panel">
+		<view v-else-if="activeTab == 1" class="panel">
 			<!-- 日期筛选：全部日期 / 单独日期 -->
 			<view class="ab-filter">
-				<view class="ab-filter-item" :class="{ active: abDateMode === 'all' }" @click="onAbDateMode('all')">
+				<view class="ab-filter-item" :class="{ active: abDateMode == 'all' }" @click="onAbDateMode('all')">
 					<!-- 选中背景图，自行补充 src -->
-					<image v-if="abDateMode === 'all'" class="ab-filter-item-bg" src="/static/dateSelectShiguang.png"
+					<image v-if="abDateMode == 'all'" class="ab-filter-item-bg" src="/static/dateSelectShiguang.png"
 						mode="scaleToFill"></image>
 					<text class="ab-filter-item-text">全部</text>
 				</view>
-				<view class="ab-filter-item" :class="{ active: abDateMode === 'day' }" @click="onAbDateMode('day')">
+				<view class="ab-filter-item" :class="{ active: abDateMode == 'day' }" @click="onAbDateMode('day')">
 					<!-- 选中背景图，自行补充 src -->
-					<image v-if="abDateMode === 'day'" class="ab-filter-item-bg" src="/static/dateSelectShiguang.png"
+					<image v-if="abDateMode == 'day'" class="ab-filter-item-bg" src="/static/dateSelectShiguang.png"
 						mode="scaleToFill"></image>
 					<text class="ab-filter-item-text">{{ abDateLabel }}</text>
 				</view>
@@ -337,7 +337,7 @@
 		const segs = []
 		for (let i = 0; i < count; i++) {
 			const t = (i + 0.5) / count
-			const isEnd = i === 0 || i === count - 1
+			const isEnd = i == 0 || i == count - 1
 			segs.push({
 				dash: `${segLen + 0.35} ${c}`,
 				offset: -i * segLen,
@@ -585,7 +585,7 @@
 				return buildRingSegs(this.weekPopup.score, '#3D9BFF')
 			},
 			abChipText() {
-				if (this.abDateMode === 'day') {
+				if (this.abDateMode == 'day') {
 					return `${this.abDateLabel} · ${this.abRangeLabel}`
 				}
 				return `全部日期 · ${this.abRangeLabel}`
@@ -610,7 +610,7 @@
 					otherLabel: '其他 +',
 					options: []
 				}
-				const extras = this.archiveSelected.filter((t) => cfg.options.indexOf(t) === -1)
+				const extras = this.archiveSelected.filter((t) => cfg.options.indexOf(t) == -1)
 				return {
 					...cfg,
 					options: cfg.options.concat(extras)
@@ -620,6 +620,10 @@
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+		},
+		onLoad(options) {
+			this.activeTab = options.type
+			console.log(this.activeTab)
 		},
 		methods: {
 			onDailyDetail() {
@@ -666,7 +670,7 @@
 				// 编辑基本信息
 			},
 			onArchiveTap(item) {
-				const index = this.archiveList.findIndex((row) => row.label === item.label)
+				const index = this.archiveList.findIndex((row) => row.label == item.label)
 				if (index < 0) return
 				this.archiveEditingIndex = index
 				this.archiveSelected = (this.archiveList[index].selected || []).slice()
@@ -694,7 +698,7 @@
 						if (!res.confirm) return
 						const text = (res.content || '').trim()
 						if (!text) return
-						if (this.archiveSelected.indexOf(text) === -1) {
+						if (this.archiveSelected.indexOf(text) == -1) {
 							this.archiveSelected.push(text)
 						}
 					}

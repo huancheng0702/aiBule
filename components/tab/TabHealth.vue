@@ -16,13 +16,13 @@
 			<text class="section-title">最近数据</text>
 
 			<!-- 健康报告中心 -->
-			<view class="report-card">
+			<view class="report-card" @click="navAiReport">
 				<image src="/static/jiankangbaogao.png" class="reprotImg" mode=""></image>
 			</view>
 
 			<!-- 异常记录 / AI报告解读 -->
 			<view class="mini-grid">
-				<view class="mini-card">
+				<view class="mini-card" @click="navRecord(1)">
 					<image class="mini-bg" src="/static/yichangBg.png" mode="aspectFill"></image>
 					<image class="mini-icon" mode="aspectFit"></image>
 					<view class="mini-info">
@@ -30,7 +30,7 @@
 						<text class="mini-desc">1 条已处理</text>
 					</view>
 				</view>
-				<view class="mini-card">
+				<view class="mini-card" @click="navRecord(0)">
 					<image class="mini-bg" src="/static/aibaogaojie.png" mode="aspectFill"></image>
 
 				</view>
@@ -55,6 +55,16 @@
 			navHealth(){
 				uni.navigateTo({
 					url:'/pages/health/healthBody'
+				})
+			},
+			navAiReport(){
+				uni.navigateTo({
+					url:'/pages/health/aiReport'
+				})
+			},
+			navRecord(i){
+				uni.navigateTo({
+					url:'/pages/health/healthRecord?type='+i
 				})
 			}
 		}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Przepraszam, nie mogę odebrać telefonu.</string>
+    <string name="call_me_later">Nie mogę teraz odebrać, czy możesz zadzwonić później?</string>
+    <string name="call_you_later">Zadzwonię później, ok?</string>
+    <string name="will_arrive_soon">Wkrótce przybędzie.</string>
+    <string name="will_contact_you_later">Spotkanie teraz, skontaktuje się z Tobą później.</string>
+</resources>

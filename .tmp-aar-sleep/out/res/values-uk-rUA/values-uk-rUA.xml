@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Вибачте, я не можу відповісти на дзвінок.</string>
+    <string name="call_me_later">Не можу відповісти зараз, ти можеш зателефонувати мені пізніше?</string>
+    <string name="call_you_later">передзвоню пізніше, добре?</string>
+    <string name="will_arrive_soon">Скоро прибуде.</string>
+    <string name="will_contact_you_later">Зустріч зараз, зв\'яжеться з вами пізніше.</string>
+</resources>

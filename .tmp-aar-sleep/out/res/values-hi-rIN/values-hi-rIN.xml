@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">माफ़ करें, मैं फ़ोन का जवाब नहीं दे पा रहा हूँ।</string>
+    <string name="call_me_later">अभी उत्तर नहीं दे सकता, क्या आप मुझे बाद में कॉल कर सकते हैं?</string>
+    <string name="call_you_later">बाद में कॉल करें, ठीक है?</string>
+    <string name="will_arrive_soon">जल्द पहुंचेंगे।</string>
+    <string name="will_contact_you_later">अभी मिल रहे हैं, बाद में संपर्क करेंगे।</string>
+</resources>

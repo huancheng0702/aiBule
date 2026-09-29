@@ -19,6 +19,8 @@ const state = {
 	device: null,
 	battery: null,
 	deviceInfo: null,
+	sport: null,
+	sleep: null,
 	devices: [],
 	pluginOk: false
 }
@@ -39,11 +41,265 @@ function cloneState() {
 		device: state.device ? { ...state.device } : null,
 		battery: state.battery ? { ...state.battery } : null,
 		deviceInfo: state.deviceInfo ? { ...state.deviceInfo } : null,
+		sport: state.sport ? { ...state.sport } : null,
+		sleep: state.sleep ? { ...state.sleep } : null,
 		devices: state.devices.map((d) => ({ ...d })),
 		statusText: STATUS_MAP[state.connectStatus] || '未知',
 		batteryLevel: getBatteryLevel(),
 		batteryCharging: getBatteryCharging(),
 		firmware: getFirmware()
+	}
+}
+
+/** 解析戒指运动数据：步数、距离(米)、卡路里(原始值，通常需 /1000) */
+function normalizeSport(data) {
+	const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+	if (!list.length) return null
+	const item = list[list.length - 1]
+	if (!item || typeof item !== 'object') return null
+
+	let steps = Number(
+		item.walkSteps != null ? item.walkSteps
+			: (item.steps != null ? item.steps
+				: (item.step != null ? item.step : NaN))
+	)
+	let distanceM = Number(item.distance)
+	let caloriesRaw = Number(item.calories)
+
+	const raw = item.raw != null ? String(item.raw) : ''
+	if ((Number.isNaN(steps) || steps < 0) && raw) {
+		const m = raw.match(/walkSteps[=:\s]*(\d+)/i) || raw.match(/steps?[=:\s]*(\d+)/i)
+		if (m) steps = Number(m[1])
+	}
+	if ((Number.isNaN(distanceM) || distanceM < 0) && raw) {
+		const m = raw.match(/distance[=:\s]*([\d.]+)/i)
+		if (m) distanceM = Number(m[1])
+	}
+	if ((Number.isNaN(caloriesRaw) || caloriesRaw < 0) && raw) {
+		const m = raw.match(/calories[=:\s]*([\d.]+)/i)
+		if (m) caloriesRaw = Number(m[1])
+	}
+
+	if (Number.isNaN(steps) || steps < 0) steps = 0
+	if (Number.isNaN(distanceM) || distanceM < 0) distanceM = 0
+	if (Number.isNaN(caloriesRaw) || caloriesRaw < 0) caloriesRaw = 0
+
+	// SDK Demo：calories / 1000 = 千卡
+	const caloriesKcal = caloriesRaw >= 1000
+		? Math.round(caloriesRaw / 1000)
+		: Math.round(caloriesRaw)
+
+	return {
+		steps: Math.round(steps),
+		distanceM: Math.round(distanceM),
+		distanceKm: Math.round((distanceM / 1000) * 10) / 10,
+		caloriesRaw,
+		calories: caloriesKcal,
+		time: item.time != null ? item.time : null,
+		updatedAt: Date.now(),
+		raw: item
+	}
+}
+
+function toMinutes(value) {
+	const n = Number(value)
+	if (Number.isNaN(n) || n < 0) return 0
+	return Math.round(n)
+}
+
+function parseSleepDetail(detail, typeMap) {
+	if (!detail) return []
+	let list = detail
+	if (typeof detail === 'string') {
+		try {
+			list = JSON.parse(detail)
+		} catch (e) {
+			return []
+		}
+	}
+	if (!Array.isArray(list)) return []
+	const map = typeMap || {}
+	const deepCode = Number(map.deep)
+	const lightCode = Number(map.light)
+	const remCode = Number(map.rem)
+	const moveCode = Number(map.movement)
+	const wakeCode = Number(map.wakeup)
+	const startCode = Number(map.start)
+
+	return list.map((item) => {
+		if (item == null) return null
+		if (typeof item === 'number') {
+			return { stage: 'light', dur: Math.max(1, item) }
+		}
+		if (typeof item !== 'object') return null
+		const keys = Object.keys(item)
+		if (!keys.length) return null
+		const code = keys[0]
+		const dur = Math.max(1, toMinutes(item[code]))
+		const n = Number(code)
+		let stage = 'light'
+		if (!Number.isNaN(deepCode) && n === deepCode) stage = 'deep'
+		else if (!Number.isNaN(lightCode) && n === lightCode) stage = 'light'
+		else if (!Number.isNaN(remCode) && n === remCode) stage = 'rem'
+		else if ((!Number.isNaN(moveCode) && n === moveCode) || (!Number.isNaN(wakeCode) && n === wakeCode)) stage = 'awake'
+		else if (!Number.isNaN(startCode) && n === startCode) stage = 'light'
+		else if (code === 'deep' || code === 'light' || code === 'rem' || code === 'awake') stage = code
+		else if (n === 3) stage = 'deep'
+		else if (n === 2) stage = 'light'
+		else if (n === 5 || n === 4) stage = 'awake'
+		else if (n === 6) stage = 'rem'
+		return { stage, dur }
+	}).filter(Boolean)
+}
+
+function pickSleepSession(data) {
+	if (!data || typeof data !== 'object') return null
+	const sessions = Array.isArray(data.sessions) ? data.sessions.filter(Boolean) : []
+	if (sessions.length) {
+		// 取最近一晚（endTime / sleepDay 最大）
+		return sessions.slice().sort((a, b) => {
+			const ea = Number(a.endTime || a.sleepDay || a.startTime || 0)
+			const eb = Number(b.endTime || b.sleepDay || b.startTime || 0)
+			return ea - eb
+		})[sessions.length - 1]
+	}
+	return data
+}
+
+/** 解析戒指睡眠数据（分钟制） */
+function normalizeSleep(data) {
+	if (data == null) return null
+	if (typeof data === 'string') {
+		try {
+			return normalizeSleep(JSON.parse(data))
+		} catch (e) {
+			return null
+		}
+	}
+	if (typeof data !== 'object') return null
+
+	const typeMap = data.typeMap || {}
+	const session = pickSleepSession(data)
+	if (!session) return null
+
+	let deepMin = toMinutes(session.deepTime)
+	let lightMin = toMinutes(session.lightTime)
+	let remMin = toMinutes(session.remTime)
+	let awakeMin = toMinutes(session.movementTime)
+	let totalMin = toMinutes(session.sleepTime)
+	const startSec = Number(session.startTime) || 0
+	const endSec = Number(session.endTime) || 0
+	const sleepDay = Number(session.sleepDay) || 0
+
+	let segments = parseSleepDetail(session.sleepDetail || data.sleepDetail, typeMap)
+	if (!segments.length && Array.isArray(session.sleeps) && session.sleeps.length > 1) {
+		const sleeps = session.sleeps
+		for (let i = 1; i < sleeps.length; i++) {
+			const prev = sleeps[i - 1]
+			const cur = sleeps[i]
+			const prevType = prev.sleepType != null ? prev.sleepType : prev.type
+			const prevTime = Number(prev.sleepTime != null ? prev.sleepTime : prev.time) || 0
+			const curTime = Number(cur.sleepTime != null ? cur.sleepTime : cur.time) || 0
+			const keep = Math.max(1, Math.round((curTime - prevTime) / 60))
+			segments.push(...parseSleepDetail([{ [String(prevType)]: keep }], typeMap))
+		}
+	}
+
+	if (segments.length) {
+		const sum = { deep: 0, light: 0, rem: 0, awake: 0 }
+		segments.forEach((s) => {
+			if (sum[s.stage] != null) sum[s.stage] += s.dur
+		})
+		if (!deepMin) deepMin = sum.deep
+		if (!lightMin) lightMin = sum.light
+		if (!remMin) remMin = sum.rem
+		if (!awakeMin) awakeMin = sum.awake
+		if (!totalMin) totalMin = sum.deep + sum.light + sum.rem + sum.awake
+	}
+
+	if (!totalMin && startSec && endSec && endSec > startSec) {
+		totalMin = Math.round((endSec - startSec) / 60)
+	}
+	if (!totalMin) totalMin = deepMin + lightMin + remMin + awakeMin
+
+	if (!segments.length && totalMin > 0) {
+		const parts = [
+			{ stage: 'deep', dur: deepMin },
+			{ stage: 'light', dur: lightMin },
+			{ stage: 'rem', dur: remMin },
+			{ stage: 'awake', dur: awakeMin }
+		].filter((p) => p.dur > 0)
+		segments = parts.length ? parts : [{ stage: 'light', dur: Math.max(1, totalMin) }]
+	}
+
+	const hours = Math.floor(totalMin / 60)
+	const minutes = totalMin % 60
+
+	function fmtClock(sec) {
+		if (!sec) return '--:--'
+		const d = new Date(sec * 1000)
+		const h = String(d.getHours()).padStart(2, '0')
+		const m = String(d.getMinutes()).padStart(2, '0')
+		return `${h}:${m}`
+	}
+
+	const structureBase = totalMin > 0 ? totalMin : 1
+	const structure = {
+		deep: deepMin,
+		light: lightMin,
+		rem: remMin,
+		awake: awakeMin
+	}
+
+	// 简易得分：时长接近 7.5h 且深睡占比合理更高
+	const durationScore = Math.max(0, 100 - Math.abs(totalMin - 450) / 4.5)
+	const deepRatio = deepMin / structureBase
+	const deepScore = Math.max(0, 100 - Math.abs(deepRatio - 0.22) * 250)
+	const score = Math.round(durationScore * 0.55 + deepScore * 0.45)
+
+	let qualityText = '睡眠质量一般'
+	let recoverStatus = '恢复一般'
+	if (score >= 85) {
+		qualityText = '睡眠质量很好'
+		recoverStatus = '恢复良好'
+	} else if (score >= 70) {
+		qualityText = '睡眠质量较好'
+		recoverStatus = '恢复良好'
+	} else if (score >= 55) {
+		qualityText = '睡眠质量一般'
+		recoverStatus = '恢复一般'
+	} else {
+		qualityText = '睡眠质量偏差'
+		recoverStatus = '恢复不足'
+	}
+
+	const allSessions = Array.isArray(data.sessions)
+		? data.sessions.map((s) => normalizeSleep({ ...s, typeMap, sessions: [] })).filter(Boolean)
+		: []
+
+	return {
+		totalMin,
+		hours,
+		minutes,
+		deepMin,
+		lightMin,
+		remMin,
+		awakeMin,
+		startTime: startSec,
+		endTime: endSec,
+		sleepDay,
+		sleepStart: fmtClock(startSec),
+		wakeTime: fmtClock(endSec),
+		segments,
+		structure,
+		score: Math.max(0, Math.min(100, score)),
+		qualityText,
+		recoverStatus,
+		qualityMarkerPercent: Math.max(4, Math.min(96, score)),
+		sessions: allSessions,
+		typeMap,
+		updatedAt: Date.now(),
+		raw: data
 	}
 }
 
@@ -211,6 +467,8 @@ function clearStoredDevice() {
 	state.device = null
 	state.battery = null
 	state.deviceInfo = null
+	state.sport = null
+	state.sleep = null
 }
 
 function bindEvents() {
@@ -271,6 +529,24 @@ function bindEvents() {
 		}
 		persistDevice()
 		emit()
+	})
+
+	CoolWearBLE.on('onSport', (data) => {
+		const sport = normalizeSport(data)
+		console.log('[ble-service] onSport raw=', data, 'normalized=', sport)
+		if (sport) {
+			state.sport = sport
+			emit()
+		}
+	})
+
+	CoolWearBLE.on('onSleep', (data) => {
+		const sleep = normalizeSleep(data)
+		console.log('[ble-service] onSleep raw=', data, 'normalized=', sleep)
+		if (sleep) {
+			state.sleep = sleep
+			emit()
+		}
 	})
 }
 
@@ -570,6 +846,28 @@ const BleService = {
 			await CoolWearBLE.sendSyncInfo().catch(() => {})
 		}
 		return state.deviceInfo
+	},
+
+	/** 同步戒指运动数据（步数/距离/卡路里），结果通过 onSport 回传 */
+	async syncSport() {
+		if (!state.connected) return state.sport
+		await CoolWearBLE.sendSyncInfo().catch(() => {})
+		return state.sport
+	},
+
+	getSport() {
+		return state.sport ? { ...state.sport } : null
+	},
+
+	/** 同步戒指睡眠数据，结果通过 onSleep 回传 */
+	async syncSleep() {
+		if (!state.connected) return state.sleep
+		await CoolWearBLE.sendSyncInfo().catch(() => {})
+		return state.sleep
+	},
+
+	getSleep() {
+		return state.sleep ? { ...state.sleep } : null
 	},
 
 	updateDeviceName(name) {

@@ -264,9 +264,7 @@ public class CoolWearBLEModule extends UniModule {
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_K6_SLEEP_DATA, new K6BleDataResult<K6_sleepData>() {
             @Override
             public boolean bleDataResult(K6_sleepData data) {
-                JSONObject payload = new JSONObject();
-                payload.put("raw", String.valueOf(data));
-                fireEvent("onSleep", payload);
+                fireEvent("onSleep", toSleepPayload(data));
                 return false;
             }
         });
@@ -345,6 +343,15 @@ public class CoolWearBLEModule extends UniModule {
             JSONObject obj = new JSONObject();
             obj.put("value", item.getHrvNums());
             obj.put("time", item.getTime());
+            // 部分固件/结构体会直接带压力值；没有则由 JS 侧按 HRV 估算
+            Object stress = invokeQuiet(item, "getStress");
+            if (stress == null) stress = invokeQuiet(item, "getPressure");
+            if (stress == null) stress = invokeQuiet(item, "getStressValue");
+            if (stress == null) stress = invokeQuiet(item, "getPress");
+            if (stress != null) {
+                obj.put("stress", stress);
+                obj.put("pressure", stress);
+            }
             arr.add(obj);
         }
         return arr;
@@ -399,12 +406,152 @@ public class CoolWearBLEModule extends UniModule {
         }
         for (K6_Sport item : list) {
             JSONObject obj = new JSONObject();
+            // Demo：getWalkSteps / getDistance(米) / getCalories(千卡*1000)
+            Object walkSteps = invokeQuiet(item, "getWalkSteps");
+            if (walkSteps == null) walkSteps = invokeQuiet(item, "getSteps");
+            if (walkSteps == null) walkSteps = invokeQuiet(item, "getStep");
+            if (walkSteps != null) {
+                obj.put("walkSteps", walkSteps);
+                obj.put("steps", walkSteps);
+            }
             obj.put("calories", item.getCalories());
             obj.put("distance", item.getDistance());
+            Object time = invokeQuiet(item, "getTime");
+            if (time != null) {
+                obj.put("time", time);
+            }
             obj.put("raw", String.valueOf(item));
             arr.add(obj);
         }
         return arr;
+    }
+
+    /**
+     * 睡眠数据：SDK Demo 字段 deepTime/lightTime/movementTime/sleepTime(分钟)
+     * startTime/endTime(秒)、sleepDetail(JSON 分段)、getK6SleepData() 多晚列表
+     */
+    private JSONObject toSleepPayload(K6_sleepData data) {
+        JSONObject payload = new JSONObject();
+        if (data == null) {
+            return payload;
+        }
+
+        JSONObject typeMap = new JSONObject();
+        try {
+            typeMap.put("start", CEBC.SLEEPSTATUS.SLEEPDATA_SLEEP_START);
+            typeMap.put("light", CEBC.SLEEPSTATUS.SLEEPDATA_SLEEP_LIGHT);
+            typeMap.put("deep", CEBC.SLEEPSTATUS.SLEEPDATA_SLEEP_DEEP);
+            typeMap.put("movement", CEBC.SLEEPSTATUS.SLEEPDATA_SLEEP_MOVEMENT);
+            typeMap.put("wakeup", CEBC.SLEEPSTATUS.SLEEPDATA_SLEEP_WAKEUP);
+        } catch (Throwable t) {
+            Log.w(TAG, "read SLEEPSTATUS constants failed", t);
+        }
+        // 部分固件可能带 REM
+        Object remConst = readStaticQuiet("ce.com.cenewbluesdk.CEBC$SLEEPSTATUS", "SLEEPDATA_SLEEP_REM");
+        if (remConst == null) {
+            remConst = readStaticQuiet("ce.com.cenewbluesdk.CEBC$SLEEPSTATUS", "SLEEPDATA_SLEEP_EYEMOVE");
+        }
+        if (remConst != null) {
+            typeMap.put("rem", remConst);
+        }
+        payload.put("typeMap", typeMap);
+
+        putSleepFields(payload, data);
+
+        Object nested = invokeQuiet(data, "getK6SleepData");
+        JSONArray sessions = new JSONArray();
+        if (nested instanceof List) {
+            for (Object item : (List<?>) nested) {
+                if (item == null) continue;
+                JSONObject session = new JSONObject();
+                putSleepFields(session, item);
+                sessions.add(session);
+            }
+        }
+        payload.put("sessions", sessions);
+
+        // 顶层无汇总时长时，用最近一晚补齐，方便 JS 直接读
+        if ((payload.get("sleepTime") == null || toInt(payload.get("sleepTime")) <= 0) && sessions.size() > 0) {
+            JSONObject last = sessions.getJSONObject(sessions.size() - 1);
+            if (last != null) {
+                for (String key : last.keySet()) {
+                    if (!payload.containsKey(key) || payload.get(key) == null) {
+                        payload.put(key, last.get(key));
+                    }
+                }
+            }
+        }
+
+        payload.put("raw", String.valueOf(data));
+        Log.d(TAG, "onSleep sleepTime=" + payload.get("sleepTime")
+                + ", deep=" + payload.get("deepTime")
+                + ", light=" + payload.get("lightTime")
+                + ", sessions=" + sessions.size());
+        return payload;
+    }
+
+    private void putSleepFields(JSONObject obj, Object item) {
+        if (obj == null || item == null) return;
+        putIfPresent(obj, "deepTime", invokeQuiet(item, "getDeepTime"));
+        putIfPresent(obj, "lightTime", invokeQuiet(item, "getLightTime"));
+        putIfPresent(obj, "movementTime", invokeQuiet(item, "getMovementTime"));
+        Object rem = invokeQuiet(item, "getRemTime");
+        if (rem == null) rem = invokeQuiet(item, "getEyeMoveTime");
+        if (rem == null) rem = invokeQuiet(item, "getRem");
+        putIfPresent(obj, "remTime", rem);
+        putIfPresent(obj, "sleepTime", invokeQuiet(item, "getSleepTime"));
+        putIfPresent(obj, "startTime", invokeQuiet(item, "getStartTime"));
+        putIfPresent(obj, "endTime", invokeQuiet(item, "getEndTime"));
+        putIfPresent(obj, "sleepDay", invokeQuiet(item, "getSleepDay"));
+        putIfPresent(obj, "uploadTime", invokeQuiet(item, "getUploadTime"));
+        Object detail = invokeQuiet(item, "getSleepDetail");
+        if (detail != null) {
+            obj.put("sleepDetail", String.valueOf(detail));
+        }
+        Object original = invokeQuiet(item, "getOriginalSleepDetail");
+        if (original != null) {
+            obj.put("originalSleepDetail", String.valueOf(original));
+        }
+        Object sleeps = invokeQuiet(item, "getK6_sleeps");
+        if (sleeps == null) sleeps = invokeQuiet(item, "getK6Sleeps");
+        if (sleeps instanceof List) {
+            JSONArray arr = new JSONArray();
+            for (Object s : (List<?>) sleeps) {
+                if (s == null) continue;
+                JSONObject one = new JSONObject();
+                putIfPresent(one, "sleepType", invokeQuiet(s, "getSleepType"));
+                putIfPresent(one, "type", invokeQuiet(s, "getSleepType"));
+                putIfPresent(one, "sleepTime", invokeQuiet(s, "getSleepTime"));
+                putIfPresent(one, "time", invokeQuiet(s, "getSleepTime"));
+                one.put("raw", String.valueOf(s));
+                arr.add(one);
+            }
+            obj.put("sleeps", arr);
+        }
+    }
+
+    private void putIfPresent(JSONObject obj, String key, Object value) {
+        if (obj == null || key == null || value == null) return;
+        obj.put(key, value);
+    }
+
+    private int toInt(Object value) {
+        if (value == null) return 0;
+        try {
+            return (int) Math.round(Double.parseDouble(String.valueOf(value)));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private Object readStaticQuiet(String className, String fieldName) {
+        try {
+            Class<?> cls = Class.forName(className);
+            Field field = cls.getField(fieldName);
+            return field.get(null);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private final OnScanDevListener scanDevListener = new OnScanDevListener() {

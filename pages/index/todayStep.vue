@@ -74,7 +74,7 @@
 					<text class="stats-label">最高值</text>
 					<view class="stats-value-row">
 						<text class="stats-num">{{ statsMax }}</text>
-						<text class="stats-unit">bpm</text>
+						<text class="stats-unit">步</text>
 					</view>
 				</view>
 				<view class="stats-divider"></view>
@@ -82,7 +82,7 @@
 					<text class="stats-label">最低值</text>
 					<view class="stats-value-row">
 						<text class="stats-num">{{ statsMin }}</text>
-						<text class="stats-unit">bpm</text>
+						<text class="stats-unit">步</text>
 					</view>
 				</view>
 				<view class="stats-divider"></view>
@@ -90,7 +90,7 @@
 					<text class="stats-label">平均值</text>
 					<view class="stats-value-row">
 						<text class="stats-num">{{ statsAvg }}</text>
-						<text class="stats-unit">bpm</text>
+						<text class="stats-unit">步</text>
 					</view>
 				</view>
 			</view>
@@ -129,6 +129,10 @@
 
 <script>
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import BleService from '@/common/ble-service.js'
+	import CoolWearBLE from '@/common/coolwear-ble.js'
+
+	const GOAL_STORAGE_KEY = 'todayStepGoals'
 
 	function ringDash(r, percent) {
 		const c = 2 * Math.PI * r
@@ -147,18 +151,23 @@
 		)
 	}
 
+	function safeRatio(current, target) {
+		const t = Number(target)
+		if (!t || t <= 0) return 0
+		return Math.max(0, Math.min(1, Number(current) / t))
+	}
+
 	export default {
 		data() {
 			return {
 				weekList: [],
 				ringStroke: 8,
-				stepCurrent: 6324,
+				stepCurrent: 0,
 				stepTarget: 8000,
-				calorieCurrent: 156,
+				calorieCurrent: 0,
 				calorieTarget: 300,
-				distanceCurrent: 2.8,
+				distanceCurrent: 0,
 				distanceTarget: 6.0,
-				progressPercent: 58,
 				showGoalPopup: false,
 				goalInput: '',
 				editingGoal: {
@@ -170,7 +179,7 @@
 				goalList: [{
 						key: 'step',
 						name: '步数目标',
-						value: 6000,
+						value: 8000,
 						unit: '步',
 						placeholder: '设置步数目标'
 					},
@@ -189,21 +198,27 @@
 						placeholder: '设置活动时长目标'
 					}
 				],
-				statsMax: 88,
-				statsMin: 88,
-				statsAvg: 73,
-				tipText: '心率是指心脏每分钟跳动的次数，单位是bpm。正常成年人安静时心率在60-100次/分钟。本设备仅用于健康管理参考，不能用于医疗诊断。'
+				stepSamples: [],
+				statsMax: 0,
+				statsMin: 0,
+				statsAvg: 0,
+				bleConnected: false,
+				unsubBle: null,
+				tipText: '步数、距离与消耗由智能戒指实时统计。晃动或行走时会持续更新；进入本页会向戒指请求同步。本设备仅用于健康管理参考，不能用于医疗诊断。'
 			}
 		},
 		computed: {
+			progressPercent() {
+				return Math.round(safeRatio(this.stepCurrent, this.stepTarget) * 100)
+			},
 			stepRatio() {
-				return this.stepCurrent / this.stepTarget
+				return safeRatio(this.stepCurrent, this.stepTarget)
 			},
 			calorieRatio() {
-				return this.calorieCurrent / this.calorieTarget
+				return safeRatio(this.calorieCurrent, this.calorieTarget)
 			},
 			distanceRatio() {
-				return this.distanceCurrent / this.distanceTarget
+				return safeRatio(this.distanceCurrent, this.distanceTarget)
 			},
 			ringOuter() {
 				const r = 86
@@ -258,12 +273,122 @@
 					ringGroup(this.ringMiddle, 'gradRed') +
 					ringGroup(this.ringInner, 'gradBlue')
 				return toSvgDataUrl(inner, 200, 200)
+			},
+			isTodaySelected() {
+				const active = (this.weekList || []).find((item) => item.active)
+				if (!active) return true
+				const today = new Date()
+				const y = today.getFullYear()
+				const m = String(today.getMonth() + 1).padStart(2, '0')
+				const d = String(today.getDate()).padStart(2, '0')
+				return active.fullDate === `${y}-${m}-${d}`
 			}
 		},
 		created() {
 			this.initWeekList()
+			this.loadGoals()
+			this.unsubBle = BleService.subscribe((s) => {
+				this.bleConnected = !!s.connected
+				if (s.sport && this.isTodaySelected) {
+					this.applySport(s.sport)
+				}
+			})
+			const cached = BleService.getSport && BleService.getSport()
+			if (cached) this.applySport(cached)
+		},
+		onShow() {
+			this.refreshSport()
+		},
+		onUnload() {
+			if (this.unsubBle) {
+				this.unsubBle()
+				this.unsubBle = null
+			}
 		},
 		methods: {
+			loadGoals() {
+				try {
+					const saved = uni.getStorageSync(GOAL_STORAGE_KEY)
+					if (!saved) return
+					if (saved.step > 0) {
+						this.stepTarget = saved.step
+						const g = this.goalList.find((i) => i.key === 'step')
+						if (g) g.value = saved.step
+					}
+					if (saved.calorie > 0) {
+						this.calorieTarget = saved.calorie
+						const g = this.goalList.find((i) => i.key === 'calorie')
+						if (g) g.value = saved.calorie
+					}
+					if (saved.duration > 0) {
+						const g = this.goalList.find((i) => i.key === 'duration')
+						if (g) g.value = saved.duration
+					}
+					if (saved.distance > 0) {
+						this.distanceTarget = saved.distance
+					}
+				} catch (e) {
+					// ignore
+				}
+			},
+			persistGoals() {
+				const durationGoal = this.goalList.find((i) => i.key === 'duration')
+				uni.setStorageSync(GOAL_STORAGE_KEY, {
+					step: this.stepTarget,
+					calorie: this.calorieTarget,
+					distance: this.distanceTarget,
+					duration: durationGoal ? durationGoal.value : 45
+				})
+			},
+			async refreshSport() {
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					const cached = BleService.getSport && BleService.getSport()
+					if (cached) this.applySport(cached)
+					return
+				}
+				try {
+					await BleService.syncSport()
+				} catch (e) {
+					console.log('[todayStep] syncSport failed', e)
+					try {
+						await CoolWearBLE.sendSyncInfo()
+					} catch (err) {
+						console.log('[todayStep] sendSyncInfo failed', err)
+					}
+				}
+			},
+			applySport(sport) {
+				if (!sport) return
+				const steps = Number(sport.steps) || 0
+				const calories = Number(sport.calories) || 0
+				const distanceKm = sport.distanceKm != null
+					? Number(sport.distanceKm)
+					: (Number(sport.distanceM) || 0) / 1000
+
+				this.stepCurrent = steps
+				this.calorieCurrent = calories
+				this.distanceCurrent = Math.round(distanceKm * 10) / 10
+
+				if (steps > 0) {
+					this.stepSamples = this.stepSamples.concat(steps).slice(-48)
+					this.updateStats()
+				}
+				console.log('[todayStep] applySport', steps, calories, this.distanceCurrent)
+			},
+			updateStats() {
+				const list = this.stepSamples
+				if (!list.length) {
+					this.statsMax = this.stepCurrent
+					this.statsMin = this.stepCurrent
+					this.statsAvg = this.stepCurrent
+					return
+				}
+				this.statsMax = Math.max.apply(null, list)
+				this.statsMin = Math.min.apply(null, list)
+				const sum = list.reduce((a, b) => a + b, 0)
+				this.statsAvg = Math.round(sum / list.length)
+			},
 			initWeekList() {
 				const dayNames = ['日', '一', '二', '三', '四', '五', '六']
 				const today = new Date()
@@ -295,6 +420,11 @@
 					item.active = i === index
 					item.label = item.active ? monthDay : String(item.dateNum)
 				})
+				if (this.isTodaySelected) {
+					const cached = BleService.getSport && BleService.getSport()
+					if (cached) this.applySport(cached)
+					else this.refreshSport()
+				}
 			},
 			onGoalTap(item) {
 				this.editingGoal = {
@@ -324,6 +454,7 @@
 					if (target.key === 'step') this.stepTarget = num
 					if (target.key === 'calorie') this.calorieTarget = num
 				}
+				this.persistGoals()
 				this.showGoalPopup = false
 			}
 		}

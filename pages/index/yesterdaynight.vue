@@ -17,12 +17,15 @@
 		<!-- 睡眠周期 -->
 		<view class="card cycle-card">
 			<view class="date-bar">
+				<image class="date-bar-bg" src="/static/selectDateBg.png" mode=""></image>
 				<view class="date-btn" @click="onPrevDay">
-					<text class="date-arrow">‹</text>
+					<image src="/static/arrLeft.png" mode=""></image>
 				</view>
-				<text class="date-text">{{ dateText }}</text>
+				<view class="date-center" @click="openCalendar">
+					<text class="date-text">{{ dateText }}</text>
+				</view>
 				<view class="date-btn" @click="onNextDay">
-					<text class="date-arrow">›</text>
+					<image src="/static/arrRight.png" mode=""></image>
 				</view>
 			</view>
 
@@ -59,23 +62,28 @@
 			<text class="section-title">睡眠分析概览</text>
 			<view class="card overview-card">
 				<view class="overview-top">
-					<view class="score-block">
-						<text class="score-label">睡眠得分</text>
-						<view class="score-row">
-							<text class="score-num">{{ sleepScore }}</text>
-							<text class="score-unit">分</text>
+					<image src="/static/sleepBg.png" class="fenBg" mode=""></image>
+					<view class="overCon">
+						<view class="score-block">
+							<text class="score-label">睡眠得分</text>
+							<view class="score-row">
+								<text class="score-num">{{ sleepScore }}</text>
+								<text class="score-unit">分</text>
+							</view>
+						</view>
+						<view class="quality-block">
+							<view class="quality-text-row">
+								<text class="quality-prefix">睡眠质量</text>
+								<text class="quality-keyword">{{ qualityKeyword }}</text>
+							</view>
+							<view class="quality-scale">
+								<image class="scale-img" src="/static/sleepKedu.png" mode="widthFix"></image>
+								<image class="scale-pointer" :style="{ left: qualityMarkerLeft }"
+									src="/static/zhizhen.png" mode="aspectFit"></image>
+							</view>
 						</view>
 					</view>
-					<view class="quality-block">
-						<text class="quality-text">{{ qualityText }}</text>
-						<view class="quality-bar">
-							<view class="quality-seg seg-orange"></view>
-							<view class="quality-seg seg-yellow"></view>
-							<view class="quality-seg seg-green"></view>
-							<view class="quality-seg seg-cyan"></view>
-							<view class="quality-marker" :style="{ left: qualityMarkerLeft }"></view>
-						</view>
-					</view>
+
 				</view>
 
 				<view class="structure-block">
@@ -113,7 +121,11 @@
 </template>
 
 <script>
-	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import {
+		toSvgDataUrl
+	} from '@/common/svg-data-url.js'
+	import BleService from '@/common/ble-service.js'
+	import CoolWearBLE from '@/common/coolwear-ble.js'
 
 	/**
 	 * 睡眠分期圆角阶梯面积图（hypnogram）
@@ -126,8 +138,7 @@
 		deep: 3
 	}
 
-	// 按设计图从左到右：浅睡 → 深睡凹槽×2 → 浅睡 → REM 平台 → 浅睡 → 清醒尖峰 → …
-	const CYCLE_SEGMENTS = [{
+	const DEFAULT_SEGMENTS = [{
 			stage: 'light',
 			dur: 1
 		},
@@ -183,10 +194,8 @@
 
 	function stageY(stage, chartH, padTop, padBottom) {
 		const usable = chartH - padTop - padBottom
-		// 四个睡眠状态对应四个区间；这里返回每个区间的上边界。
 		return padTop + (usable / 4) * STAGE_LEVEL[stage]
 	}
-
 
 	function buildBandArea(x1, x2, top, bottom, fill, radius = 7) {
 		const r = Math.min(radius, Math.abs(bottom - top) / 2, (x2 - x1) / 2)
@@ -209,7 +218,8 @@
 	}
 
 	function buildHypnogramAreas(segments, chartW, chartH, padTop, padBottom) {
-		const total = segments.reduce((sum, item) => sum + item.dur, 0)
+		const list = segments && segments.length ? segments : DEFAULT_SEGMENTS
+		const total = list.reduce((sum, item) => sum + item.dur, 0) || 1
 		const stageOrder = ['awake', 'rem', 'light', 'deep']
 		const levels = stageOrder.map((stage) => stageY(stage, chartH, padTop, padBottom))
 		const bottomY = chartH - padBottom
@@ -217,14 +227,15 @@
 		const connectors = []
 		let x = 0
 		let previousLevel = -1
-		segments.forEach((seg) => {
+		list.forEach((seg) => {
 			const nextX = x + (seg.dur / total) * chartW
 			const level = stageOrder.indexOf(seg.stage)
-			const top = levels[level]
-			const bottom = level === levels.length - 1 ? bottomY : levels[level + 1]
-			const fill = level <= 1 ? '#8B7CFF' : '#5B32D6'
+			const safeLevel = level >= 0 ? level : 2
+			const top = levels[safeLevel]
+			const bottom = safeLevel === levels.length - 1 ? bottomY : levels[safeLevel + 1]
+			const fill = safeLevel <= 1 ? '#8B7CFF' : '#5B32D6'
 
-			if (previousLevel >= 0 && previousLevel !== level) {
+			if (previousLevel >= 0 && previousLevel !== safeLevel) {
 				const previousY = levels[previousLevel]
 				connectors.push({
 					x,
@@ -234,7 +245,7 @@
 				})
 			}
 			areas.push(buildBandArea(x, nextX, top, bottom, fill, 8))
-			previousLevel = level
+			previousLevel = safeLevel
 			x = nextX
 		})
 		return {
@@ -243,68 +254,90 @@
 		}
 	}
 
+	function formatDuration(mins) {
+		const m = Math.max(0, Math.round(Number(mins) || 0))
+		const h = Math.floor(m / 60)
+		const mm = m % 60
+		if (h <= 0) return `${mm}分`
+		return `${h}小时${mm}分`
+	}
+
+	function formatRecentTime(sec) {
+		if (!sec) return '最近'
+		const d = new Date(sec * 1000)
+		const now = new Date()
+		const hh = String(d.getHours()).padStart(2, '0')
+		const mm = String(d.getMinutes()).padStart(2, '0')
+		const sameDay =
+			d.getFullYear() === now.getFullYear() &&
+			d.getMonth() === now.getMonth() &&
+			d.getDate() === now.getDate()
+		const yest = new Date(now)
+		yest.setDate(now.getDate() - 1)
+		const isYest =
+			d.getFullYear() === yest.getFullYear() &&
+			d.getMonth() === yest.getMonth() &&
+			d.getDate() === yest.getDate()
+		if (sameDay) return `今天 ${hh}:${mm}`
+		if (isYest) return `昨天 ${hh}:${mm}`
+		return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`
+	}
+
+	function emptyStructure() {
+		return [{
+				key: 'deep',
+				name: '深睡',
+				duration: '0分',
+				percent: 0,
+				color: '#7B61FF'
+			},
+			{
+				key: 'light',
+				name: '浅睡',
+				duration: '0分',
+				percent: 0,
+				color: '#A78BFA'
+			},
+			{
+				key: 'rem',
+				name: '快速眼动',
+				duration: '0分',
+				percent: 0,
+				color: '#64D2FF'
+			},
+			{
+				key: 'awake',
+				name: '清醒',
+				duration: '0分',
+				percent: 0,
+				color: '#FF9F0A'
+			}
+		]
+	}
+
 	export default {
 		data() {
 			return {
-				sleepHours: 7,
-				sleepMinutes: 32,
-				recoverStatus: '恢复良好',
-				currentDate: new Date(2026, 7, 28),
-				sleepStart: '00:00',
-				wakeTime: '06:49',
-				sleepScore: 82,
-				qualityText: '睡眠质量一般',
-				qualityMarkerPercent: 28,
+				sleepHours: 0,
+				sleepMinutes: 0,
+				recoverStatus: '等待同步',
+				currentDate: new Date(),
+				sleepStart: '--:--',
+				wakeTime: '--:--',
+				sleepScore: 0,
+				qualityText: '暂无睡眠数据',
+				qualityMarkerPercent: 8,
 				stageLabels: ['清醒', '快速眼动', '浅睡', '深睡'],
 				chartW: 0,
 				chartH: 0,
 				padTop: 6,
 				padBottom: 6,
-				structureList: [{
-						key: 'deep',
-						name: '深睡',
-						duration: '1小时48分',
-						percent: 24,
-						color: '#7B61FF'
-					},
-					{
-						key: 'light',
-						name: '浅睡',
-						duration: '1小时48分',
-						percent: 24,
-						color: '#A78BFA'
-					},
-					{
-						key: 'rem',
-						name: '快速眼动',
-						duration: '1小时48分',
-						percent: 24,
-						color: '#64D2FF'
-					},
-					{
-						key: 'awake',
-						name: '清醒',
-						duration: '1小时48分',
-						percent: 24,
-						color: '#FF9F0A'
-					}
-				],
-				recentList: [{
-						time: '今天 09:41',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					},
-					{
-						time: '昨天 21:16',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					},
-					{
-						time: '8月6日 08:32',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					}
-				]
+				cycleSegments: DEFAULT_SEGMENTS.slice(),
+				structureList: emptyStructure(),
+				recentList: [],
+				sleepSessions: [],
+				unsubBle: null,
+				bleConnected: false
 			}
 		},
 		computed: {
@@ -316,7 +349,18 @@
 				return `${y}年${m}月${day}日`
 			},
 			qualityMarkerLeft() {
-				return this.qualityMarkerPercent + '%'
+				const p = Number(this.qualityMarkerPercent)
+				const safe = Number.isNaN(p) ? 0 : Math.max(0, Math.min(100, p))
+				return `${safe}%`
+			},
+			qualityKeyword() {
+				const t = this.qualityText || ''
+				if (t.indexOf('很好') >= 0) return '很好'
+				if (t.indexOf('较好') >= 0) return '较好'
+				if (t.indexOf('偏差') >= 0 || t.indexOf('较差') >= 0) return '较差'
+				if (t.indexOf('一般') >= 0) return '一般'
+				if (t.indexOf('暂无') >= 0) return ''
+				return ''
 			},
 			gridLineYs() {
 				if (!this.chartH) return []
@@ -335,7 +379,7 @@
 					connectors: []
 				}
 				return buildHypnogramAreas(
-					CYCLE_SEGMENTS,
+					this.cycleSegments,
 					this.chartW,
 					this.chartH,
 					this.padTop,
@@ -356,6 +400,14 @@
 				return toSvgDataUrl(grids + connectors + areas, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			}
 		},
+		created() {
+			this.unsubBle = BleService.subscribe((s) => {
+				this.bleConnected = !!s.connected
+				if (s.sleep) this.onSleepUpdate(s.sleep)
+			})
+			const cached = BleService.getSleep && BleService.getSleep()
+			if (cached) this.onSleepUpdate(cached)
+		},
 		mounted() {
 			this.$nextTick(() => {
 				setTimeout(() => {
@@ -365,6 +417,15 @@
 		},
 		onReady() {
 			this.measureChart(0)
+		},
+		onShow() {
+			this.refreshSleep()
+		},
+		onUnload() {
+			if (this.unsubBle) {
+				this.unsubBle()
+				this.unsubBle = null
+			}
 		},
 		methods: {
 			measureChart(retry = 0) {
@@ -381,16 +442,144 @@
 					})
 					.exec()
 			},
+			async refreshSleep() {
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					const cached = BleService.getSleep && BleService.getSleep()
+					if (cached) this.onSleepUpdate(cached)
+					return
+				}
+				try {
+					await BleService.syncSleep()
+				} catch (e) {
+					console.log('[yesterdaynight] syncSleep failed', e)
+					try {
+						await CoolWearBLE.sendSyncInfo()
+					} catch (err) {
+						console.log('[yesterdaynight] sendSyncInfo failed', err)
+					}
+				}
+			},
+			onSleepUpdate(sleep) {
+				if (!sleep) return
+				this.sleepSessions = Array.isArray(sleep.sessions) && sleep.sessions.length ?
+					sleep.sessions :
+					[sleep]
+				this.applySleepForDate(this.currentDate)
+			},
+			findSleepForDate(date) {
+				const list = this.sleepSessions || []
+				if (!list.length) return null
+				const y = date.getFullYear()
+				const m = date.getMonth()
+				const d = date.getDate()
+				const matched = list.find((item) => {
+					const sec = Number(item.sleepDay || item.endTime || item.startTime) || 0
+					if (!sec) return false
+					const dt = new Date(sec * 1000)
+					return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
+				})
+				if (matched) return matched
+				// 无精确匹配时：选中“今天/昨天”则用最近一晚
+				const today = new Date()
+				const isToday =
+					y === today.getFullYear() && m === today.getMonth() && d === today.getDate()
+				const yest = new Date(today)
+				yest.setDate(today.getDate() - 1)
+				const isYest =
+					y === yest.getFullYear() && m === yest.getMonth() && d === yest.getDate()
+				if (isToday || isYest) return list[list.length - 1]
+				return null
+			},
+			applySleepForDate(date) {
+				const sleep = this.findSleepForDate(date)
+				if (!sleep || !sleep.totalMin) {
+					this.sleepHours = 0
+					this.sleepMinutes = 0
+					this.recoverStatus = '暂无数据'
+					this.sleepStart = '--:--'
+					this.wakeTime = '--:--'
+					this.sleepScore = 0
+					this.qualityText = '暂无睡眠数据'
+					this.qualityMarkerPercent = 8
+					this.structureList = emptyStructure()
+					this.cycleSegments = DEFAULT_SEGMENTS.slice()
+					this.rebuildRecent()
+					return
+				}
+
+				this.sleepHours = sleep.hours || Math.floor((sleep.totalMin || 0) / 60)
+				this.sleepMinutes = sleep.minutes != null ? sleep.minutes : ((sleep.totalMin || 0) % 60)
+				this.recoverStatus = sleep.recoverStatus || '恢复一般'
+				this.sleepStart = sleep.sleepStart || '--:--'
+				this.wakeTime = sleep.wakeTime || '--:--'
+				this.sleepScore = sleep.score || 0
+				this.qualityText = sleep.qualityText || '睡眠质量一般'
+				this.qualityMarkerPercent = sleep.qualityMarkerPercent != null ? sleep.qualityMarkerPercent : 50
+
+				const total = Math.max(1, sleep.totalMin || 0)
+				const deep = sleep.deepMin || 0
+				const light = sleep.lightMin || 0
+				const rem = sleep.remMin || 0
+				const awake = sleep.awakeMin || 0
+				this.structureList = [{
+						key: 'deep',
+						name: '深睡',
+						duration: formatDuration(deep),
+						percent: Math.round(deep / total * 100),
+						color: '#7B61FF'
+					},
+					{
+						key: 'light',
+						name: '浅睡',
+						duration: formatDuration(light),
+						percent: Math.round(light / total * 100),
+						color: '#A78BFA'
+					},
+					{
+						key: 'rem',
+						name: '快速眼动',
+						duration: formatDuration(rem),
+						percent: Math.round(rem / total * 100),
+						color: '#64D2FF'
+					},
+					{
+						key: 'awake',
+						name: '清醒',
+						duration: formatDuration(awake),
+						percent: Math.round(awake / total * 100),
+						color: '#FF9F0A'
+					}
+				]
+
+				this.cycleSegments = (sleep.segments && sleep.segments.length) ?
+					sleep.segments.slice() :
+					DEFAULT_SEGMENTS.slice()
+				this.rebuildRecent()
+				this.$nextTick(() => this.measureChart(0))
+			},
+			rebuildRecent() {
+				const list = (this.sleepSessions || []).slice().reverse().slice(0, 8)
+				this.recentList = list.map((item) => ({
+					time: formatRecentTime(item.endTime || item.startTime || item.sleepDay),
+					source: '戒指采集',
+					duration: formatDuration(item.totalMin).replace('小时', ' 小时 ').replace('分', ' 分')
+				}))
+			},
 			shiftDate(delta) {
 				const next = new Date(this.currentDate)
 				next.setDate(next.getDate() + delta)
 				this.currentDate = next
+				this.applySleepForDate(next)
 			},
 			onPrevDay() {
 				this.shiftDate(-1)
 			},
 			onNextDay() {
 				this.shiftDate(1)
+			},
+			openCalendar() {
+				// 日历弹层后续接入，先保持与心率页交互结构一致
 			}
 		}
 	}
@@ -475,18 +664,27 @@
 	}
 
 	.date-bar {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 400rpx;
+		width: 354rpx;
 		margin: 0 auto 28rpx;
 		padding: 14rpx 20rpx;
-		border-radius: 40rpx;
-		background: #1A2740;
 		box-sizing: border-box;
 	}
 
+	.date-bar-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
 	.date-btn {
+		position: relative;
+		z-index: 1;
 		width: 48rpx;
 		height: 48rpx;
 		display: flex;
@@ -494,18 +692,30 @@
 		justify-content: center;
 	}
 
-	.date-arrow {
-		font-size: 40rpx;
-		color: #ffffff;
-		line-height: 48rpx;
+	.date-btn image {
+		width: 34rpx;
+		height: 34rpx;
+	}
+
+	.date-center {
+		position: relative;
+		z-index: 1;
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.date-text {
-		flex: 1;
-		text-align: center;
 		font-size: 28rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+
+	.date-calendar {
+		width: 40rpx;
+		height: 40rpx;
+		margin-left: 10rpx;
 	}
 
 	.card-title {
@@ -619,8 +829,25 @@
 	}
 
 	.overview-top {
+		width: 100%;
+		height: 137.45rpx;
+		position: relative;
+	}
+
+	.fenBg {
+		width: 100%;
+		height: 100%;
+	}
+
+	.overCon {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		padding: 18rpx 28rpx;
+		box-sizing: border-box;
+		top: 0;
 		display: flex;
-		align-items: flex-end;
+		align-items: center;
 		justify-content: space-between;
 	}
 
@@ -629,10 +856,8 @@
 	}
 
 	.score-label {
-		display: block;
-		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
+		font-size: 28rpx;
+		color: #ffffff;
 	}
 
 	.score-row {
@@ -642,75 +867,61 @@
 	}
 
 	.score-num {
-		font-size: 64rpx;
+		font-size: 48rpx;
 		font-weight: 700;
 		color: #ffffff;
-		line-height: 76rpx;
 	}
 
 	.score-unit {
-		margin-left: 8rpx;
-		font-size: 26rpx;
-		color: rgba(255, 255, 255, 0.85);
-		line-height: 36rpx;
+		margin-left: 6rpx;
+		font-size: 28rpx;
+		color: #ffffff;
+		line-height: 40rpx;
 	}
 
 	.quality-block {
-		flex: 1;
-		min-width: 0;
-		margin-left: 32rpx;
-		padding-bottom: 10rpx;
+		width: 360rpx;
+		flex-shrink: 0;
+		margin-left: 20rpx;
 	}
 
-	.quality-text {
-		display: block;
-		text-align: right;
-		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
-	}
-
-	.quality-bar {
-		position: relative;
+	.quality-text-row {
 		display: flex;
-		height: 12rpx;
-		margin-top: 20rpx;
-		border-radius: 6rpx;
-		overflow: visible;
+		align-items: baseline;
+		justify-content: flex-start;
+		min-height: 40rpx;
 	}
 
-	.quality-seg {
-		flex: 1;
-		height: 100%;
+	.quality-prefix {
+		font-size: 28rpx;
+		color: #ffffff;
+		line-height: 40rpx;
 	}
 
-	.seg-orange {
-		background: #FF9F0A;
-		border-radius: 6rpx 0 0 6rpx;
+	.quality-keyword {
+		font-size: 28rpx;
+		color: #64D2FF;
+		line-height: 40rpx;
 	}
 
-	.seg-yellow {
-		background: #FFD60A;
+	.quality-scale {
+		position: relative;
+		width: 360rpx;
+		margin-top: 16rpx;
 	}
 
-	.seg-green {
-		background: #30D158;
+	.scale-img {
+		display: block;
+		width: 360rpx;
 	}
 
-	.seg-cyan {
-		background: #64D2FF;
-		border-radius: 0 6rpx 6rpx 0;
-	}
-
-	.quality-marker {
+	.scale-pointer {
 		position: absolute;
-		top: -14rpx;
-		width: 0;
-		height: 0;
-		margin-left: -8rpx;
-		border-left: 8rpx solid transparent;
-		border-right: 8rpx solid transparent;
-		border-top: 12rpx solid #64D2FF;
+		left: 0;
+		bottom: -10rpx;
+		width: 22rpx;
+		height: 22rpx;
+		transform: translateX(-50%);
 	}
 
 	.structure-block {

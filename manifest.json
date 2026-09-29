@@ -53,7 +53,10 @@
             },
             /* ios打包配置 */
             "ios" : {
-                "dSYMs" : false
+                "dSYMs" : false,
+                "privacyDescription" : {
+                    "NSPhotoLibraryUsageDescription" : "需要调用相机"
+                }
             },
             /* SDK配置 */
             "sdkConfigs" : {}

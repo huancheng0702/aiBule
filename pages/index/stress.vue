@@ -17,7 +17,7 @@
 				<view class="measure-btn" @click="onStartMeasure">
 					<!-- 开始测量按钮背景图，自行补充 src -->
 					<image class="measure-btn-bg" mode="scaleToFill"></image>
-					<text class="measure-btn-text">开始测量</text>
+					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
 				</view>
 			</view>
 		</view>
@@ -229,7 +229,8 @@
 						<view class="ripple-disc d1"></view>
 						<view class="ripple-core"></view>
 					</view>
-					<text class="measuring-text">检测中...</text>
+					<text class="measuring-text">{{ liveStress ? ('检测中 ' + liveStress) : '检测中...' }}</text>
+					<text class="measuring-sub">请保持手指静止，等待戒指返回数据</text>
 				</view>
 			</view>
 		</view>
@@ -256,10 +257,15 @@
 
 <script>
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import BleService from '@/common/ble-service.js'
 
 	const CHART_H = 220
 	const Y_MIN = 0
 	const Y_MAX = 120
+	const MEASURE_TIMEOUT_MS = 45000
+	const MEASURE_MIN_SAMPLES = 2
+	const MEASURE_STABLE_MS = 8000
 
 	function clamp(value, min, max) {
 		return Math.max(min, Math.min(max, value))
@@ -275,6 +281,54 @@
 		if (value < 60) return '#8B5CF6'
 		if (value < 90) return '#F59E0B'
 		return '#F472B6'
+	}
+
+	/** SDK：压力由 HRV 计算。HRV 越高通常压力越低。 */
+	function hrvToStress(hrv) {
+		const h = clamp(Number(hrv) || 0, 5, 120)
+		const stress = Math.round(100 - (h - 5) * (90 / 115))
+		return clamp(stress, 1, 99)
+	}
+
+	function extractStressValues(data) {
+		const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+		const values = []
+		list.forEach((item) => {
+			if (typeof item === 'number') {
+				if (item > 0) values.push(hrvToStress(item))
+				return
+			}
+			if (!item || typeof item !== 'object') return
+			const stressRaw = item.stress != null
+				? item.stress
+				: (item.pressure != null ? item.pressure : item.stressValue)
+			if (stressRaw != null && stressRaw !== '') {
+				const s = Number(stressRaw)
+				if (!Number.isNaN(s) && s > 0) {
+					values.push(clamp(Math.round(s), 1, 120))
+					return
+				}
+			}
+			const hrvRaw = item.value != null
+				? item.value
+				: (item.hrvNums != null ? item.hrvNums : item.hrv)
+			const hrv = Number(hrvRaw)
+			if (!Number.isNaN(hrv) && hrv > 0) values.push(hrvToStress(hrv))
+		})
+		return values
+	}
+
+	function stressStatusText(stress) {
+		if (stress < 30) return '当前放松'
+		if (stress < 60) return '当前正常'
+		if (stress < 90) return '中等压力'
+		return '压力偏高'
+	}
+
+	function formatLatestTime(date = new Date()) {
+		const h = String(date.getHours()).padStart(2, '0')
+		const m = String(date.getMinutes()).padStart(2, '0')
+		return `今天 ${h}:${m}`
 	}
 
 	export default {
@@ -311,6 +365,12 @@
 				showMeasureTip: false,
 				showMeasuring: false,
 				showCancelConfirm: false,
+				measuring: false,
+				liveStress: 0,
+				measureSamples: [],
+				measureTimer: null,
+				measureStableTimer: null,
+				hrvUnsub: null,
 				measureTips: [
 					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
 					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
@@ -444,6 +504,9 @@
 			this.showCancelConfirm = true
 			return true
 		},
+		onUnload() {
+			this.stopRealMeasure(false)
+		},
 		methods: {
 			measureChart(retry = 0) {
 				uni.createSelectorQuery()
@@ -528,21 +591,155 @@
 				this.showCalendar = false
 			},
 			onStartMeasure() {
+				if (this.measuring) return
+				const ble = BleService.getState()
+				if (!ble.connected) {
+					uni.showModal({
+						title: '未连接戒指',
+						content: '请先连接智能戒指后再开始测量',
+						confirmText: '去连接',
+						success: (res) => {
+							if (res.confirm) {
+								uni.navigateTo({
+									url: '/pages/mine/deviceManage'
+								})
+							}
+						}
+					})
+					return
+				}
 				this.showMeasureTip = true
 			},
 			closeMeasureTip() {
 				this.showMeasureTip = false
 			},
-			onMeasureNext() {
+			async onMeasureNext() {
 				this.showMeasureTip = false
+				await this.startRealMeasure()
+			},
+			clearMeasureTimer() {
+				if (this.measureTimer) {
+					clearTimeout(this.measureTimer)
+					this.measureTimer = null
+				}
+				if (this.measureStableTimer) {
+					clearTimeout(this.measureStableTimer)
+					this.measureStableTimer = null
+				}
+			},
+			unbindHrv() {
+				if (this.hrvUnsub) {
+					this.hrvUnsub()
+					this.hrvUnsub = null
+				}
+			},
+			async startRealMeasure() {
+				if (this.measuring) return
+				this.measuring = true
 				this.showMeasuring = true
+				this.showCancelConfirm = false
+				this.liveStress = 0
+				this.measureSamples = []
+				this.clearMeasureTimer()
+				this.unbindHrv()
+
+				// 官方说明：压力由 HRV 数据通过算法计算
+				this.hrvUnsub = CoolWearBLE.on('onHRV', (data) => {
+					this.onHrvData(data)
+				})
+
+				try {
+					await CoolWearBLE.setHRVSwitch(true)
+					console.log('[stress] 已开启 HRV/压力检测')
+				} catch (e) {
+					console.error('[stress] 开启检测失败', e)
+					this.stopRealMeasure(false)
+					uni.showToast({
+						title: (e && e.message) || '开启压力检测失败',
+						icon: 'none'
+					})
+					return
+				}
+
+				this.measureTimer = setTimeout(() => {
+					if (!this.measuring) return
+					if (this.liveStress > 0) {
+						this.finishMeasure(this.liveStress)
+						return
+					}
+					this.stopRealMeasure(true)
+					uni.showToast({
+						title: '未收到压力数据，请确认佩戴后重试',
+						icon: 'none',
+						duration: 2500
+					})
+				}, MEASURE_TIMEOUT_MS)
+			},
+			onHrvData(data) {
+				if (!this.measuring) return
+				const values = extractStressValues(data)
+				if (!values.length) {
+					console.log('[stress] onHRV 原始数据无法解析', data)
+					return
+				}
+				values.forEach((v) => this.measureSamples.push(v))
+				const latest = values[values.length - 1]
+				this.liveStress = latest
+				console.log('[stress] 实时压力', latest, 'samples=', this.measureSamples.length)
+
+				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
+					this.measureStableTimer = setTimeout(() => {
+						if (!this.measuring) return
+						const stress = this.liveStress || this.measureSamples[this.measureSamples.length - 1]
+						this.finishMeasure(stress)
+					}, MEASURE_STABLE_MS)
+				}
+			},
+			async stopRealMeasure(turnOffSwitch = true) {
+				this.clearMeasureTimer()
+				this.unbindHrv()
+				this.measuring = false
+				this.showMeasuring = false
+				this.showCancelConfirm = false
+				this.liveStress = 0
+				this.measureSamples = []
+				if (turnOffSwitch) {
+					try {
+						await CoolWearBLE.setHRVSwitch(false)
+					} catch (e) {
+						console.log('[stress] 关闭检测失败', e)
+					}
+				}
+			},
+			async finishMeasure(stress) {
+				const value = Number(stress) || this.liveStress
+				if (!value) {
+					await this.stopRealMeasure(true)
+					uni.showToast({
+						title: '测量失败，请重试',
+						icon: 'none'
+					})
+					return
+				}
+				this.latestValue = value
+				this.latestStatus = stressStatusText(value)
+				this.latestTime = formatLatestTime()
+				this.recentList = [{
+					time: this.latestTime,
+					source: '戒指采集',
+					duration: '即时测量'
+				}].concat(this.recentList || []).slice(0, 10)
+
+				await this.stopRealMeasure(true)
+				uni.navigateTo({
+					url: '/pages/index/stressSuccess?stress=' + value
+				})
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
 			},
-			confirmCancelMeasure() {
-				this.showCancelConfirm = false
-				this.showMeasuring = false
+			async confirmCancelMeasure() {
+				await this.stopRealMeasure(true)
 			},
 			keepMeasuring() {
 				this.showCancelConfirm = false
@@ -1426,6 +1623,14 @@
 		font-size: 30rpx;
 		color: #4da3ff;
 		line-height: 42rpx;
+	}
+
+	.measuring-sub {
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.45);
+		text-align: center;
 	}
 
 	@keyframes disc-breathe {

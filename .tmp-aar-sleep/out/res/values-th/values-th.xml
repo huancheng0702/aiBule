@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">ขออภัย ฉันไม่สามารถรับโทรศัพท์ได้</string>
+    <string name="call_me_later">ไม่สามารถรับสายได้ในขณะนี้ คุณสามารถโทรหาฉันภายหลังได้ไหม</string>
+    <string name="call_you_later">โทรหาคุณภายหลัง ตกลงไหม</string>
+    <string name="will_arrive_soon">จะมาถึงในไม่ช้า</string>
+    <string name="will_contact_you_later">เจอกันตอนนี้จะติดต่อกลับไป</string>
+</resources>

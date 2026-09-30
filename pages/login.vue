@@ -8,9 +8,10 @@
 			:class="{ active: currentBanner === index }"
 			mode="aspectFill"
 		></image>
-		<view class="container">
+		<!-- 授权页失败 / 非 App / 用户返回时，展示与授权页一致的兜底 UI -->
+		<view v-if="showFallback" class="container">
 			<view class="conPhone">
-				150****1111
+				{{ maskPhone || '本机号码' }}
 			</view>
 			<view class="oneBtn" @click="onPhoneLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
@@ -32,6 +33,14 @@
 </template>
 
 <script>
+	import {
+		openOneKeyLogin,
+		finishAuthPage,
+		exchangeLoginByShanYanToken,
+		isPrivacyAgreed,
+		setPrivacyAgreed
+	} from '@/common/shanyan-auth.js'
+
 	export default {
 		data() {
 			return {
@@ -41,16 +50,28 @@
 				],
 				currentBanner: 0,
 				bannerTimer: null,
-				agreed: false
+				agreed: false,
+				showFallback: false,
+				maskPhone: '',
+				launching: false
 			}
 		},
 		onLoad() {
-			// 已登录则进入主流程
 			if (uni.getStorageSync('token')) {
 				this.afterLogin()
 				return
 			}
+			this.agreed = isPrivacyAgreed()
 			this.startBannerSwitch()
+			// #ifdef APP-PLUS
+			// 进页直接拉起闪验授权页（UI 已按本页样式配置）
+			this.$nextTick(() => {
+				this.openShanYanAuth()
+			})
+			// #endif
+			// #ifndef APP-PLUS
+			this.showFallback = true
+			// #endif
 		},
 		onUnload() {
 			this.clearBannerSwitch()
@@ -78,29 +99,112 @@
 			},
 			onPhoneLogin() {
 				if (!this.ensureAgree()) return
-				this.doLogin('phone')
+				setPrivacyAgreed(true)
+				// #ifdef APP-PLUS
+				this.openShanYanAuth()
+				// #endif
+				// #ifndef APP-PLUS
+				uni.showToast({
+					title: '请在 App 真机使用一键登录',
+					icon: 'none'
+				})
+				// #endif
 			},
 			onWxLogin() {
-				if (!this.ensureAgree()) return
-				this.doLogin('wechat')
+				if (this.showFallback && !this.ensureAgree()) return
+				setPrivacyAgreed(true)
+				this.doWxLogin()
 			},
-			doLogin(type) {
+			openShanYanAuth() {
+				if (this.launching) return
+				this.launching = true
+				this.showFallback = false
+				uni.showLoading({
+					title: '正在唤起...',
+					mask: true
+				})
+				openOneKeyLogin({
+					onWxLogin: () => {
+						finishAuthPage()
+						this.launching = false
+						this.showFallback = true
+						this.doWxLogin()
+					},
+					onOpen: () => {
+						uni.hideLoading()
+						this.launching = false
+					},
+					onSuccess: (shanyanToken) => {
+						uni.hideLoading()
+						this.launching = false
+						this.handleShanYanSuccess(shanyanToken)
+					},
+					onCancel: () => {
+						uni.hideLoading()
+						this.launching = false
+						this.showFallback = true
+					},
+					onFail: (err) => {
+						uni.hideLoading()
+						this.launching = false
+						this.showFallback = true
+						const msg = (err && (err.message || err.innerDesc)) || '一键登录暂不可用'
+						uni.showToast({
+							title: String(msg).slice(0, 40),
+							icon: 'none'
+						})
+					}
+				})
+			},
+			async handleShanYanSuccess(shanyanToken) {
+				if (!shanyanToken) {
+					this.showFallback = true
+					uni.showToast({
+						title: '未获取到登录凭证',
+						icon: 'none'
+					})
+					return
+				}
 				uni.showLoading({
 					title: '登录中...',
 					mask: true
 				})
-				// 模拟登录成功
+				try {
+					const res = await exchangeLoginByShanYanToken(shanyanToken)
+					uni.hideLoading()
+					const isFirstLogin = !uni.getStorageSync('onboardingDone')
+					uni.setStorageSync('token', (res && res.token) || shanyanToken)
+					uni.setStorageSync('loginType', 'phone')
+					uni.setStorageSync('isFirstLogin', isFirstLogin)
+					if (res && res.phone) {
+						uni.setStorageSync('phone', res.phone)
+					}
+					this.afterLogin()
+				} catch (e) {
+					uni.hideLoading()
+					this.showFallback = true
+					uni.showToast({
+						title: (e && e.message) || '登录失败',
+						icon: 'none'
+					})
+				}
+			},
+			doWxLogin() {
+				uni.showLoading({
+					title: '登录中...',
+					mask: true
+				})
+				// 微信登录后续对接；先保持原 mock 流程
 				setTimeout(() => {
 					uni.hideLoading()
 					const isFirstLogin = !uni.getStorageSync('onboardingDone')
-					uni.setStorageSync('token', 'mock-token')
-					uni.setStorageSync('loginType', type)
+					uni.setStorageSync('token', 'mock-token-wechat')
+					uni.setStorageSync('loginType', 'wechat')
 					uni.setStorageSync('isFirstLogin', isFirstLogin)
 					this.afterLogin()
 				}, 600)
 			},
 			afterLogin() {
-				// 首次登录：去完善基础信息；否则进首页
 				if (!uni.getStorageSync('onboardingDone')) {
 					uni.reLaunch({
 						url: '/pages/mine/myInfo'
@@ -178,7 +282,6 @@
 				border-radius: 32rpx;
 				margin: 30rpx 0;
 				box-sizing: border-box;
-				
 			}
 		}
 	}

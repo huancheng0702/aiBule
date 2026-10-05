@@ -36,7 +36,7 @@
 				<template v-else>
 					<image class="ai-avatar" src="/static/aiHic.png" mode=""></image>
 					<view class="bubble ai-bubble">
-						<text class="bubble-text">{{ msg.content }}</text>
+						<text class="bubble-text">{{ msg.content || (msg.streaming ? '正在思考...' : '') }}</text>
 					</view>
 				</template>
 			</view>
@@ -49,7 +49,7 @@
 				<image class="input-bg" src="/static/sendInputBg.png" mode=""></image>
 				<input class="input-field" v-model="inputValue" type="text" confirm-type="send" placeholder="输入您的问题"
 					placeholder-class="input-placeholder" @confirm="onSend" />
-				<view class="send-btn" @click="onSend">
+				<view class="send-btn" :class="{ disabled: sending }" @click="onSend">
 					<image class="send-icon" src="/static/sendbtn.png" mode=""></image>
 				</view>
 			</view>
@@ -93,6 +93,44 @@
 </template>
 
 <script>
+	import {
+		chatAiStream,
+		createAiSession,
+		getAiMessages,
+		getAiQuickQuestions,
+		getAiSessionList
+	} from '@/common/api/ai.js'
+
+	const DEFAULT_SUGGESTIONS = [{
+			msgCon: '昨晚睡得怎么样？',
+			icon: '/static/shuimian.png'
+		},
+		{
+			msgCon: '最近心率有异常吗？',
+			icon: '/static/xinlv.png'
+		},
+		{
+			msgCon: '帮我解读健康日报',
+			icon: '/static/jianribao.png'
+		},
+		{
+			msgCon: '如何改善压力状态',
+			icon: '/static/yali.png'
+		}
+	]
+
+	function formatSessionTime(value) {
+		if (!value) return ''
+		const raw = typeof value === 'number' ? value : String(value).replace(/-/g, '/')
+		const date = new Date(raw)
+		if (isNaN(date.getTime())) return String(value)
+		const mm = date.getMonth() + 1
+		const dd = date.getDate()
+		const hh = date.getHours() < 10 ? '0' + date.getHours() : String(date.getHours())
+		const mi = date.getMinutes() < 10 ? '0' + date.getMinutes() : String(date.getMinutes())
+		return mm + '/' + dd + ' ' + hh + ':' + mi
+	}
+
 	export default {
 		name: 'TabAi',
 		data() {
@@ -101,94 +139,196 @@
 				inputValue: '',
 				scrollIntoView: '',
 				showHistory: false,
-				activeHistoryId: 1,
-				historyList: [{
-						id: 1,
-						title: '今天想了解什么？',
-						time: '今天 11:42'
-					},
-					{
-						id: 2,
-						title: '昨晚睡眠质量怎么样？',
-						time: '今天 11:42'
-					},
-					{
-						id: 3,
-						title: '最近心率有异常吗？',
-						time: '今天 11:42'
-					},
-					{
-						id: 4,
-						title: '如何改善压力状态？',
-						time: '今天 11:42'
-					}
-				],
-				suggestions: [{
-						msgCon: '昨晚睡得怎么样？',
-						icon: '/static/shuimian.png'
-					},
-					{
-						msgCon: '最近心率有异常吗？',
-						icon: '/static/xinlv.png'
-					},
-					{
-						msgCon: '帮我解读健康日报',
-						icon: '/static/jianribao.png'
-					},
-					{
-						msgCon: '如何改善压力状态',
-						icon: '/static/yali.png'
-					}
-				],
-				messages: [{
-						role: 'user',
-						content: '昨晚睡得怎么样？'
-					},
-					{
-						role: 'ai',
-						content: '昨晚共睡眠7小时32分钟，深睡1小时48分，整体恢复良好。建议继续保持固定入睡时间。'
-					}
-				]
+				activeHistoryId: null,
+				sessionId: '',
+				sending: false,
+				typeQueue: '',
+				typeTimer: null,
+				typingIndex: -1,
+				historyList: [],
+				suggestions: DEFAULT_SUGGESTIONS.slice(),
+				messages: []
 			}
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+			this.loadQuickQuestions()
+			this.loadHistory()
+		},
+		beforeDestroy() {
+			this.clearTypeTimer()
 		},
 		methods: {
-			openHistory() {
-				this.showHistory = true
-			},
-			closeHistory() {
-				this.showHistory = false
-			},
-			onNewChat() {
-				this.messages = []
-				this.activeHistoryId = null
-				this.closeHistory()
-			},
-			onSelectHistory(item) {
-				this.activeHistoryId = item.id
-				this.closeHistory()
-			},
-			onSuggest(item) {
-				this.inputValue = item.msgCon
-				this.onSend()
-			},
-			onSend() {
-				const text = (this.inputValue || '').trim()
-				if (!text) return
-				this.messages.push({
-					role: 'user',
-					content: text
-				})
-				this.inputValue = ''
+			scrollToBottom() {
 				this.$nextTick(() => {
 					this.scrollIntoView = ''
 					this.$nextTick(() => {
 						this.scrollIntoView = 'chat-bottom'
 					})
 				})
+			},
+			clearTypeTimer() {
+				if (this.typeTimer) {
+					clearInterval(this.typeTimer)
+					this.typeTimer = null
+				}
+			},
+			enqueueType(aiIndex, text) {
+				if (!text) return
+				this.typingIndex = aiIndex
+				this.typeQueue += text
+				if (this.typeTimer) return
+				this.typeTimer = setInterval(() => {
+					if (!this.typeQueue) {
+						this.clearTypeTimer()
+						return
+					}
+					const step = this.typeQueue.length > 40 ? 2 : 1
+					const piece = this.typeQueue.slice(0, step)
+					this.typeQueue = this.typeQueue.slice(step)
+					const msg = this.messages[this.typingIndex]
+					if (msg) {
+						msg.content += piece
+					}
+					this.scrollToBottom()
+				}, 20)
+			},
+			waitTypingDone() {
+				return new Promise((resolve) => {
+					const check = () => {
+						if (!this.typeQueue) {
+							this.clearTypeTimer()
+							resolve()
+							return
+						}
+						setTimeout(check, 30)
+					}
+					check()
+				})
+			},
+			async loadQuickQuestions() {
+				try {
+					const list = await getAiQuickQuestions()
+					const items = Array.isArray(list) ? list : (list && list.list) || []
+					if (!items.length) return
+					this.suggestions = items.slice(0, 4).map((item, index) => {
+						const text = typeof item === 'string' ? item : (item.question || item.content || item.msgCon || '')
+						return {
+							msgCon: text,
+							icon: DEFAULT_SUGGESTIONS[index % DEFAULT_SUGGESTIONS.length].icon
+						}
+					}).filter((item) => item.msgCon)
+				} catch (e) {}
+			},
+			async loadHistory() {
+				try {
+					const list = await getAiSessionList()
+					const items = Array.isArray(list) ? list : (list && list.list) || []
+					this.historyList = items.map((item) => ({
+						id: item.sessionId,
+						title: item.title || '新对话',
+						time: formatSessionTime(item.updateTime || item.createTime)
+					}))
+				} catch (e) {}
+			},
+			openHistory() {
+				this.showHistory = true
+				this.loadHistory()
+			},
+			closeHistory() {
+				this.showHistory = false
+			},
+			async onNewChat() {
+				if (this.sending) return
+				this.messages = []
+				this.sessionId = ''
+				this.activeHistoryId = null
+				try {
+					const res = await createAiSession()
+					const id = (res && (res.sessionId || res.id)) || res
+					if (id) {
+						this.sessionId = String(id)
+						this.activeHistoryId = this.sessionId
+					}
+				} catch (e) {}
+				this.closeHistory()
+			},
+			async onSelectHistory(item) {
+				if (this.sending) return
+				this.activeHistoryId = item.id
+				this.sessionId = item.id
+				this.closeHistory()
+				try {
+					const list = await getAiMessages(item.id)
+					const items = Array.isArray(list) ? list : (list && list.list) || []
+					this.messages = items.map((msg) => ({
+						role: msg.role === 'user' ? 'user' : 'ai',
+						content: msg.content || '',
+						streaming: false
+					}))
+					this.scrollToBottom()
+				} catch (e) {
+					uni.showToast({
+						title: '历史消息加载失败',
+						icon: 'none'
+					})
+				}
+			},
+			onSuggest(item) {
+				this.inputValue = item.msgCon
+				this.onSend()
+			},
+			async onSend() {
+				const text = (this.inputValue || '').trim()
+				if (!text || this.sending) return
+				this.sending = true
+				this.messages.push({
+					role: 'user',
+					content: text
+				})
+				this.inputValue = ''
+				const aiIndex = this.messages.length
+				this.messages.push({
+					role: 'ai',
+					content: '',
+					streaming: true
+				})
+				this.scrollToBottom()
+				try {
+					const payload = {
+						content: text
+					}
+					if (this.sessionId) {
+						payload.sessionId = this.sessionId
+					}
+					await chatAiStream(payload, {
+						onSession: (id) => {
+							this.sessionId = String(id)
+							this.activeHistoryId = this.sessionId
+						},
+						onDelta: (delta) => {
+							this.enqueueType(aiIndex, delta)
+						}
+					})
+					await this.waitTypingDone()
+					const msg = this.messages[aiIndex]
+					if (msg && !msg.content) {
+						msg.content = '暂时没有获取到回复'
+					}
+					if (msg) msg.streaming = false
+					this.loadHistory()
+				} catch (e) {
+					await this.waitTypingDone()
+					const msg = this.messages[aiIndex]
+					if (msg) {
+						msg.streaming = false
+						msg.content = msg.content || ((e && e.message) || '回复失败，请稍后重试')
+					}
+				} finally {
+					this.sending = false
+					this.scrollToBottom()
+				}
 			}
 		}
 	}
@@ -196,9 +336,8 @@
 
 <style scoped lang="scss">
 	.tab-page {
-		height: calc(100vh - 128rpx - constant(safe-area-inset-bottom));
-		height: calc(100vh - 128rpx - env(safe-area-inset-bottom));
-		padding: 0 28rpx;
+		height: 100vh;
+		padding: 0 28rpx 160rpx;
 		box-sizing: border-box;
 		background: #0d0d0f;
 		color: #ffffff;
@@ -260,13 +399,13 @@
 	.suggest-grid {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 20rpx;
+		justify-content: space-between;
 		margin-bottom: 24rpx;
 		flex-shrink: 0;
 	}
 
 	.suggest-card {
-		width: calc(50% - 10rpx);
+		width: 48%;
 		display: flex;
 		align-items: center;
 		padding: 28rpx 24rpx;
@@ -275,6 +414,7 @@
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
 		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
+		margin-bottom: 20rpx;
 	}
 
 	.suggest-icon {

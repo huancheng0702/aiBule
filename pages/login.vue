@@ -22,6 +22,9 @@
 			<view class="wxLogin" @click="onWxLogin">
 				微信登录
 			</view>
+			<view class="smsEntry" @click="onOpenSmsLogin">
+				验证码登录
+			</view>
 			<view class="agreement" @click="agreed = !agreed">
 				<image :src="agreed ? '/static/check-circle-fil.png' : '/static/checkCircle.png'" class="agreImg" mode=""></image>
 				<view class="agreText">
@@ -29,6 +32,38 @@
 				</view>
 			</view>
 		</view>
+
+		<u-popup :show="showSmsLogin" mode="bottom" round="24" :safeAreaInsetBottom="true" @close="closeSmsLogin">
+			<view class="sms-sheet">
+				<view class="sms-title">手机验证码登录</view>
+				<view class="sms-sub">未注册手机号验证后将自动创建账号</view>
+				<view class="sms-field">
+					<input
+						v-model="smsPhone"
+						type="number"
+						maxlength="11"
+						placeholder="请输入手机号"
+						placeholder-class="sms-placeholder"
+					/>
+				</view>
+				<view class="sms-field sms-code-row">
+					<input
+						v-model="smsCode"
+						type="number"
+						maxlength="6"
+						placeholder="请输入验证码"
+						placeholder-class="sms-placeholder"
+					/>
+					<view class="sms-send" :class="{ disabled: smsCountdown > 0 || smsSending }" @click="onSendSms">
+						{{ smsCountdown > 0 ? smsCountdown + 's' : '获取验证码' }}
+					</view>
+				</view>
+				<view class="sms-submit" @click="onSmsLogin">
+					<image src="/static/btnBan.png" class="sms-submit-bg" mode="scaleToFill"></image>
+					<text class="sms-submit-text">登录</text>
+				</view>
+			</view>
+		</u-popup>
 	</view>
 </template>
 
@@ -40,6 +75,11 @@
 		isPrivacyAgreed,
 		setPrivacyAgreed
 	} from '@/common/shanyan-auth.js'
+	import { sendSmsCode, phoneLogin } from '@/common/api/auth.js'
+	import { getUserInfo } from '@/common/api/user.js'
+	import { saveLoginSession } from '@/common/auth.js'
+
+	const PHONE_REG = /^1\d{10}$/
 
 	export default {
 		data() {
@@ -53,7 +93,14 @@
 				agreed: false,
 				showFallback: false,
 				maskPhone: '',
-				launching: false
+				launching: false,
+				showSmsLogin: false,
+				smsPhone: '',
+				smsCode: '',
+				smsCountdown: 0,
+				smsTimer: null,
+				smsSending: false,
+				smsLogging: false
 			}
 		},
 		onLoad() {
@@ -64,7 +111,6 @@
 			this.agreed = isPrivacyAgreed()
 			this.startBannerSwitch()
 			// #ifdef APP-PLUS
-			// 进页直接拉起闪验授权页（UI 已按本页样式配置）
 			this.$nextTick(() => {
 				this.openShanYanAuth()
 			})
@@ -75,6 +121,7 @@
 		},
 		onUnload() {
 			this.clearBannerSwitch()
+			this.clearSmsTimer()
 		},
 		methods: {
 			startBannerSwitch() {
@@ -87,6 +134,12 @@
 				if (this.bannerTimer) {
 					clearInterval(this.bannerTimer)
 					this.bannerTimer = null
+				}
+			},
+			clearSmsTimer() {
+				if (this.smsTimer) {
+					clearInterval(this.smsTimer)
+					this.smsTimer = null
 				}
 			},
 			ensureAgree() {
@@ -104,11 +157,109 @@
 				this.openShanYanAuth()
 				// #endif
 				// #ifndef APP-PLUS
-				uni.showToast({
-					title: '请在 App 真机使用一键登录',
-					icon: 'none'
-				})
+				this.showSmsLogin = true
 				// #endif
+			},
+			onOpenSmsLogin() {
+				if (!this.ensureAgree()) return
+				setPrivacyAgreed(true)
+				this.showSmsLogin = true
+			},
+			closeSmsLogin() {
+				this.showSmsLogin = false
+			},
+			startSmsCountdown() {
+				this.clearSmsTimer()
+				this.smsCountdown = 60
+				this.smsTimer = setInterval(() => {
+					if (this.smsCountdown <= 1) {
+						this.clearSmsTimer()
+						this.smsCountdown = 0
+						return
+					}
+					this.smsCountdown -= 1
+				}, 1000)
+			},
+			async onSendSms() {
+				if (this.smsCountdown > 0 || this.smsSending) return
+				if (!PHONE_REG.test(this.smsPhone)) {
+					uni.showToast({
+						title: '请输入正确手机号',
+						icon: 'none'
+					})
+					return
+				}
+				this.smsSending = true
+				try {
+					await sendSmsCode({
+						phone: this.smsPhone,
+						scene: 'login'
+					})
+					this.startSmsCountdown()
+					uni.showToast({
+						title: '验证码已发送',
+						icon: 'none'
+					})
+				} catch (e) {
+					const msg = (e && (e.msg || e.message)) || ''
+					if (!msg) {
+						uni.showToast({
+							title: '验证码发送失败',
+							icon: 'none'
+						})
+					}
+				} finally {
+					this.smsSending = false
+				}
+			},
+			async onSmsLogin() {
+				if (this.smsLogging) return
+				if (!PHONE_REG.test(this.smsPhone)) {
+					uni.showToast({
+						title: '请输入正确手机号',
+						icon: 'none'
+					})
+					return
+				}
+				if (!this.smsCode) {
+					uni.showToast({
+						title: '请输入验证码',
+						icon: 'none'
+					})
+					return
+				}
+				this.smsLogging = true
+				uni.showLoading({
+					title: '登录中...',
+					mask: true
+				})
+				try {
+					const res = await phoneLogin({
+						phone: this.smsPhone,
+						code: this.smsCode
+					})
+					await this.applyLoginResult(res, 'phone')
+					this.showSmsLogin = false
+					this.afterLogin()
+				} catch (e) {
+					const msg = (e && (e.msg || e.message)) || ''
+					if (!msg) {
+						uni.showToast({
+							title: '登录失败',
+							icon: 'none'
+						})
+					}
+				} finally {
+					this.smsLogging = false
+					uni.hideLoading()
+				}
+			},
+			async applyLoginResult(res, loginType) {
+				saveLoginSession(res || {}, loginType)
+				try {
+					const info = await getUserInfo()
+					saveLoginSession(info || {}, loginType)
+				} catch (e) {}
 			},
 			onWxLogin() {
 				if (this.showFallback && !this.ensureAgree()) return
@@ -171,22 +322,17 @@
 				})
 				try {
 					const res = await exchangeLoginByShanYanToken(shanyanToken)
-					uni.hideLoading()
-					const isFirstLogin = !uni.getStorageSync('onboardingDone')
-					uni.setStorageSync('token', (res && res.token) || shanyanToken)
-					uni.setStorageSync('loginType', 'phone')
-					uni.setStorageSync('isFirstLogin', isFirstLogin)
-					if (res && res.phone) {
-						uni.setStorageSync('phone', res.phone)
-					}
+					await this.applyLoginResult(res, 'phone')
 					this.afterLogin()
 				} catch (e) {
-					uni.hideLoading()
 					this.showFallback = true
+					const msg = (e && (e.msg || e.message)) || '登录失败'
 					uni.showToast({
-						title: (e && e.message) || '登录失败',
+						title: String(msg).slice(0, 40),
 						icon: 'none'
 					})
+				} finally {
+					uni.hideLoading()
 				}
 			},
 			doWxLogin() {
@@ -194,7 +340,6 @@
 					title: '登录中...',
 					mask: true
 				})
-				// 微信登录后续对接；先保持原 mock 流程
 				setTimeout(() => {
 					uni.hideLoading()
 					const isFirstLogin = !uni.getStorageSync('onboardingDone')
@@ -238,7 +383,6 @@
 		}
 		.container{
 			width: 100%;
-			height: 30%;
 			position: absolute;
 			text-align: center;
 			bottom: 60rpx;
@@ -280,8 +424,17 @@
 				text-align: center;
 				line-height: 96rpx;
 				border-radius: 32rpx;
-				margin: 30rpx 0;
+				margin: 30rpx 0 20rpx;
 				box-sizing: border-box;
+			}
+			.smsEntry{
+				width: 100%;
+				height: 80rpx;
+				color: #2C89FF;
+				text-align: center;
+				line-height: 80rpx;
+				font-size: 28rpx;
+				margin-bottom: 20rpx;
 			}
 		}
 	}
@@ -303,5 +456,70 @@
 				color:#2C89FF;
 			}
 		}
+	}
+	.sms-sheet{
+		padding: 40rpx 32rpx 48rpx;
+		.sms-title{
+			font-size: 36rpx;
+			font-weight: bold;
+			color: #09090D;
+			text-align: center;
+		}
+		.sms-sub{
+			margin-top: 12rpx;
+			font-size: 24rpx;
+			color: #999;
+			text-align: center;
+		}
+		.sms-field{
+			margin-top: 28rpx;
+			height: 96rpx;
+			background: #F5F6F8;
+			border-radius: 24rpx;
+			padding: 0 28rpx;
+			display: flex;
+			align-items: center;
+			input{
+				flex: 1;
+				height: 96rpx;
+				font-size: 30rpx;
+				color: #09090D;
+			}
+		}
+		.sms-code-row{
+			.sms-send{
+				flex-shrink: 0;
+				padding-left: 20rpx;
+				font-size: 26rpx;
+				color: #2C89FF;
+				&.disabled{
+					color: #999;
+				}
+			}
+		}
+		.sms-submit{
+			margin-top: 40rpx;
+			width: 100%;
+			height: 96rpx;
+			position: relative;
+			.sms-submit-bg{
+				width: 100%;
+				height: 100%;
+			}
+			.sms-submit-text{
+				position: absolute;
+				left: 0;
+				top: 0;
+				width: 100%;
+				height: 96rpx;
+				line-height: 96rpx;
+				text-align: center;
+				color: #fff;
+				font-size: 30rpx;
+			}
+		}
+	}
+	.sms-placeholder{
+		color: #B8B8B8;
 	}
 </style>

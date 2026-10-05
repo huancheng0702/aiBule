@@ -97,6 +97,18 @@
     "mp-toutiao" : {
         "usingComponents" : true
     },
+    "h5" : {
+        "devServer" : {
+            "https" : false,
+            "proxy" : {
+                "/appApi" : {
+                    "target" : "https://fx.tailunkaluo.com",
+                    "changeOrigin" : true,
+                    "secure" : false
+                }
+            }
+        }
+    },
     "uniStatistics" : {
         "enable" : false
     },

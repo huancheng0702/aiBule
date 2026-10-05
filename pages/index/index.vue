@@ -90,7 +90,7 @@
 
 <style scoped>
 	.page {
-		min-height: 100vh;
+		height: 100vh;
 		background: #000000;
 		box-sizing: border-box;
 		padding-bottom: calc(128rpx + constant(safe-area-inset-bottom));
@@ -98,7 +98,7 @@
 	}
 
 	.page-body {
-		min-height: 100%;
+		height: 100%;
 	}
 
 	.tabbar-wrap {

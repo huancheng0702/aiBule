@@ -695,6 +695,7 @@
 		min-height: 100%;
 		padding: 0 28rpx 40rpx;
 		box-sizing: border-box;
+		padding-bottom: 140rpx;
 		background: #000000;
 		color: #ffffff;
 	}

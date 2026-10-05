@@ -4,22 +4,22 @@
 		"qiun-data-charts": "@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue"
 	},
 	"pages": [{
-			"path": "pages/index/index",
+			"path": "pages/login",
 			"style": {
 				"navigationBarTitleText": "",
 				"navigationStyle": "custom",
-				"navigationBarTextStyle": "white",
-				"backgroundColor": "#000000",
 				"app-plus": {
 					"bounce": "none"
 				}
 			}
 		},
 		{
-			"path": "pages/login",
+			"path": "pages/index/index",
 			"style": {
 				"navigationBarTitleText": "",
 				"navigationStyle": "custom",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#000000",
 				"app-plus": {
 					"bounce": "none"
 				}

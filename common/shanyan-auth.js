@@ -5,6 +5,8 @@
  * 使用前请替换 SHANYAN_APP_ID，并准备服务端置换手机号接口。
  */
 
+import { oneKeyLogin } from '@/common/api/auth.js'
+
 // #ifdef APP-PLUS
 import { ShanYanSDKModule } from '@/uni_modules/cl-shanyan'
 // #endif
@@ -51,16 +53,11 @@ export function setPrivacyAgreed(val = true) {
 }
 
 /**
- * 置换业务登录态。后端就绪后在此对接真实接口。
- * @param {string} shanyanToken 闪验一键登录 token
- * @returns {Promise<{token: string, phone?: string}>}
+ * 置换业务登录态：闪验 token -> 服务端 oneKeyLogin
  */
 export function exchangeLoginByShanYanToken(shanyanToken) {
-	// TODO: 换成真实接口，例如：
-	// return uni.request({ url: '.../login/onekey', method: 'POST', data: { token: shanyanToken } })
-	return Promise.resolve({
-		token: `mock-shanyan-${shanyanToken.slice(0, 8)}`,
-		phone: ''
+	return oneKeyLogin({
+		token: shanyanToken
 	})
 }
 

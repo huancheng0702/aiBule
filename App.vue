@@ -1,9 +1,11 @@
 <script>
 	import BleService from '@/common/ble-service.js'
+	import { applyLaunchAuth } from '@/common/auth.js'
 
 	export default {
 		onLaunch: function() {
 			console.log('App Launch')
+			applyLaunchAuth()
 			BleService.bootstrap()
 			BleService.tryAutoReconnect().catch((e) => {
 				console.log('[App] auto reconnect on launch', e && e.message)

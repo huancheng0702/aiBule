@@ -10,7 +10,7 @@
 			<picker mode="date" :value="startDate" :end="todayStr" @change="onStartDateChange">
 				<view class="form-row border">
 					<!-- 粉色爱心图标，自行补充 src -->
-					<image class="row-icon" src="/static/jingqiStart.png" mode="aspectFit"></image>
+					<image class="row-icon" src="/static/xinlv.png" mode=""></image>
 					<view class="row-main">
 						<text class="row-label">最近经期开始日</text>
 						<text class="row-hint">选择最近一次开始日期</text>
@@ -26,7 +26,7 @@
 			<picker mode="selector" :range="durationOptions" :value="durationIndex" @change="onDurationChange">
 				<view class="form-row border">
 					<!-- 紫色水滴图标，自行补充 src -->
-					<image class="row-icon" src="/static/jingqiDays.png" mode="aspectFit"></image>
+					<image class="row-icon" src="/static/peiShuidi.png" mode=""></image>
 					<view class="row-main">
 						<text class="row-label">经期持续</text>
 						<text class="row-hint">通常为3-7天</text>
@@ -42,7 +42,7 @@
 			<picker mode="selector" :range="cycleOptions" :value="cycleIndex" @change="onCycleChange">
 				<view class="form-row">
 					<!-- 青色日历图标，自行补充 src -->
-					<image class="row-icon" src="/static/jingqiCycle.png" mode="aspectFit"></image>
+					<image class="row-icon" src="/static/peiDate.png" mode=""></image>
 					<view class="row-main">
 						<text class="row-label">平均周期</text>
 						<text class="row-hint">通常为21-35天</text>
@@ -58,7 +58,7 @@
 		<view class="footer">
 			<view class="start-btn" @click="onStart">
 				<!-- 按钮背景图，自行补充 src -->
-				<image class="start-btn-bg" src="/static/confirmBg.png" mode="scaleToFill"></image>
+				<image class="start-btn-bg" src="/static/btnBan.png" mode=""></image>
 				<text class="start-btn-text">开始使用</text>
 			</view>
 		</view>
@@ -66,6 +66,8 @@
 </template>
 
 <script>
+	import { getPeriodStatistics, initPeriod } from '@/common/api/period.js'
+
 	function pad(n) {
 		return String(n).padStart(2, '0')
 	}
@@ -76,7 +78,7 @@
 
 	export default {
 		data() {
-			const now = new Date(2026, 7, 12)
+			const now = new Date()
 			const durationOptions = []
 			for (let i = 1; i <= 15; i++) durationOptions.push(`${i} 天`)
 			const cycleOptions = []
@@ -87,7 +89,8 @@
 				cycle: 28,
 				durationOptions,
 				cycleOptions,
-				todayStr: toPickerValue(new Date())
+				todayStr: toPickerValue(now),
+				saving: false
 			}
 		},
 		computed: {
@@ -105,7 +108,25 @@
 				return idx < 0 ? 13 : idx
 			}
 		},
+		onShow() {
+			this.todayStr = toPickerValue(new Date())
+			this.loadStatistics()
+		},
 		methods: {
+			async loadStatistics() {
+				try {
+					const stats = await getPeriodStatistics()
+					if (!stats) return
+					const start = stats.lastStartDate || stats.startDate
+					if (start) this.startDate = String(start).slice(0, 10)
+					if (Number(stats.duration) > 0) this.duration = Number(stats.duration)
+					if (Number(stats.cycleLength || stats.cycle) > 0) {
+						this.cycle = Number(stats.cycleLength || stats.cycle)
+					}
+				} catch (e) {
+					console.log('[setPeriod] statistics failed', e && (e.msg || e.message))
+				}
+			},
 			onStartDateChange(e) {
 				this.startDate = e.detail.value
 			},
@@ -117,15 +138,33 @@
 				const idx = Number(e.detail.value)
 				this.cycle = parseInt(this.cycleOptions[idx], 10)
 			},
-			onStart() {
-				uni.setStorageSync('periodSetting', {
-					startDate: this.startDate,
-					duration: this.duration,
-					cycle: this.cycle
-				})
-				uni.redirectTo({
-					url: '/pages/index/period'
-				})
+			async onStart() {
+				if (this.saving) return
+				if (!this.startDate) {
+					uni.showToast({ title: '请选择最近经期开始日', icon: 'none' })
+					return
+				}
+				this.saving = true
+				try {
+					await initPeriod({
+						lastStartDate: this.startDate,
+						duration: this.duration,
+						cycleLength: this.cycle
+					})
+					const pages = getCurrentPages()
+					const prev = pages.length > 1 ? pages[pages.length - 2] : null
+					if (prev && prev.route === 'pages/index/period') {
+						uni.navigateBack()
+					} else {
+						uni.redirectTo({
+							url: '/pages/index/period'
+						})
+					}
+				} catch (e) {
+					console.log('[setPeriod] init failed', e && (e.msg || e.message))
+				} finally {
+					this.saving = false
+				}
 			}
 		}
 	}
@@ -251,7 +290,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: linear-gradient(90deg, #1a53ec 0%, #2f7bff 50%, #4da3ff 100%);
 	}
 
 	.start-btn-bg {

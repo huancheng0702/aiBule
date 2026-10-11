@@ -207,6 +207,7 @@
 			"path": "pages/index/period",
 			"style": {
 				"navigationBarTitleText": "经期",
+				"navigationStyle": "custom",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
 				"navigationBarTextStyle": "white",
@@ -315,6 +316,66 @@
 			"path": "pages/mine/bluePower",
 			"style": {
 				"navigationBarTitleText": "蓝牙权限",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/settingPrivacy",
+			"style": {
+				"navigationBarTitleText": "设置与隐私",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/contentView",
+			"style": {
+				"navigationBarTitleText": "内容详情",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/aboutRing",
+			"style": {
+				"navigationBarTitleText": "关于AI智能戒指",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/helpFeedback",
+			"style": {
+				"navigationBarTitleText": "帮助与反馈",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/mine/webview",
+			"style": {
+				"navigationBarTitleText": "",
 				"backgroundColor": "#000000",
 				"navigationBarBackgroundColor": "#000000",
 				"navigationBarTextStyle": "white",

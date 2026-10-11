@@ -9,6 +9,9 @@
 		<!-- 健康画像 -->
 		<view class="portrait-card" @click="navHealth">
 			<image src="/static/helthTopImg.png" class="cardImg" mode=""></image>
+			<view class="porText">
+				<text class="porStatus">{{ portraitStatus }}</text>
+			</view>
 		</view>
 
 		<!-- 最近数据 -->
@@ -27,7 +30,7 @@
 					<image class="mini-icon" mode="aspectFit"></image>
 					<view class="mini-info">
 						<text class="mini-title">异常记录</text>
-						<text class="mini-desc">1 条已处理</text>
+						<text class="mini-desc">{{ abnormalDesc }}</text>
 					</view>
 				</view>
 				<view class="mini-card" @click="navRecord(0)">
@@ -40,31 +43,103 @@
 </template>
 
 <script>
+	import { getHealthCenterIndex } from '@/common/api/healthCenter.js'
+	import { getAbnormalList } from '@/common/api/healthAbnormal.js'
+	import { getWeeklyList } from '@/common/api/healthReport.js'
+
+	function asArray(data) {
+		if (!data) return []
+		if (Array.isArray(data)) return data
+		if (Array.isArray(data.list)) return data.list
+		if (Array.isArray(data.rows)) return data.rows
+		if (Array.isArray(data.records)) return data.records
+		return []
+	}
+
+	function pickText(...vals) {
+		for (let i = 0; i < vals.length; i++) {
+			const v = vals[i]
+			if (v != null && String(v).trim() !== '') return String(v).trim()
+		}
+		return ''
+	}
+
 	export default {
 		name: 'TabHealth',
 		data() {
 			return {
-				statusBarHeight: 20
+				statusBarHeight: 20,
+				portraitStatus: '加载中...',
+				portraitDesc: '',
+				portraitScore: '',
+				abnormalDesc: '暂无异常记录',
+				reportDesc: ''
 			}
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+			this.loadData()
 		},
-		methods:{
-			navHealth(){
+		methods: {
+			onTabShow() {
+				this.loadData()
+			},
+			async loadData() {
+				this.loadPortrait()
+				this.loadAbnormal()
+				this.loadReport()
+			},
+			async loadPortrait() {
+				try {
+					const data = await getHealthCenterIndex()
+					if (!data || typeof data !== 'object') return
+					const score = data.score != null ? data.score : (data.totalScore != null ? data.totalScore : data.healthScore)
+					if (score != null && score !== '') this.portraitScore = Math.round(Number(score))
+					this.portraitStatus = pickText(data.status, data.statusText, data.summaryStatus, data.title) || '整体状态良好'
+					this.portraitDesc = pickText(data.description, data.desc, data.summary, data.summaryDesc, data.content, data.advice)
+				} catch (e) {
+					this.portraitStatus = '暂无健康解读'
+					this.portraitDesc = ''
+				}
+			},
+			async loadAbnormal() {
+				try {
+					const data = await getAbnormalList({ pageNum: 1, pageSize: 1 })
+					const total = Number(data && (data.total != null ? data.total : data.count))
+					const list = asArray(data)
+					if (!Number.isNaN(total) && total >= 0) {
+						this.abnormalDesc = total > 0 ? `${total} 条异常` : '暂无异常记录'
+						return
+					}
+					this.abnormalDesc = list.length ? `${list.length} 条异常` : '暂无异常记录'
+				} catch (e) {
+					this.abnormalDesc = '暂无异常记录'
+				}
+			},
+			async loadReport() {
+				try {
+					const data = await getWeeklyList({ pageNum: 1, pageSize: 1 })
+					const list = asArray(data)
+					const first = list[0]
+					if (first) {
+						this.reportDesc = pickText(first.title, first.date, first.weekRange, first.summary)
+					}
+				} catch (e) {}
+			},
+			navHealth() {
 				uni.navigateTo({
-					url:'/pages/health/healthBody'
+					url: '/pages/health/healthBody'
 				})
 			},
-			navAiReport(){
+			navAiReport() {
 				uni.navigateTo({
-					url:'/pages/health/aiReport'
+					url: '/pages/health/aiReport'
 				})
 			},
-			navRecord(i){
+			navRecord(i) {
 				uni.navigateTo({
-					url:'/pages/health/healthRecord?type='+i
+					url: '/pages/health/healthRecord?type=' + i
 				})
 			}
 		}
@@ -99,10 +174,7 @@
 		line-height: 60rpx;
 		color: #ffffff;
 	}
-	.cardImg{
-		width: 100%;
-		height: 497rpx;
-	}
+	
 	.portrait-left {
 		position: relative;
 		z-index: 2;
@@ -323,5 +395,47 @@
 		line-height: 36rpx;
 		color: rgba(255, 255, 255, 0.45);
 		flex-shrink: 0;
+	}
+	.portrait-card{
+		position: relative;
+		width: 100%;
+		height: 497rpx;
+	}
+	.porText{
+		width: 100%;
+		height: 100%;
+		color: #FFFFFF;
+		font-size: 48rpx;
+		position: absolute;
+		top: 30%;
+		left: 30rpx;
+		display: flex;
+		flex-direction: column;
+	}
+	.porStatus {
+		font-size: 48rpx;
+		font-weight: 700;
+		line-height: 60rpx;
+		color: #FFFFFF;
+	}
+	.porDesc {
+		margin-top: 12rpx;
+		max-width: 380rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255,255,255,0.72);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.porScore {
+		margin-top: 8rpx;
+		font-size: 28rpx;
+		line-height: 38rpx;
+		color: rgba(255,255,255,0.85);
+	}
+	.cardImg{
+		width: 100%;
+		height: 100%;
 	}
 </style>

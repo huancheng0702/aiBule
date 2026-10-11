@@ -45,15 +45,16 @@
 					v-for="(item, index) in parseResult.items"
 					:key="index"
 					class="parse-item"
+					:class="{ long: (item.value || '').length > 18 }"
 				>
 					<!-- 指标卡片背景图，自行补充 src -->
 					<image class="parse-item-bg" mode="aspectFill"></image>
 					<view class="parse-item-left">
-						<text class="parse-item-name">{{ item.name }}</text>
-						<text class="parse-item-ref">{{ item.ref }}</text>
-						<text class="parse-item-status">{{ item.status }}</text>
+						<view class="parse-item-name">{{ item.name }}</view>
+						<view class="parse-item-ref">{{ item.ref }}</view>
+						<view class="parse-item-status">{{ item.status }}</view>
 					</view>
-					<text class="parse-item-value">{{ item.value }}</text>
+					<view class="parse-item-value">{{ item.value }}</view>
 				</view>
 
 				<view class="parse-advice">
@@ -176,8 +177,47 @@
 </template>
 
 <script>
+	import { getReportHistory, getReportDetail, analyzeReportStreamByUrl } from '@/common/api/ai.js'
+	import { uploadFile } from '@/common/api/file.js'
+
 	function pad2(n) {
 		return String(n).padStart(2, '0')
+	}
+
+	function asArray(data) {
+		if (!data) return []
+		if (Array.isArray(data)) return data
+		if (Array.isArray(data.list)) return data.list
+		if (Array.isArray(data.rows)) return data.rows
+		if (Array.isArray(data.records)) return data.records
+		return []
+	}
+
+	function pickText(...vals) {
+		for (let i = 0; i < vals.length; i++) {
+			const v = vals[i]
+			if (v != null && String(v).trim() !== '') return String(v).trim()
+		}
+		return ''
+	}
+
+	function toDayMonth(dateStr) {
+		const s = String(dateStr || '').slice(0, 10)
+		const parts = s.split('-')
+		if (parts.length >= 3) return { day: String(Number(parts[2])), month: `${Number(parts[1])}月` }
+		const now = new Date()
+		return { day: pad2(now.getDate()), month: `${now.getMonth() + 1}月` }
+	}
+
+	function uploadToUrl(filePath) {
+		return new Promise((resolve, reject) => {
+			uploadFile(filePath).then((d) => {
+				if (typeof d === 'string' && d) { resolve(d); return }
+				const url = d && (d.url || d.fileUrl || d.path || d.data) || ''
+				if (url) resolve(url)
+				else reject(new Error('上传失败'))
+			}).catch(reject)
+		})
 	}
 
 	export default {
@@ -200,12 +240,11 @@
 						icon: '/static/pdfUp.png'
 					}
 				],
-				reportList: [{
-					day: '26',
-					month: '8月',
-					title: '年度体检报告',
-					desc: '12项指标 · 2项关注'
-				}],
+				reportList: [],
+				reportLoading: false,
+				streaming: false,
+				streamItems: [],
+				streamAdvice: '',
 				parseResult: null,
 				showDetailPopup: false,
 				detailPopup: {
@@ -215,7 +254,35 @@
 				}
 			}
 		},
+		onLoad() {
+			this.loadHistory()
+		},
 		methods: {
+			async loadHistory() {
+				if (this.reportLoading) return
+				this.reportLoading = true
+				try {
+					const data = await getReportHistory()
+					const list = asArray(data)
+					this.reportList = list.map((row) => {
+						const dm = toDayMonth(pickText(row.createTime, row.create_time, row.date, row.reportDate))
+						const items = asArray(row.items || row.itemsJson)
+						const title = pickText(row.title, row.reportName, row.name) || '体检报告'
+						return {
+							reportId: row.reportId != null ? row.reportId : (row.id != null ? row.id : null),
+							day: dm.day,
+							month: dm.month,
+							title,
+							desc: items.length ? `${items.length}项指标` : pickText(row.summary, row.analysis, row.desc) || '已解析',
+							_raw: row
+						}
+					})
+				} catch (e) {
+					this.reportList = []
+				} finally {
+					this.reportLoading = false
+				}
+			},
 			onUpload() {
 				this.showUploadPopup = true
 			},
@@ -244,11 +311,7 @@
 						const path = (res.tempFilePaths && res.tempFilePaths[0]) || ''
 						if (!path) return
 						this.closeUploadPopup()
-						this.addReport({
-							title: sourceType[0] === 'camera' ? '拍照报告' : '相册报告',
-							path,
-							kind: 'image'
-						})
+						this.uploadAndAnalyze(path, sourceType[0] === 'camera' ? '拍照报告' : '相册报告')
 					},
 					fail: (err) => {
 						if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
@@ -269,136 +332,213 @@
 						const file = (res.tempFiles && res.tempFiles[0]) || null
 						if (!file) return
 						this.closeUploadPopup()
-						this.addReport({
-							title: (file.name || 'PDF报告').replace(/\.pdf$/i, ''),
-							path: file.path,
-							kind: 'pdf'
-						})
+						this.uploadAndAnalyze(file.path, (file.name || 'PDF报告').replace(/\.pdf$/i, ''))
 					},
 					fail: (err) => {
 						if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
-						uni.showToast({
-							title: '选择PDF失败',
-							icon: 'none'
-						})
+						uni.showToast({ title: '选择PDF失败', icon: 'none' })
 					}
 				})
 				// #endif
 
-				// #ifndef MP-WEIXIN
+				// #ifdef APP-PLUS
+				if (typeof plus !== 'undefined' && plus.io && plus.io.chooseFile) {
+					plus.io.chooseFile({
+						multiple: false
+					}, (e) => {
+						const path = (e && e.files && e.files[0]) || ''
+						if (!path) return
+						this.closeUploadPopup()
+						const name = String(path.split('/').pop() || 'PDF报告').replace(/\.pdf$/i, '')
+						this.uploadAndAnalyze(path, name)
+					}, () => {
+						uni.showToast({ title: '选择PDF失败', icon: 'none' })
+					})
+					return
+				}
 				if (typeof uni.chooseFile === 'function') {
 					uni.chooseFile({
 						count: 1,
-						type: 'all',
 						extension: ['.pdf'],
 						success: (res) => {
 							const file = (res.tempFiles && res.tempFiles[0]) || null
-							if (!file) return
+							if (!file || !file.path) return
 							this.closeUploadPopup()
-							this.addReport({
-								title: (file.name || 'PDF报告').replace(/\.pdf$/i, ''),
-								path: file.path || '',
-								kind: 'pdf'
-							})
+							this.uploadAndAnalyze(file.path, (file.name || 'PDF报告').replace(/\.pdf$/i, ''))
 						},
 						fail: (err) => {
 							if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
-							uni.showToast({
-								title: '选择PDF失败',
-								icon: 'none'
-							})
+							uni.showToast({ title: '选择PDF失败', icon: 'none' })
 						}
 					})
 					return
 				}
-				uni.showToast({
-					title: '当前端暂不支持PDF上传',
-					icon: 'none'
-				})
+				uni.showToast({ title: '当前端暂不支持PDF上传', icon: 'none' })
+				// #endif
+
+				// #ifdef H5
+				if (typeof uni.chooseFile === 'function') {
+					uni.chooseFile({
+						count: 1,
+						extension: ['.pdf'],
+						success: (res) => {
+							const file = (res.tempFiles && res.tempFiles[0]) || null
+							if (!file || !file.path) return
+							this.closeUploadPopup()
+							this.uploadAndAnalyze(file.path, (file.name || 'PDF报告').replace(/\.pdf$/i, ''))
+						},
+						fail: (err) => {
+							if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
+							uni.showToast({ title: '选择PDF失败', icon: 'none' })
+						}
+					})
+					return
+				}
+				uni.showToast({ title: '当前端暂不支持PDF上传', icon: 'none' })
 				// #endif
 			},
-			addReport({
-				title,
-				path,
-				kind
-			}) {
-				const now = new Date()
-				const item = {
-					day: pad2(now.getDate()),
-					month: `${now.getMonth() + 1}月`,
-					title,
-					desc: kind === 'pdf' ? 'PDF报告 · 待解读' : '图片报告 · 待解读',
-					path,
-					kind
-				}
-				this.reportList.unshift(item)
-				this.runParse(item)
-			},
-			runParse(item) {
-				uni.showLoading({
+			async uploadAndAnalyze(localPath, title) {
+				if (!localPath) return
+				const reportTitle = title || '体检报告'
+				this.streaming = true
+				this.streamItems = []
+				this.streamAdvice = ''
+				this.parseResult = {
+					category: '体检报告',
 					title: 'AI解析中...',
-					mask: true
-				})
-				setTimeout(() => {
-					uni.hideLoading()
-					this.parseResult = {
-						category: '检测报告 · 内分泌',
-						title: '2项需要关注',
-						sourceTitle: item.title || '年度体检报告',
-						path: item.path,
-						kind: item.kind,
-						items: [{
-								name: '总胆固醇',
-								ref: '参考2.50-5.20',
-								status: '轻度偏高',
-								value: '5.8 mmol/l'
-							},
-							{
-								name: '维生素 D',
-								ref: '参考2.50-5.20',
-								status: '低于参考',
-								value: '5.8 mmol/l'
+					sourceTitle: reportTitle,
+					path: localPath,
+					reportId: null,
+					items: [],
+					advice: '',
+					detail: null
+				}
+				uni.showLoading({ title: 'AI解析中...', mask: true })
+				try {
+					const imageUrl = await uploadToUrl(localPath)
+					await analyzeReportStreamByUrl(imageUrl, (evt) => {
+						if (!evt) return
+						if (evt.type === 'item') {
+							const d = evt.data || {}
+							const row = {
+								name: pickText(d.key, d.name, d.indicator) || '指标',
+								ref: pickText(d.ref, d.reference, d.range),
+								status: '',
+								value: pickText(d.value, d.detectValue, d.val)
 							}
-						],
-						advice: '结合7月报告，总胆固醇连续两次轻度偏高；建议携带原报告咨询专业医生。',
-						detail: {
-							subText: `${item.title || '年度体检报告'} · 12项指标`,
-							alertText: '2项需关注',
-							cells: [{
-									label: '报告日期',
-									value: '2026-07-26',
-									icon: '/static/baogaoDate.png'
-								},
-								{
-									label: '报告机构',
-									value: '体检中心',
-									icon: '/static/tijiancenter.png'
-								},
-								{
-									label: '正常项目',
-									value: '10项',
-									icon: '/static/success.png'
-								},
-								{
-									label: '异常项目',
-									value: '2项',
-									icon: '/static/yichang.png'
+							this.streamItems.push(row)
+							this.parseResult.items = this.streamItems.slice()
+							this.parseResult.title = `${this.streamItems.length}项指标识别中...`
+						} else if (evt.type === 'delta') {
+							this.streamAdvice += (evt.data && evt.data.content) || ''
+							this.parseResult.advice = this.streamAdvice
+						} else if (evt.type === 'done') {
+							const full = evt.data || {}
+							const finalItems = asArray(full.items)
+							if (finalItems.length) {
+								this.streamItems = finalItems.map((it) => ({
+									name: pickText(it.key, it.name, it.indicator) || '指标',
+									ref: pickText(it.ref, it.reference, it.range),
+									status: pickText(it.status, it.level, it.flag),
+									value: pickText(it.value, it.detectValue, it.val)
+								}))
+							}
+							const analysis = pickText(full.analysis, full.advice, full.suggestion)
+							if (analysis) this.streamAdvice = analysis
+							const abnormalCount = this.streamItems.filter((it) => /偏高|偏低|异常|关注|阳性/.test(it.status || '')).length
+							this.parseResult = {
+								category: pickText(full.category) || '体检报告',
+								title: abnormalCount ? `${abnormalCount}项需要关注` : `${this.streamItems.length}项指标`,
+								sourceTitle: reportTitle,
+								path: localPath,
+								reportId: full.reportId != null ? full.reportId : null,
+								items: this.streamItems.slice(),
+								advice: this.streamAdvice || '请结合专业医生意见解读。',
+								detail: {
+									subText: `${reportTitle} · ${this.streamItems.length}项指标`,
+									alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
+									cells: [
+										{ label: '指标总数', value: `${this.streamItems.length}项`, icon: '/static/baogaoDate.png' },
+										{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
+										{ label: '正常项目', value: `${Math.max(this.streamItems.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
+										{ label: '报告来源', value: reportTitle, icon: '/static/tijiancenter.png' }
+									]
 								}
-							]
+							}
+							this.loadHistory()
+						} else if (evt.type === 'error') {
+							throw new Error((evt.data && (evt.data.msg || evt.data.message)) || '解析失败')
 						}
-					}
-					if (item.desc && item.desc.indexOf('待解读') > -1) {
-						item.desc = '12项指标 · 2项关注'
-					}
-					uni.showToast({
-						title: '解析完成',
-						icon: 'success'
 					})
-				}, 800)
+					uni.showToast({ title: '解析完成', icon: 'success' })
+				} catch (e) {
+					uni.showToast({ title: (e && e.message) || '解析失败，请重试', icon: 'none' })
+				} finally {
+					uni.hideLoading()
+					this.streaming = false
+				}
 			},
-			onReportTap(item) {
-				if (this.parseResult && this.parseResult.path === item.path) return
-				this.runParse(item)
+			applyAnalyzeResult(data, meta = {}) {
+				if (!data || typeof data !== 'object') return
+				let rawItems = data.items || data.itemList || data.resultList || data.itemsJson
+				if (typeof rawItems === 'string') {
+					try { rawItems = JSON.parse(rawItems) } catch (e) { rawItems = [] }
+				}
+				// reportText 可能是 "key: value\n..." 文本或 JSON 字符串，兜底解析
+				if ((!rawItems || !rawItems.length) && typeof data.reportText === 'string' && data.reportText) {
+					try {
+						const parsed = JSON.parse(data.reportText)
+						rawItems = Array.isArray(parsed) ? parsed : (parsed.items || parsed.list || [])
+					} catch (e) {
+						rawItems = String(data.reportText).split('\n').map((line) => {
+							const m = String(line).split(/[:：]/)
+							if (m.length < 2) return null
+							return { name: m[0].trim(), value: m.slice(1).join(':').trim() }
+						}).filter(Boolean)
+					}
+				}
+				const items = asArray(rawItems).map((it) => {
+					if (typeof it === 'string') return { name: it, ref: '', status: '', value: '' }
+					return {
+						name: pickText(it.name, it.key, it.indicator, it.title),
+						ref: pickText(it.ref, it.reference, it.range, it.normalRange),
+						status: pickText(it.status, it.level, it.flag, it.result),
+						value: pickText(it.value, it.detectValue, it.val, it.content)
+					}
+				}).filter((it) => it.name || it.value)
+				const analysis = pickText(data.analysis, data.advice, data.suggestion, data.conclusion, data.summary)
+				const abnormalCount = items.filter((it) => /偏高|偏低|异常|关注|阳性/.test(it.status || '')).length
+				this.parseResult = {
+					category: pickText(data.category, data.type) || '体检报告',
+					title: abnormalCount ? `${abnormalCount}项需要关注` : (pickText(data.title) || '解析完成'),
+					sourceTitle: meta.title || '体检报告',
+					path: meta.path,
+					reportId: data.reportId != null ? data.reportId : (data.id != null ? data.id : null),
+					items,
+					advice: analysis || '请结合专业医生意见解读。',
+					detail: {
+						subText: `${meta.title || '体检报告'} · ${items.length}项指标`,
+						alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
+						cells: [
+							{ label: '指标总数', value: `${items.length}项`, icon: '/static/baogaoDate.png' },
+							{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
+							{ label: '正常项目', value: `${Math.max(items.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
+							{ label: '报告来源', value: meta.title || '体检报告', icon: '/static/tijiancenter.png' }
+						]
+					}
+				}
+			},
+			async onReportTap(item) {
+				if (!item || item.reportId == null) return
+				uni.showLoading({ title: '加载中...', mask: true })
+				try {
+					const data = await getReportDetail(item.reportId)
+					this.applyAnalyzeResult(data, { title: item.title, path: '' })
+				} catch (e) {
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				} finally {
+					uni.hideLoading()
+				}
 			},
 			onParseDetail() {
 				if (!this.parseResult || !this.parseResult.detail) return
@@ -421,13 +561,8 @@
 					title: '提示',
 					content: '确定删除该解析报告吗？',
 					success: (res) => {
-						if (!res.confirm || !this.parseResult) return
-						const path = this.parseResult.path
+						if (!res.confirm) return
 						this.parseResult = null
-						const idx = this.reportList.findIndex((row) => row.path === path)
-						if (idx > -1) {
-							this.reportList.splice(idx, 1)
-						}
 					}
 				})
 			},
@@ -617,7 +752,6 @@
 
 	.parse-item {
 		position: relative;
-		overflow: hidden;
 		margin-top: 20rpx;
 		padding: 24rpx 28rpx;
 		border-radius: 20rpx;
@@ -625,6 +759,7 @@
 		border: 1rpx solid rgba(255, 255, 255, 0.06);
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
 		box-sizing: border-box;
 	}
 
@@ -676,6 +811,25 @@
 		line-height: 42rpx;
 		color: #ffffff;
 		flex-shrink: 0;
+		max-width: 55%;
+		text-align: right;
+		word-break: break-all;
+	}
+
+	.parse-item.long {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.parse-item.long .parse-item-value {
+		margin-left: 0;
+		margin-top: 12rpx;
+		max-width: 100%;
+		text-align: left;
+		font-weight: 500;
+		font-size: 26rpx;
+		line-height: 40rpx;
+		white-space: normal;
 	}
 
 	.parse-advice {

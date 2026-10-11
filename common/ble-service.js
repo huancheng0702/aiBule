@@ -2,6 +2,8 @@
  * 全局蓝牙服务：封装 CoolWearBLE，供业务页共用连接态 / 扫描 / 电量
  */
 import CoolWearBLE from '@/common/coolwear-ble.js'
+import { hasLogin } from '@/common/auth.js'
+import { uploadDeviceData } from '@/common/api/deviceData.js'
 
 const STORAGE_KEY = 'connectedDevice'
 const STATUS_MAP = {
@@ -29,6 +31,8 @@ const stateListeners = new Set()
 let eventsBound = false
 let scanTimer = null
 let reconnecting = false
+let lastUploadedSportKey = ''
+let lastUploadedSleepKey = ''
 
 function cloneState() {
 	return {
@@ -303,6 +307,99 @@ function normalizeSleep(data) {
 	}
 }
 
+function formatMeasureTime(value) {
+	if (!value) {
+		const d = new Date()
+		const p = (n) => (n < 10 ? '0' + n : String(n))
+		return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+	}
+	if (typeof value === 'number') {
+		const d = new Date(value < 1e12 ? value * 1000 : value)
+		if (!isNaN(d.getTime())) {
+			const p = (n) => (n < 10 ? '0' + n : String(n))
+			return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+		}
+	}
+	return String(value)
+}
+
+function reportSportToCloud(sport) {
+	if (!sport || !hasLogin()) return
+	const key = [sport.steps, sport.distanceM, sport.calories].join('|')
+	if (key === lastUploadedSportKey) return
+	lastUploadedSportKey = key
+	const device = state.device || {}
+	uploadDeviceData({
+		deviceMac: device.mac || device.id || '',
+		deviceVersion: getFirmware() || '',
+		batteryLevel: getBatteryLevel(),
+		dataList: [{
+			dataType: 'sport',
+			walkSteps: Number(sport.steps) || 0,
+			walkDistance: Number(sport.distanceM) || 0,
+			walkCalories: Number(sport.calories) || 0,
+			measureTime: formatMeasureTime(sport.time || sport.updatedAt),
+			source: '1'
+		}]
+	}).catch((e) => {
+		if (lastUploadedSportKey === key) lastUploadedSportKey = ''
+		console.log('[ble-service] upload sport failed', e && (e.msg || e.message))
+	})
+}
+
+function sleepTypeOfStage(stage) {
+	if (stage === 'deep') return 2
+	if (stage === 'awake') return 4
+	return 3
+}
+
+function buildSleepUploadList(sleep) {
+	const list = []
+	const start = formatMeasureTime(sleep.startTime || sleep.updatedAt)
+	const end = formatMeasureTime(sleep.endTime || sleep.updatedAt)
+	list.push({
+		dataType: 'sleep',
+		sleepType: 1,
+		measureTime: start,
+		endTime: end,
+		source: '1'
+	})
+	let cursor = Number(sleep.startTime) || 0
+	;(sleep.segments || []).forEach((seg) => {
+		const durSec = Math.max(0, Math.round(Number(seg.dur) || 0) * 60)
+		if (!durSec) return
+		const from = cursor
+		const to = cursor + durSec
+		list.push({
+			dataType: 'sleep',
+			sleepType: sleepTypeOfStage(seg.stage),
+			measureTime: formatMeasureTime(from),
+			endTime: formatMeasureTime(to),
+			source: '1'
+		})
+		cursor = to
+	})
+	return list
+}
+
+function reportSleepToCloud(sleep) {
+	if (!sleep || !hasLogin()) return
+	if (!(Number(sleep.totalMin) > 0) && !sleep.startTime) return
+	const key = [sleep.startTime, sleep.endTime, sleep.totalMin].join('|')
+	if (key === lastUploadedSleepKey) return
+	lastUploadedSleepKey = key
+	const device = state.device || {}
+	uploadDeviceData({
+		deviceMac: device.mac || device.id || '',
+		deviceVersion: getFirmware() || '',
+		batteryLevel: getBatteryLevel(),
+		dataList: buildSleepUploadList(sleep)
+	}).catch((e) => {
+		if (lastUploadedSleepKey === key) lastUploadedSleepKey = ''
+		console.log('[ble-service] upload sleep failed', e && (e.msg || e.message))
+	})
+}
+
 function emit() {
 	const snapshot = cloneState()
 	stateListeners.forEach((fn) => {
@@ -537,6 +634,7 @@ function bindEvents() {
 		if (sport) {
 			state.sport = sport
 			emit()
+			reportSportToCloud(sport)
 		}
 	})
 
@@ -546,6 +644,7 @@ function bindEvents() {
 		if (sleep) {
 			state.sleep = sleep
 			emit()
+			reportSleepToCloud(sleep)
 		}
 	})
 }

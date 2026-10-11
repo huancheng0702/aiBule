@@ -157,7 +157,7 @@
 							<text class="cal-nav-arrow">‹</text>
 						</view>
 						<text class="cal-title">{{ calendarTitle }}</text>
-						<view class="cal-nav" @click="onCalNextMonth">
+						<view class="cal-nav" :class="{ disabled: !canCalNextMonth }" @click="onCalNextMonth">
 							<text class="cal-nav-arrow">›</text>
 						</view>
 					</view>
@@ -171,8 +171,8 @@
 							v-for="(cell, index) in calendarCells"
 							:key="index"
 							class="cal-cell"
-							:class="{ empty: !cell.day, active: cell.active }"
-							@click="cell.day && onSelectCalDay(cell.day)"
+							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
+							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)"
 						>
 							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
 							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
@@ -259,6 +259,13 @@
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
 	import CoolWearBLE from '@/common/coolwear-ble.js'
 	import BleService from '@/common/ble-service.js'
+	import { hasLogin } from '@/common/auth.js'
+	import {
+		getDeviceLatest,
+		getStressTrend,
+		getDeviceDataList,
+		uploadDeviceData
+	} from '@/common/api/deviceData.js'
 
 	const CHART_H = 220
 	const Y_MIN = 0
@@ -325,39 +332,125 @@
 		return '压力偏高'
 	}
 
+	function pad2(n) {
+		return n < 10 ? '0' + n : String(n)
+	}
+
+	function dateToYmd(d) {
+		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+	}
+
+	function startOfDay(d) {
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+	}
+
+	function isFutureDate(year, month, day) {
+		return startOfDay(new Date(year, month, day)).getTime() > startOfDay(new Date()).getTime()
+	}
+
+	function parseDateTime(value) {
+		if (!value) return null
+		if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+		if (typeof value === 'number') {
+			const d = new Date(value < 1e12 ? value * 1000 : value)
+			return isNaN(d.getTime()) ? null : d
+		}
+		const d = new Date(String(value).replace(/-/g, '/').replace('T', ' '))
+		return isNaN(d.getTime()) ? null : d
+	}
+
 	function formatLatestTime(date = new Date()) {
-		const h = String(date.getHours()).padStart(2, '0')
-		const m = String(date.getMinutes()).padStart(2, '0')
-		return `今天 ${h}:${m}`
+		return `今天 ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+	}
+
+	function formatRecordTime(value) {
+		const d = parseDateTime(value)
+		if (!d) return value ? String(value) : '--'
+		const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+		const today = startOfDay(new Date())
+		const that = startOfDay(d)
+		const yest = new Date(today)
+		yest.setDate(today.getDate() - 1)
+		if (that.getTime() === today.getTime()) return '今天 ' + hm
+		if (that.getTime() === yest.getTime()) return '昨天 ' + hm
+		return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm
+	}
+
+	function formatMeasureTime(value) {
+		const d = parseDateTime(value) || new Date()
+		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+			' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds())
+	}
+
+	function createMeasureId() {
+		return 'stress_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10)
+	}
+
+	function sourceText(source) {
+		return String(source) === '2' ? '手动测量' : '戒指采集'
+	}
+
+	function unwrapList(data) {
+		if (Array.isArray(data)) return data
+		if (!data || typeof data !== 'object') return []
+		if (Array.isArray(data.records)) return data.records
+		if (Array.isArray(data.list)) return data.list
+		if (Array.isArray(data.rows)) return data.rows
+		return []
+	}
+
+	function pickStressValue(item) {
+		if (!item) return 0
+		const n = Number(
+			item.stress != null ? item.stress
+				: (item.heartNum != null ? item.heartNum : item.value)
+		)
+		return n > 0 ? n : 0
+	}
+
+	function pickXLabels(times, period) {
+		if (!times.length) {
+			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
+			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
+		}
+		const count = period === 'month' ? 6 : 7
+		if (times.length <= count) return times
+		const out = []
+		for (let i = 0; i < count; i++) {
+			out.push(times[Math.round(i * (times.length - 1) / (count - 1))])
+		}
+		return out
 	}
 
 	export default {
 		data() {
 			return {
-				latestTime: '今天 09:41',
-				latestValue: 72,
-				latestStatus: '当前放松',
+				latestTime: '--',
+				latestValue: '--',
+				latestStatus: '暂无数据',
 				period: 'day',
 				periodList: [
 					{ key: 'day', label: '日' },
 					{ key: 'week', label: '周' },
 					{ key: 'month', label: '月' }
 				],
-				currentDate: new Date(2026, 8, 4),
+				currentDate: new Date(),
 				chartW: 0,
 				chartH: CHART_H,
-				chartValues: [28, 45, 62, 38, 55, 78, 92, 48, 35, 68, 85, 42],
+				chartValues: [],
+				chartTimes: [],
 				yLabels: [120, 90, 60, 30],
-				xLabels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				legendList: [
 					{ color: '#3B82F6', label: '放松' },
 					{ color: '#8B5CF6', label: '正常' },
 					{ color: '#F59E0B', label: '中等' },
 					{ color: '#F472B6', label: '偏高' }
 				],
-				statsMax: 88,
-				statsMin: 88,
-				statsAvg: 73,
+				statsMax: '--',
+				statsMin: '--',
+				statsAvg: '--',
 				chartLeft: 0,
 				touchActive: false,
 				touchIndex: -1,
@@ -375,16 +468,12 @@
 					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
 					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
 				],
-				calYear: 2026,
-				calMonth: 8,
-				calSelectedDay: 4,
+				calYear: new Date().getFullYear(),
+				calMonth: new Date().getMonth(),
+				calSelectedDay: new Date().getDate(),
 				weekLabels: ['一', '二', '三', '四', '五', '六', '日'],
 				tipText: '压力指数综合反映当前身心紧张程度。数值越低表示越放松，建议结合作息、运动与情绪变化长期观察。本设备仅用于健康管理参考，不能用于医疗诊断。',
-				recentList: [
-					{ time: '今天 09:41', source: '戒指采集', duration: '7 小时 32 分' },
-					{ time: '昨天 21:16', source: '戒指采集', duration: '7 小时 32 分' },
-					{ time: '8月6日 08:32', source: '戒指采集', duration: '7 小时 32 分' }
-				]
+				recentList: []
 			}
 		},
 		computed: {
@@ -449,6 +538,7 @@
 			},
 			touchLabel() {
 				if (this.touchIndex < 0) return ''
+				if (this.chartTimes[this.touchIndex]) return this.chartTimes[this.touchIndex]
 				return this.xLabels[this.touchIndex] || String(this.touchIndex + 1)
 			},
 			chartTipStyle() {
@@ -470,6 +560,12 @@
 			calendarTitle() {
 				return `${this.calYear}年${this.calMonth + 1}月`
 			},
+			canCalNextMonth() {
+				const today = new Date()
+				if (this.calYear > today.getFullYear()) return false
+				if (this.calYear === today.getFullYear() && this.calMonth >= today.getMonth()) return false
+				return true
+			},
 			calendarCells() {
 				const year = this.calYear
 				const month = this.calMonth
@@ -477,16 +573,18 @@
 				const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
-					cells.push({ day: 0, active: false })
+					cells.push({ day: 0, active: false, disabled: false })
 				}
 				for (let d = 1; d <= daysInMonth; d++) {
+					const disabled = isFutureDate(year, month, d)
 					cells.push({
 						day: d,
-						active: d === this.calSelectedDay
+						active: !disabled && d === this.calSelectedDay,
+						disabled
 					})
 				}
 				while (cells.length % 7 !== 0) {
-					cells.push({ day: 0, active: false })
+					cells.push({ day: 0, active: false, disabled: false })
 				}
 				return cells
 			}
@@ -498,6 +596,9 @@
 		},
 		onReady() {
 			this.measureChart(0)
+		},
+		onShow() {
+			this.loadPageData()
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -523,6 +624,90 @@
 					})
 					.exec()
 			},
+			async loadPageData() {
+				await Promise.all([
+					this.loadLatest(),
+					this.loadTrend(),
+					this.loadRecent()
+				])
+			},
+			async loadLatest() {
+				try {
+					const data = await getDeviceLatest('stress')
+					this.applyLatest(data)
+				} catch (e) {}
+			},
+			applyLatest(data) {
+				const value = pickStressValue(data)
+				if (!data || !value) {
+					this.latestValue = '--'
+					this.latestStatus = '暂无数据'
+					this.latestTime = '--'
+					return
+				}
+				this.latestValue = value
+				this.latestStatus = stressStatusText(value)
+				this.latestTime = formatRecordTime(data.measureTime)
+			},
+			async loadTrend() {
+				try {
+					const data = await getStressTrend(dateToYmd(this.currentDate), this.period)
+					this.applyTrend(data)
+				} catch (e) {
+					this.applyTrend(null)
+				}
+			},
+			applyTrend(data) {
+				if (!data) {
+					this.chartValues = []
+					this.chartTimes = []
+					this.xLabels = pickXLabels([], this.period)
+					this.statsMax = '--'
+					this.statsMin = '--'
+					this.statsAvg = '--'
+					return
+				}
+				const series = Array.isArray(data.series) ? data.series : []
+				const points = series.filter((p) => Number(p.value) > 0)
+				this.chartValues = points.map((p) => Number(p.value))
+				this.chartTimes = points.map((p) => p.time || p.label || '')
+				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
+				const stats = data.stats || {}
+				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
+				this.statsMin = Number(stats.minValue) > 0 ? Math.round(Number(stats.minValue)) : '--'
+				this.statsAvg = Number(stats.avgValue) > 0 ? Math.round(Number(stats.avgValue)) : '--'
+				if (data.description || data.desc) this.tipText = data.description || data.desc
+				this.$nextTick(() => this.measureChart(0))
+			},
+			async loadRecent() {
+				try {
+					const end = new Date()
+					const start = new Date()
+					start.setDate(end.getDate() - 30)
+					const list = await getDeviceDataList({
+						dataType: 'stress',
+						startDate: dateToYmd(start),
+						endDate: dateToYmd(end)
+					})
+					this.applyRecent(unwrapList(list))
+				} catch (e) {}
+			},
+			applyRecent(list) {
+				const rows = unwrapList(list)
+				const sorted = rows.slice().sort((a, b) => {
+					const ta = parseDateTime(a.measureTime || a.fullTime)
+					const tb = parseDateTime(b.measureTime || b.fullTime)
+					return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0)
+				})
+				this.recentList = sorted.slice(0, 10).map((item) => {
+					const value = pickStressValue(item)
+					return {
+						time: formatRecordTime(item.measureTime || item.fullTime || item.time),
+						source: sourceText(item.source),
+						duration: value > 0 ? String(value) : '--'
+					}
+				})
+			},
 			onChartTouch(e) {
 				const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
 				if (!touch || !this.chartW || !this.chartValues.length) return
@@ -540,12 +725,24 @@
 				this.touchIndex = -1
 			},
 			onPeriodChange(key) {
+				if (this.period === key) return
 				this.period = key
+				this.loadTrend()
 			},
 			shiftDate(delta) {
 				const next = new Date(this.currentDate)
-				next.setDate(next.getDate() + delta)
+				if (this.period === 'week') next.setDate(next.getDate() + delta * 7)
+				else if (this.period === 'month') next.setMonth(next.getMonth() + delta)
+				else next.setDate(next.getDate() + delta)
+				if (startOfDay(next).getTime() > startOfDay(new Date()).getTime()) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = next
+				this.loadTrend()
 			},
 			onPrevDay() {
 				this.shiftDate(-1)
@@ -574,6 +771,7 @@
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
 			},
 			onCalNextMonth() {
+				if (!this.canCalNextMonth) return
 				if (this.calMonth === 11) {
 					this.calYear += 1
 					this.calMonth = 0
@@ -582,13 +780,34 @@
 				}
 				const maxDay = new Date(this.calYear, this.calMonth + 1, 0).getDate()
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					const today = new Date()
+					this.calYear = today.getFullYear()
+					this.calMonth = today.getMonth()
+					this.calSelectedDay = today.getDate()
+				}
 			},
 			onSelectCalDay(day) {
+				if (isFutureDate(this.calYear, this.calMonth, day)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.calSelectedDay = day
 			},
 			confirmCalendar() {
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = new Date(this.calYear, this.calMonth, this.calSelectedDay)
 				this.showCalendar = false
+				this.loadTrend()
 			},
 			onStartMeasure() {
 				if (this.measuring) return
@@ -724,15 +943,40 @@
 				this.latestValue = value
 				this.latestStatus = stressStatusText(value)
 				this.latestTime = formatLatestTime()
-				this.recentList = [{
-					time: this.latestTime,
-					source: '戒指采集',
-					duration: '即时测量'
-				}].concat(this.recentList || []).slice(0, 10)
-
 				await this.stopRealMeasure(true)
-				uni.navigateTo({
-					url: '/pages/index/stressSuccess?stress=' + value
+
+				let measureId = createMeasureId()
+				uni.showLoading({ title: '保存中', mask: true })
+				try {
+					await this.uploadStressOnce(value, measureId)
+				} catch (e) {
+					measureId = ''
+					console.log('[stress] upload failed', e && (e.msg || e.message))
+				} finally {
+					uni.hideLoading()
+				}
+
+				let url = '/pages/index/stressSuccess?stress=' + value
+				if (measureId) url += '&measureId=' + encodeURIComponent(measureId)
+				uni.navigateTo({ url })
+			},
+			async uploadStressOnce(stress, measureId) {
+				if (!hasLogin()) {
+					return Promise.reject(new Error('未登录'))
+				}
+				const ble = BleService.getState()
+				const device = (ble && ble.device) || {}
+				await uploadDeviceData({
+					deviceMac: device.mac || device.id || '',
+					deviceVersion: (ble && ble.firmware) || '',
+					batteryLevel: ble && ble.batteryLevel != null ? ble.batteryLevel : undefined,
+					dataList: [{
+						dataType: 'stress',
+						heartNum: Number(stress),
+						measureTime: formatMeasureTime(new Date()),
+						source: '2',
+						measureId
+					}]
 				})
 			},
 			onTryCloseMeasuring() {
@@ -1382,6 +1626,10 @@
 		justify-content: center;
 	}
 
+	.cal-nav.disabled {
+		opacity: 0.35;
+	}
+
 	.cal-nav-arrow {
 		font-size: 44rpx;
 		color: #ffffff;
@@ -1442,6 +1690,10 @@
 		font-size: 28rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+
+	.cal-cell.disabled .cal-day {
+		opacity: 0.28;
 	}
 
 	.cal-btns {

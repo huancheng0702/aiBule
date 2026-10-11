@@ -146,6 +146,7 @@
 					<view class="archive-info">
 						<text class="archive-label">{{ item.label }}</text>
 						<text class="archive-value">{{ item.value }}</text>
+
 					</view>
 					<!-- 箭头图标，自行补充 src -->
 					<image class="archive-arrow" src="/static/arrRight.png" mode=""></image>
@@ -318,6 +319,12 @@
 </template>
 
 <script>
+	import { getDailyDetail, getWeeklyList, getWeeklyDetail } from '@/common/api/healthReport.js'
+	import { getAbnormalList, getAbnormalDetail } from '@/common/api/healthAbnormal.js'
+	import { getHealthArchiveDetail, getHealthArchiveOptions, saveHealthArchive } from '@/common/api/healthArchive.js'
+	import { getUserInfo } from '@/common/api/user.js'
+
+	const ARCHIVE_TYPE_MAP = ['既往病史', '家族病史', '手术史', '过敏史', '用药史', '个人史', '婚育史', '月经史', '运动史']
 	function progressOpacity(t) {
 		const p = Math.max(0, Math.min(1, t))
 		if (p <= 0.58) {
@@ -622,42 +629,192 @@
 			this.statusBarHeight = sys.statusBarHeight || 20
 		},
 		onLoad(options) {
-			this.activeTab = options.type
-			console.log(this.activeTab)
+			const t = Number(options.type)
+			this.activeTab = Number.isNaN(t) ? 0 : t
+			this.loadTabData(this.activeTab)
+		},
+		onShow() {
+			this.loadTabData(this.activeTab)
+		},
+		watch: {
+			activeTab(v) { this.loadTabData(v) }
 		},
 		methods: {
-			onDailyDetail() {
-				// 查看完整日报
+			unwrapList(res) {
+				if (Array.isArray(res)) return res
+				if (res && Array.isArray(res.list)) return res.list
+				if (res && Array.isArray(res.records)) return res.records
+				if (res && Array.isArray(res.rows)) return res.rows
+				return []
 			},
-			onWeekDetail(item) {
-				this.weekPopup = {
-					dateText: item.dateText,
-					score: item.score,
-					summary: item.summary,
-					advice: item.advice,
-					metrics: item.metrics || []
+			async loadTabData(tab) {
+				try {
+					if (tab == 0) await this.loadReport()
+					else if (tab == 1) await this.loadAbnormal()
+					else await this.loadArchive()
+				} catch (e) { console.warn('healthRecord load fail', e) }
+			},
+			// ---- 健康报告：今日日报 + 周报列表 ----
+			async loadReport() {
+				const [daily, weekly] = await Promise.all([
+					getDailyDetail().catch(() => null),
+					getWeeklyList({ pageNum: 1, pageSize: 10 }).catch(() => [])
+				])
+				if (daily) {
+					this.score = daily.healthScore ?? daily.score ?? daily.totalScore ?? this.score
+					this.dailyStatus = daily.scoreLevel || daily.status || daily.title || this.dailyStatus
+					this.dailyDesc = daily.summary || daily.desc || daily.advice || this.dailyDesc
 				}
+				const list = this.unwrapList(weekly)
+				if (list.length) {
+					this.weekList = list.map((w, i) => {
+						const range = w.dateRangeText || w.dateRange || w.weekRange || w.dateText || ''
+						const d = w.date || w.endDate || w.endTime || ''
+						return {
+							raw: w,
+							day: w.day || (d ? String(d).slice(8, 10) : `0${7 - i}`.slice(-2)),
+							month: w.month || (d ? `${Number(String(d).slice(5, 7))}月` : ''),
+							title: w.title || '本周健康周报',
+							desc: w.desc || `${(w.indicators || []).length || w.indicatorCount || 7}项指标 · 已生成`,
+							dateText: range, date: d, score: w.healthScore ?? w.score ?? 0,
+							summary: w.summary || '', advice: w.advice || '',
+							metrics: this.normalizeWeekMetrics(w)
+						}
+					})
+				}
+			},
+			onDailyDetail() {
+				uni.navigateTo({ url: '/pages/health/aiReport?type=daily' })
+			},
+			normalizeWeekMetrics(src) {
+				const arr = src.indicators || src.metrics || src.items || []
+				const iconMap = { '心率': '/static/xinlv.png', '睡眠': '/static/shuimian.png', '血氧': '/static/xueyang.png', '压力': '/static/yali.png', '运动': '/static/bushu.png', '步数': '/static/bushu.png' }
+				return (Array.isArray(arr) ? arr : []).map((m) => ({
+					name: m.name || m.label || m.title || '',
+					trend: m.trend || m.desc || m.compare || m.subTitle || '',
+					value: m.value || m.display || m.text || (m.avg != null ? `平均 ${m.avg}` : ''),
+					icon: m.icon || iconMap[m.name] || '/static/xinlv.png'
+				}))
+			},
+			async onWeekDetail(item) {
+				const toPopup = (src) => ({
+					dateText: src.dateRangeText || src.dateRange || src.weekRange || src.dateText || item.dateText || '',
+					title: src.title || item.title || '本周健康周报',
+					score: src.healthScore ?? src.score ?? src.totalScore ?? item.score ?? 0,
+					summary: src.summary || item.summary || '',
+					advice: src.advice || item.advice || '',
+					metrics: this.normalizeWeekMetrics(src).length ? this.normalizeWeekMetrics(src) : (item.metrics || [])
+				})
+				try {
+					const d = await getWeeklyDetail(item.date || undefined)
+					this.weekPopup = toPopup((d && typeof d === 'object') ? { ...item.raw, ...item, ...d } : item)
+				} catch (e) { this.weekPopup = toPopup(item) }
 				this.showWeekPopup = true
 			},
 			closeWeekPopup() {
 				this.showWeekPopup = false
 			},
 			onWeekShare() {
-				// 分享/导出
+				uni.showLoading({ title: '导出中' })
+				const token = uni.getStorageSync('loginToken') || uni.getStorageSync('token') || ''
+				let base = ''
+				try { base = this.$http && this.$http.baseUrl ? this.$http.baseUrl : '' } catch (e) {}
+				if (!base) base = 'https://fx.tailunkaluo.com'
+				const url = `${base}/appApi/ai/report/export`
+				// #ifdef H5
+				try {
+					const a = document.createElement('a')
+					a.href = url
+					a.download = '体检报告解析记录.xlsx'
+					document.body.appendChild(a)
+					a.click()
+					document.body.removeChild(a)
+				} catch (e) { window.open(url, '_blank') }
+				uni.hideLoading()
+				uni.showToast({ title: '已开始下载', icon: 'none' })
+				return
+				// #endif
+				uni.downloadFile({
+					url,
+					header: token ? { token } : {},
+					success: (res) => {
+						uni.hideLoading()
+						if (res.statusCode !== 200 || !res.tempFilePath) {
+							uni.showToast({ title: '导出失败', icon: 'none' })
+							return
+						}
+						uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+					},
+					fail: () => { uni.hideLoading(); uni.showToast({ title: '导出失败', icon: 'none' }) }
+				})
 			},
 			onWeekAskAi() {
 				// 继续问AI
 			},
 			onAbDateMode(mode) {
 				this.abDateMode = mode
+				this.loadAbnormal()
 			},
-			onAbDetail(item) {
-				this.abPopup = {
-					subText: item.subText,
-					level: item.level,
-					headline: item.headline,
-					cells: item.cells || []
+			formatAbCell(a) {
+				const unit = a.unit || ''
+				const val = a.detectedValue ?? a.value ?? a.detectValue
+				const ref = (a.referenceMin != null || a.referenceMax != null)
+					? `${a.referenceMin ?? ''}-${a.referenceMax ?? ''} ${unit}`.trim()
+					: (a.referenceRange || a.normalRange || '--')
+				return [
+					{ label: '检测值', value: val != null && val !== '' ? `${val}${unit ? ` ${unit}` : ''}` : '--', icon: '/static/jianceImg.png' },
+					{ label: '个人参考区间', value: ref || '--', icon: '/static/cankaoqujian.png' },
+					{ label: '持续时间', value: a.duration != null && a.duration !== '' ? `${a.duration} 分钟` : '--', icon: '/static/chixushijian.png' },
+					{ label: '当前状态', value: a.statusText || (String(a.status) === '0' ? '已恢复' : a.status || '已恢复'), icon: '/static/dangqianzhuangtai.png' }
+				]
+			},
+			toAbCard(a) {
+				const title = a.abnormalName || a.title || a.typeName || a.dataType || '异常记录'
+				const time = a.measureTime || a.time || a.createTime || ''
+				return {
+					raw: a,
+					id: a.abnormalId ?? a.id,
+					time,
+					title,
+					desc: a.advice || a.remark || a.desc || '点击查看详情',
+					statusTitle: a.statusTitle || '其余时段未发现异常',
+					statusDesc: a.statusDesc || a.advice || '',
+					subText: a.subText || (time ? `${time} · ${title}` : title),
+					level: a.severity || a.level || a.attentionLevel || '轻度关注',
+					headline: a.headline || a.abnormalName || a.title || '',
+					cells: a.cells || this.formatAbCell(a)
 				}
+			},
+			async loadAbnormal() {
+				const params = { pageNum: 1, pageSize: 30 }
+				// 单日筛选：abDateLabel 为 MM/DD，拼当年日期做 startTime/endTime
+				if (this.abDateMode === 'day' && /^\d{2}\/\d{2}$/.test(this.abDateLabel)) {
+					const y = new Date().getFullYear()
+					const [m, d] = this.abDateLabel.split('/')
+					params.startTime = `${y}-${m}-${d} 00:00:00`
+					params.endTime = `${y}-${m}-${d} 23:59:59`
+				}
+				const res = await getAbnormalList(params).catch(() => [])
+				const list = this.unwrapList(res)
+				if (!list.length) return
+				this.abList = list.map((a) => this.toAbCard(a))
+			},
+			async onAbDetail(item) {
+				try {
+					if (item.id != null) {
+						const d = await getAbnormalDetail(item.id)
+						if (d && typeof d === 'object') {
+							const card = this.toAbCard({ ...item.raw, ...d })
+							this.abPopup = {
+								subText: card.subText, level: card.level,
+								headline: card.headline, cells: card.cells
+							}
+							this.showAbPopup = true
+							return
+						}
+					}
+				} catch (e) {}
+				this.abPopup = { subText: item.subText, level: item.level, headline: item.headline, cells: item.cells || [] }
 				this.showAbPopup = true
 			},
 			closeAbPopup() {
@@ -667,14 +824,54 @@
 				// 咨询AI助手
 			},
 			onArchiveBaseTap() {
-				// 编辑基本信息
+				uni.navigateTo({ url: '/pages/mine/myInfo?from=mine' })
 			},
-			onArchiveTap(item) {
+			// ---- 健康档案：detail(0=全部) + options + save ----
+			async loadArchive() {
+				const [detail, user] = await Promise.all([
+					getHealthArchiveDetail(0).catch(() => null),
+					getUserInfo().catch(() => null)
+				])
+				if (user) {
+					const age = user.age ?? this.archiveBase.age
+					this.archiveBase = {
+						gender: user.gender === '1' || user.gender === 1 ? '男' : user.gender === '2' || user.gender === 2 ? '女' : (user.genderText || this.archiveBase.gender),
+						age, height: user.height ? `${user.height}cm` : this.archiveBase.height,
+						weight: user.weight ? `${user.weight}kg` : this.archiveBase.weight
+					}
+				}
+				// detail 可能是数组(9项)或对象；统一按 archiveType 1-9 映射
+				const arr = Array.isArray(detail) ? detail : (detail && Array.isArray(detail.list) ? detail.list : null)
+				const pickItems = (node) => node?.items || node?.options || node?.contents || []
+				if (arr) {
+					arr.forEach((node, i) => {
+						const names = pickItems(node).map((x) => x.name || x).filter(Boolean)
+						const idx = (node.archiveType ? node.archiveType - 1 : i)
+						if (this.archiveList[idx]) this.$set(this.archiveList, idx, { ...this.archiveList[idx], selected: names, value: names.length ? names.join('、') : '无' })
+					})
+				} else if (detail && typeof detail === 'object') {
+					ARCHIVE_TYPE_MAP.forEach((label, i) => {
+						const names = pickItems(detail[label] || detail[i + 1] || detail[String(i + 1)])
+						if (names.length) this.$set(this.archiveList, i, { ...this.archiveList[i], selected: names, value: names.join('、') })
+					})
+				}
+			},
+			async onArchiveTap(item) {
 				const index = this.archiveList.findIndex((row) => row.label == item.label)
 				if (index < 0) return
 				this.archiveEditingIndex = index
 				this.archiveSelected = (this.archiveList[index].selected || []).slice()
 				this.showArchivePopup = true
+				// 拉取该类型的选项配置，替换本地写死的 options（文档暂无 desc/otherLabel，保持本地文案）
+				try {
+					const res = await getHealthArchiveOptions(index + 1)
+					const tags = res?.tags || res?.options || (Array.isArray(res) ? res : null) || []
+					const names = tags.map((t) => t.name || t.optionName || t).filter(Boolean)
+					if (names.length) {
+						const label = this.archiveList[index].label
+						this.$set(this.archivePopupMap, label, { ...this.archivePopupMap[label], options: names })
+					}
+				} catch (e) {}
 			},
 			closeArchivePopup() {
 				this.showArchivePopup = false
@@ -704,16 +901,19 @@
 					}
 				})
 			},
-			confirmArchivePopup() {
+			async confirmArchivePopup() {
 				const index = this.archiveEditingIndex
 				if (index < 0) return
 				const selected = this.archiveSelected.slice()
+				// optionId 回填：已选项尽量带上服务端 optionId，手动输入项传 null
+				const cfgOptions = this.archivePopupMap[this.archiveList[index].label]?.options || []
+				const items = selected.map((name) => ({ optionId: null, name }))
+				void cfgOptions
+				try {
+					await saveHealthArchive({ archiveType: index + 1, items })
+				} catch (e) { return }
 				const value = selected.length ? selected.join('、') : '无'
-				this.$set(this.archiveList, index, {
-					...this.archiveList[index],
-					selected,
-					value
-				})
+				this.$set(this.archiveList, index, { ...this.archiveList[index], selected, value })
 				this.closeArchivePopup()
 			}
 		}
@@ -1760,6 +1960,9 @@
 		font-weight: 600;
 		line-height: 42rpx;
 		color: #ffffff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.archive-grid {
@@ -1802,6 +2005,9 @@
 		font-weight: 600;
 		line-height: 42rpx;
 		color: #ffffff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.archive-arrow {

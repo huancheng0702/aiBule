@@ -44,10 +44,9 @@
 				<image class="card-icon" src="/static/qushijianyi.png" mode=""></image>
 				<view class="card-main">
 					<image class="card-title" style="width: 148rpx;" src="/static/qushiText.png" mode=""></image>
-					<text class="card-text">建议结合日常压力、睡眠与训练负荷观察 HRV 变化；更适合与自己的长期基线比较。</text>
-					<text class="card-text">如连续偏低并伴随明显不适，请及时咨询专业医生。</text>
+					<text v-for="(line, index) in adviceList" :key="index" class="card-text">{{ line }}</text>
 				</view>
-			</view>image.png
+			</view>
 		</view>
 
 		<view class="retry-btn" @click="onRetry">
@@ -57,11 +56,21 @@
 </template>
 
 <script>
+	import { getMeasureResult } from '@/common/api/deviceData.js'
 	// 刻度图三等分：偏低 / 正常 / 偏高，交界对应 20、100
 	const SCALE_MIN = 0
 	const SCALE_LOW = 20
 	const SCALE_HIGH = 100
 	const SCALE_MAX = 160
+	const DEFAULT_REFERENCE = [
+		'HRV 反映连续心跳间期的细微变化，',
+		'可用于观察自主神经调节与恢复状态。',
+		'建议优先与个人长期基线对比，而非单次绝对值。'
+	]
+	const DEFAULT_ADVICE = [
+		'建议结合日常压力、睡眠与训练负荷观察 HRV 变化；更适合与自己的长期基线比较。',
+		'如连续偏低并伴随明显不适，请及时咨询专业医生。'
+	]
 
 	function clamp01(value) {
 		if (value < 0) return 0
@@ -80,15 +89,23 @@
 		return third * 2 + clamp01((hrv - SCALE_HIGH) / (SCALE_MAX - SCALE_HIGH)) * third
 	}
 
+	function splitLines(text) {
+		if (!text) return []
+		return String(text)
+			.split(/\n+|；|;/)
+			.map((s) => s.trim())
+			.filter(Boolean)
+	}
+
 	export default {
 		data() {
 			return {
 				hrv: 72,
-				referenceList: [
-					'HRV 反映连续心跳间期的细微变化，',
-					'可用于观察自主神经调节与恢复状态。',
-					'建议优先与个人长期基线对比，而非单次绝对值。'
-				]
+				measureId: '',
+				apiStatus: '',
+				apiResultText: '',
+				apiAdvice: '',
+				referenceList: DEFAULT_REFERENCE.slice()
 			}
 		},
 		computed: {
@@ -98,11 +115,13 @@
 				return 'normal'
 			},
 			statusText() {
+				if (this.apiStatus) return this.apiStatus
 				if (this.statusKey === 'low') return '偏低'
 				if (this.statusKey === 'high') return '偏高'
 				return '正常'
 			},
 			resultText() {
+				if (this.apiResultText) return this.apiResultText
 				if (this.statusKey === 'low') {
 					return '本次 HRV 偏低，可能与压力、疲劳或恢复不足有关。建议保证休息与睡眠，避免过度训练。'
 				}
@@ -111,6 +130,10 @@
 				}
 				return '本次 HRV 处于常见参考范围内。建议继续保持规律作息，并结合长期趋势观察恢复状态。'
 			},
+			adviceList() {
+				const lines = splitLines(this.apiAdvice)
+				return lines.length ? lines : DEFAULT_ADVICE
+			},
 			pointerLeft() {
 				return `${hrvToPercent(this.hrv).toFixed(2)}%`
 			}
@@ -118,8 +141,34 @@
 		onLoad(options) {
 			const hrv = Number(options && options.hrv)
 			if (hrv) this.hrv = hrv
+			this.measureId = (options && options.measureId) ? decodeURIComponent(options.measureId) : ''
+			this.loadResult()
 		},
 		methods: {
+			async loadResult(retry = 0) {
+				if (!this.measureId) return
+				try {
+					const data = await getMeasureResult(this.measureId, 'hrv')
+					const ready = data && (Number(data.value) > 0 || data.status || data.resultText)
+					if (!ready) {
+						if (retry < 2) {
+							setTimeout(() => this.loadResult(retry + 1), 600)
+						}
+						return
+					}
+					const value = Number(data.value)
+					if (value > 0) this.hrv = Math.round(value)
+					if (data.status) this.apiStatus = data.status
+					if (data.resultText) this.apiResultText = data.resultText
+					if (data.advice) this.apiAdvice = data.advice
+					const refs = splitLines(data.referenceRange)
+					if (refs.length) this.referenceList = refs
+				} catch (e) {
+					if (retry < 2) {
+						setTimeout(() => this.loadResult(retry + 1), 600)
+					}
+				}
+			},
 			onRetry() {
 				const pages = getCurrentPages()
 				if (pages.length > 1) {

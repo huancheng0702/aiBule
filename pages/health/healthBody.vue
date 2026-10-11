@@ -19,11 +19,11 @@
 			<!-- 身体可视化区域 -->
 			<view class="body-section">
 				<scroll-view class="part-list" scroll-y :show-scrollbar="false">
-					<view v-for="(item, index) in partList" :key="item" class="part-item"
-						:class="{ active: activePart === index }" @click="activePart = index">
+					<view v-for="(item, index) in partList" :key="item.categoryId || item.name" class="part-item"
+						:class="{ active: activePart === index }" @click="onSelectPart(index)">
 						<image v-if="activePart === index" class="part-item-bg" src="/static/selectBodyIcon.png"
 							mode="aspectFit"></image>
-						<text class="part-text">{{ item }}</text>
+						<text class="part-text">{{ item.name }}</text>
 					</view>
 				</scroll-view>
 
@@ -79,10 +79,10 @@
 					<view class="summary-left">
 						<view class="summary-title-row">
 							<view class="title-bar"></view>
-							<text class="summary-title">{{ partList[activePart] }}健康解读</text>
+							<text class="summary-title">{{ currentPartName }}健康解读</text>
 						</view>
-						<text class="summary-status">今日整体状态良好</text>
-						<text class="summary-desc">活动、睡眠和心率数据均处于个人近期稳定范围</text>
+						<text class="summary-status">{{ summaryStatus }}</text>
+						<text class="summary-desc">{{ summaryDesc }}</text>
 					</view>
 					<view class="score-wrap">
 						<svg class="score-svg" viewBox="0 0 100 100">
@@ -128,8 +128,17 @@
 							</view>
 						</view>
 
-						<view class="empty-box">
-							<!-- 空状态图，自行补充 src -->
+						<view v-if="weeklyContents.length" class="weekly-list">
+							<view
+								v-for="(item, index) in weeklyContents"
+								:key="index"
+								class="weekly-item"
+								:class="{ border: index < weeklyContents.length - 1 }"
+							>
+								<text class="weekly-item-text">{{ item }}</text>
+							</view>
+						</view>
+						<view v-else class="empty-box">
 							<image class="empty-img" src="/static/empty.png" mode=""></image>
 						</view>
 					</view>
@@ -145,6 +154,7 @@
 								<view class="archive-info">
 									<text class="archive-label">{{ item.label }}</text>
 									<text class="archive-value">{{ item.value }}</text>
+
 								</view>
 								<image class="archive-arrow" src="/static/rightLitterIcon.png" mode="aspectFit"></image>
 							</view>
@@ -159,8 +169,8 @@
 			<view class="history-popup" @click.stop>
 				<image class="history-popup-bg" src="/static/bushuPopBg.png" mode="aspectFill"></image>
 				<view class="history-popup-body">
-					<text class="history-popup-title">{{ partList[activePart] }} · 近7天</text>
-					<text class="history-popup-desc">当前数据未发现明显异常变化</text>
+					<text class="history-popup-title">{{ currentPartName }} · 近7天</text>
+					<text class="history-popup-desc">{{ historyPopupDesc }}</text>
 
 					<view class="history-list">
 						<view
@@ -203,12 +213,12 @@
 					<view class="archive-tag-list">
 						<view
 							v-for="tag in archivePopup.options"
-							:key="tag"
+							:key="tag.optionId != null ? ('id-' + tag.optionId) : ('name-' + tag.name)"
 							class="archive-tag"
-							:class="{ active: archiveSelected.indexOf(tag) > -1 }"
+							:class="{ active: isArchiveTagSelected(tag) }"
 							@click="toggleArchiveTag(tag)"
 						>
-							<text class="archive-tag-text">{{ tag }}</text>
+							<text class="archive-tag-text">{{ tag.name }}</text>
 						</view>
 					</view>
 				</scroll-view>
@@ -224,420 +234,656 @@
 </template>
 
 <script>
-	function ringDash(r, percent) {
-		const c = 2 * Math.PI * r
-		const p = Math.max(0, Math.min(1, percent))
-		return `${c * p} ${c}`
-	}
+import { getHealthCenterIndex, getPortraitList } from '@/common/api/healthCenter.js'
+import {
+	getHealthArchiveOrgans,
+	getHealthArchiveByOrgan,
+	getHealthArchiveWeekly,
+	getHealthArchiveDetail,
+	getHealthArchiveOptions,
+	saveHealthArchive
+} from '@/common/api/healthArchive.js'
 
-	function pad2(n) {
-		return String(n).padStart(2, '0')
-	}
+function ringDash(r, percent) {
+	const circ = 2 * Math.PI * r
+	const p = Math.max(0, Math.min(1, percent))
+	return `${circ * p} ${circ}`
+}
 
-	export default {
-		data() {
+function pad2(n) {
+	return String(n).padStart(2, '0')
+}
+
+function toYmd(d) {
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+function startOfWeekMonday(input) {
+	const date = new Date(input)
+	date.setHours(0, 0, 0, 0)
+	const day = date.getDay()
+	const diff = day === 0 ? -6 : 1 - day
+	date.setDate(date.getDate() + diff)
+	return date
+}
+
+function asArray(data) {
+	if (!data) return []
+	if (Array.isArray(data)) return data
+	if (Array.isArray(data.list)) return data.list
+	if (Array.isArray(data.rows)) return data.rows
+	if (Array.isArray(data.records)) return data.records
+	if (Array.isArray(data.data)) return data.data
+	return []
+}
+
+function pickText(...vals) {
+	for (let i = 0; i < vals.length; i++) {
+		const v = vals[i]
+		if (v != null && String(v).trim() !== '') return String(v).trim()
+	}
+	return ''
+}
+
+function formatHistoryDate(dateStr) {
+	if (!dateStr) return ''
+	const s = String(dateStr).slice(0, 10)
+	const today = toYmd(new Date())
+	const yest = new Date()
+	yest.setDate(yest.getDate() - 1)
+	if (s === today) return '今天'
+	if (s === toYmd(yest)) return '昨天'
+	const parts = s.split('-')
+	if (parts.length >= 3) {
+		return `${Number(parts[1])}月${Number(parts[2])}日`
+	}
+	return s
+}
+
+const BUBBLE_POS = [
+	{ left: '58%', top: '42%', delay: '0s' },
+	{ left: '8%', top: '28%', delay: '0.15s' },
+	{ left: '62%', top: '22%', delay: '0.3s' },
+	{ left: '12%', top: '55%', delay: '0.45s' },
+	{ left: '55%', top: '62%', delay: '0.6s' }
+]
+
+const ARCHIVE_META = [
+	{ archiveType: 1, label: '既往病史', desc: '过往疾病，特别是涉及心脏、脑、肺、肾等重要器官', otherLabel: '其他疾病 +' },
+	{ archiveType: 2, label: '家族病史', desc: '直系亲属常见疾病史，便于评估遗传风险', otherLabel: '其他病史 +' },
+	{ archiveType: 3, label: '手术史', desc: '既往手术情况，便于评估身体恢复与风险', otherLabel: '其他手术 +' },
+	{ archiveType: 4, label: '过敏史', desc: '药物、食物或其他过敏原情况', otherLabel: '其他过敏原 +' },
+	{ archiveType: 5, label: '用药史', desc: '长期或近期用药情况', otherLabel: '其他药物 +' },
+	{ archiveType: 6, label: '个人史', desc: '生活习惯与个人健康相关情况', otherLabel: '其他情况 +' },
+	{ archiveType: 7, label: '婚育史', desc: '婚姻与生育相关情况', otherLabel: '其他情况 +' },
+	{ archiveType: 8, label: '月经史', desc: '月经周期与相关异常情况', otherLabel: '其他情况 +' },
+	{ archiveType: 9, label: '运动史', desc: '日常运动习惯与强度', otherLabel: '其他运动 +' }
+]
+
+const DEFAULT_PARTS = [
+	{ name: '全身', categoryId: null, icon: '' },
+	{ name: '体征', categoryId: null, icon: '' },
+	{ name: '大脑', categoryId: null, icon: '' },
+	{ name: '甲状腺', categoryId: null, icon: '' },
+	{ name: '呼吸', categoryId: null, icon: '' },
+	{ name: '肺部', categoryId: null, icon: '' },
+	{ name: '心脏', categoryId: null, icon: '' },
+	{ name: '肝脏', categoryId: null, icon: '' },
+	{ name: '血管', categoryId: null, icon: '' },
+	{ name: '胃部', categoryId: null, icon: '' },
+	{ name: '胰腺', categoryId: null, icon: '' },
+	{ name: '肾脏', categoryId: null, icon: '' },
+	{ name: '其他', categoryId: null, icon: '' }
+]
+
+export default {
+	data() {
+		return {
+			statusBarHeight: 20,
+			activePart: 0,
+			activeTab: 0,
+			score: 0,
+			summaryStatus: '加载中...',
+			summaryDesc: '',
+			organSummaryText: '',
+			centerSummaryStatus: '',
+			centerSummaryDesc: '',
+			rangeStart: null,
+			partList: DEFAULT_PARTS.map((p) => ({ ...p })),
+			archiveList: ARCHIVE_META.map((m) => ({
+				archiveType: m.archiveType,
+				label: m.label,
+				value: '无',
+				selected: []
+			})),
+			showArchivePopup: false,
+			showHistoryPopup: false,
+			scanning: true,
+			showBubbles: false,
+			scanTimer: null,
+			statusBubbles: [],
+			historyList: [],
+			historyPopupDesc: '当前数据未发现明显异常变化',
+			weeklyContents: [],
+			archiveEditingIndex: -1,
+			archiveSelected: [],
+			archiveOptionList: [],
+			archiveSaving: false,
+			historyLoading: false
+		}
+	},
+	computed: {
+		currentPartName() {
+			const part = this.partList[this.activePart]
+			return (part && part.name) || '全身'
+		},
+		bodyImgSrc() {
+			const part = this.partList[this.activePart]
+			if (part && part.icon) return part.icon
+			return '/static/bodyImg.png'
+		},
+		scoreRing() {
+			const r = 40
+			const stroke = 8
 			return {
-				statusBarHeight: 20,
-				activePart: 0,
-				activeTab: 0,
-				score: 83,
-				rangeStart: null,
-				partList: [
-					'全身',
-					'体征',
-					'大脑',
-					'甲状腺',
-					'呼吸',
-					'肺部',
-					'心脏',
-					'肝脏',
-					'血管',
-					'胃部',
-					'胰腺',
-					'肾脏',
-					'其他'
-				],
-				// 全身 / 体征 / 其他用默认全身图，其余按拼音对应 bodyImg 目录
-				partImgMap: {
-					大脑: '/static/bodyImg/nanDanao.png',
-					甲状腺: '/static/bodyImg/nanJiazhuang.png',
-					呼吸: '/static/bodyImg/nanHuxi.png',
-					肺部: '/static/bodyImg/nanfei.png',
-					心脏: '/static/bodyImg/nanXin.png',
-					肝脏: '/static/bodyImg/nanGan.png',
-					血管: '/static/bodyImg/nanXue.png',
-					胃部: '/static/bodyImg/nanWei.png',
-					胰腺: '/static/bodyImg/nanYixian.png',
-					肾脏: '/static/bodyImg/nanShen.png'
-				},
-				archiveList: [{
-						label: '既往病史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '家族病史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '手术史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '过敏史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '用药史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '个人史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '婚育史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '月经史',
-						value: '无',
-						selected: []
-					},
-					{
-						label: '运动史',
-						value: '无',
-						selected: []
-					}
-				],
-				showArchivePopup: false,
-				showHistoryPopup: false,
-				scanning: true,
-				showBubbles: false,
-				scanTimer: null,
-				statusBubbles: [
-					{ text: '体脂偏低', left: '58%', top: '42%', delay: '0s' },
-					{ text: '心率正常', left: '8%', top: '28%', delay: '0.15s' },
-					{ text: '睡眠良好', left: '62%', top: '22%', delay: '0.3s' },
-					{ text: '压力平稳', left: '12%', top: '55%', delay: '0.45s' },
-					{ text: '血氧正常', left: '55%', top: '62%', delay: '0.6s' }
-				],
-				historyList: [
-					{ date: '今天', status: '整体良好', flag: '已更新' },
-					{ date: '昨天', status: '状态平稳', flag: '完整' },
-					{ date: '8月5日', status: '状态平稳', flag: '完整' }
-				],
-				archiveEditingIndex: -1,
-				archiveSelected: [],
-				archivePopupMap: {
-					既往病史: {
-						title: '既往病史',
-						desc: '过往疾病，特别是涉及心脏、脑、肺、肾等重要器官',
-						otherLabel: '其他疾病 +',
-						options: [
-							'脑血管疾病',
-							'高血脂',
-							'高血压',
-							'高血糖',
-							'糖尿病',
-							'冠心病',
-							'夜间鼾症',
-							'心律失常',
-							'房颤',
-							'室性早搏',
-							'房性早搏',
-							'心慌气短',
-							'心力衰竭',
-							'甲状腺亢进',
-							'肺动脉高血压',
-							'肥胖（BMI大于28）',
-							'心梗',
-							'咽炎',
-							'鼻炎',
-							'脑卒中',
-							'贫血',
-							'慢性肾损伤',
-							'肝功能不全'
-						]
-					},
-					家族病史: {
-						title: '家族病史',
-						desc: '直系亲属常见疾病史，便于评估遗传风险',
-						otherLabel: '其他病史 +',
-						options: [
-							'高血压',
-							'糖尿病',
-							'冠心病',
-							'脑卒中',
-							'恶性肿瘤',
-							'高血脂',
-							'哮喘',
-							'肾病'
-						]
-					},
-					手术史: {
-						title: '手术史',
-						desc: '既往手术情况，便于评估身体恢复与风险',
-						otherLabel: '其他手术 +',
-						options: [
-							'心脏手术',
-							'脑部手术',
-							'骨科手术',
-							'腹部手术',
-							'眼科手术',
-							'甲状腺手术',
-							'妇科手术',
-							'泌尿手术'
-						]
-					},
-					过敏史: {
-						title: '过敏史',
-						desc: '药物、食物或其他过敏原情况',
-						otherLabel: '其他过敏原 +',
-						options: [
-							'青霉素',
-							'头孢类',
-							'磺胺类',
-							'阿司匹林',
-							'海鲜',
-							'花粉',
-							'尘螨',
-							'牛奶'
-						]
-					},
-					用药史: {
-						title: '用药史',
-						desc: '长期或近期用药情况',
-						otherLabel: '其他药物 +',
-						options: [
-							'降压药',
-							'降糖药',
-							'降脂药',
-							'抗凝药',
-							'激素类',
-							'抗生素',
-							'中成药',
-							'保健品'
-						]
-					},
-					个人史: {
-						title: '个人史',
-						desc: '生活习惯与个人健康相关情况',
-						otherLabel: '其他情况 +',
-						options: [
-							'吸烟',
-							'饮酒',
-							'熬夜',
-							'久坐',
-							'精神压力大',
-							'饮食不规律'
-						]
-					},
-					婚育史: {
-						title: '婚育史',
-						desc: '婚姻与生育相关情况',
-						otherLabel: '其他情况 +',
-						options: [
-							'未婚',
-							'已婚',
-							'已育',
-							'未育',
-							'备孕中',
-							'妊娠期'
-						]
-					},
-					月经史: {
-						title: '月经史',
-						desc: '月经周期与相关异常情况',
-						otherLabel: '其他情况 +',
-						options: [
-							'周期规律',
-							'周期不规律',
-							'痛经',
-							'月经量少',
-							'月经量多',
-							'已绝经'
-						]
-					},
-					运动史: {
-						title: '运动史',
-						desc: '日常运动习惯与强度',
-						otherLabel: '其他运动 +',
-						options: [
-							'几乎不运动',
-							'偶尔运动',
-							'规律有氧',
-							'力量训练',
-							'高强度训练',
-							'康复训练'
-						]
-					}
-				}
+				r,
+				stroke,
+				dash: ringDash(r, this.score / 100)
 			}
 		},
-		computed: {
-			bodyImgSrc() {
-				const name = this.partList[this.activePart]
-				return this.partImgMap[name] || '/static/bodyImg.png'
-			},
-			scoreRing() {
-				const r = 40
-				const stroke = 8
+		dateRangeText() {
+			if (!this.rangeStart) return ''
+			const start = this.rangeStart
+			const end = new Date(start)
+			end.setDate(start.getDate() + 6)
+			const y = start.getFullYear()
+			const sm = start.getMonth() + 1
+			const sd = pad2(start.getDate())
+			const em = pad2(end.getMonth() + 1)
+			const ed = pad2(end.getDate())
+			return `${y}年${sm}月${sd}日-${em}月${ed}日`
+		},
+		archivePopup() {
+			const item = this.archiveList[this.archiveEditingIndex]
+			if (!item) {
 				return {
-					r,
-					stroke,
-					dash: ringDash(r, this.score / 100)
-				}
-			},
-			dateRangeText() {
-				if (!this.rangeStart) return ''
-				const start = this.rangeStart
-				const end = new Date(start)
-				end.setDate(start.getDate() + 6)
-				const y = start.getFullYear()
-				const sm = start.getMonth() + 1
-				const sd = pad2(start.getDate())
-				const em = pad2(end.getMonth() + 1)
-				const ed = pad2(end.getDate())
-				return `${y}年${sm}月${sd}日-${em}月${ed}日`
-			},
-			archivePopup() {
-				const item = this.archiveList[this.archiveEditingIndex]
-				if (!item) {
-					return {
-						title: '',
-						desc: '',
-						otherLabel: '其他 +',
-						options: []
-					}
-				}
-				const cfg = this.archivePopupMap[item.label] || {
-					title: item.label,
+					title: '',
 					desc: '',
 					otherLabel: '其他 +',
 					options: []
 				}
-				const extras = this.archiveSelected.filter((t) => cfg.options.indexOf(t) === -1)
-				return {
-					...cfg,
-					options: cfg.options.concat(extras)
+			}
+			const meta = ARCHIVE_META.find((m) => m.archiveType === item.archiveType) || {}
+			const baseOptions = this.archiveOptionList.slice()
+			const extras = this.archiveSelected.filter((sel) => {
+				return !baseOptions.some((opt) => opt.name === sel.name)
+			})
+			return {
+				title: item.label,
+				desc: meta.desc || '',
+				otherLabel: meta.otherLabel || '其他 +',
+				options: baseOptions.concat(extras)
+			}
+		}
+	},
+	onLoad() {
+		const sys = uni.getSystemInfoSync()
+		this.statusBarHeight = sys.statusBarHeight || 20
+		this.rangeStart = startOfWeekMonday(new Date())
+		this.startBodyScan()
+		this.bootstrap()
+	},
+	onUnload() {
+		this.clearScanTimer()
+	},
+	methods: {
+		clearScanTimer() {
+			if (this.scanTimer) {
+				clearTimeout(this.scanTimer)
+				this.scanTimer = null
+			}
+		},
+		startBodyScan() {
+			this.clearScanTimer()
+			this.scanning = true
+			this.showBubbles = false
+			this.scanTimer = setTimeout(() => {
+				this.scanning = false
+				this.showBubbles = true
+				this.scanTimer = null
+			}, 2000)
+		},
+		async bootstrap() {
+			await Promise.all([
+				this.loadCenterIndex(),
+				this.loadOrgans(),
+				this.loadArchiveDetail(),
+				this.loadWeekly()
+			])
+			this.refreshPartSummary()
+		},
+		async loadCenterIndex() {
+			try {
+				const data = await getHealthCenterIndex()
+				this.applyCenterIndex(data)
+			} catch (e) {
+				if (!this.summaryStatus || this.summaryStatus === '加载中...') {
+					this.summaryStatus = '暂无健康解读'
+					this.summaryDesc = '请稍后再试或完善健康档案'
 				}
 			}
 		},
-		onLoad() {
-			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight || 20
-			// 默认展示包含今天的一周区间（往前 6 天）
-			const end = new Date()
-			const start = new Date(end)
-			start.setDate(end.getDate() - 6)
-			start.setHours(0, 0, 0, 0)
-			this.rangeStart = start
-			this.startBodyScan()
+		applyCenterIndex(data) {
+			if (!data || typeof data !== 'object') return
+			const score = Number(
+				data.score != null
+					? data.score
+					: data.totalScore != null
+						? data.totalScore
+						: data.healthScore
+			)
+			if (!Number.isNaN(score) && score >= 0) {
+				this.score = Math.round(score)
+			}
+			this.centerSummaryStatus = pickText(
+				data.status,
+				data.statusText,
+				data.summaryStatus,
+				data.title,
+				data.levelText
+			) || '今日整体状态良好'
+			this.centerSummaryDesc = pickText(
+				data.description,
+				data.desc,
+				data.summary,
+				data.summaryDesc,
+				data.content,
+				data.advice
+			) || '活动、睡眠和心率数据均处于个人近期稳定范围'
+			this.summaryStatus = this.centerSummaryStatus
+			this.summaryDesc = this.centerSummaryDesc
+
+			const abnormalList = asArray(
+				data.abnormalList ||
+					data.abnormals ||
+					data.abnormalRecords ||
+					data.todayAbnormals ||
+					data.recordList ||
+					data.tags
+			)
+			this.statusBubbles = this.mapBubbles(abnormalList)
 		},
-		onUnload() {
-			this.clearScanTimer()
-		},
-		methods: {
-			clearScanTimer() {
-				if (this.scanTimer) {
-					clearTimeout(this.scanTimer)
-					this.scanTimer = null
-				}
-			},
-			startBodyScan() {
-				this.clearScanTimer()
-				this.scanning = true
-				this.showBubbles = false
-				// 与 CSS 检测线动画时长对齐
-				this.scanTimer = setTimeout(() => {
-					this.scanning = false
-					this.showBubbles = true
-					this.scanTimer = null
-				}, 2000)
-			},
-			goBack() {
-				const pages = getCurrentPages()
-				if (pages.length > 1) {
-					uni.navigateBack()
-					return
-				}
-				uni.reLaunch({
-					url: '/pages/index/index'
+		mapBubbles(list) {
+			const texts = list
+				.map((item) => {
+					if (typeof item === 'string') return item
+					return pickText(
+						item.text,
+						item.name,
+						item.title,
+						item.label,
+						item.dataTypeName,
+						item.content,
+						item.status
+					)
 				})
-			},
-			onHistory() {
-				this.showHistoryPopup = true
-			},
-			closeHistoryPopup() {
-				this.showHistoryPopup = false
-			},
-			shiftRange(days) {
-				const next = new Date(this.rangeStart)
-				next.setDate(next.getDate() + days)
-				this.rangeStart = next
-			},
-			onPrevRange() {
-				this.shiftRange(-7)
-			},
-			onNextRange() {
-				this.shiftRange(7)
-			},
-			onArchiveTap(item) {
-				const index = this.archiveList.findIndex((row) => row.label === item.label)
-				if (index < 0) return
-				this.archiveEditingIndex = index
-				this.archiveSelected = (this.archiveList[index].selected || []).slice()
-				this.showArchivePopup = true
-			},
-			closeArchivePopup() {
-				this.showArchivePopup = false
-				this.archiveEditingIndex = -1
-				this.archiveSelected = []
-			},
-			toggleArchiveTag(tag) {
-				const idx = this.archiveSelected.indexOf(tag)
-				if (idx > -1) {
-					this.archiveSelected.splice(idx, 1)
-				} else {
-					this.archiveSelected.push(tag)
+				.filter(Boolean)
+				.slice(0, BUBBLE_POS.length)
+			if (!texts.length) {
+				return BUBBLE_POS.slice(0, 3).map((pos, i) => ({
+					...pos,
+					text: ['心率正常', '睡眠良好', '压力平稳'][i]
+				}))
+			}
+			return texts.map((text, i) => ({
+				...BUBBLE_POS[i],
+				text
+			}))
+		},
+		async loadOrgans() {
+			try {
+				const data = await getHealthArchiveOrgans()
+				const list = asArray(data)
+				if (!list.length) return
+				const organs = list
+					.map((item) => ({
+						name: pickText(item.name, item.categoryName, item.organName) || '未命名',
+						categoryId:
+							item.categoryId != null
+								? item.categoryId
+								: item.id != null
+									? item.id
+									: item.organId != null
+										? item.organId
+										: null,
+						icon: pickText(item.icon, item.iconUrl, item.img, item.imageUrl),
+						items: asArray(item.items)
+					}))
+					.filter((item) => item.name)
+				const whole = { name: '全身', categoryId: null, icon: '' }
+				this.partList = [whole].concat(organs)
+				if (this.activePart >= this.partList.length) {
+					this.activePart = 0
 				}
-			},
-			onAddOtherTag() {
-				uni.showModal({
-					title: this.archivePopup.otherLabel.replace(/\s*\+\s*$/, ''),
-					editable: true,
-					placeholderText: '请输入内容',
-					success: (res) => {
-						if (!res.confirm) return
-						const text = (res.content || '').trim()
-						if (!text) return
-						if (this.archiveSelected.indexOf(text) === -1) {
-							this.archiveSelected.push(text)
-						}
+			} catch (e) {}
+		},
+		async loadArchiveDetail() {
+			try {
+				const data = await getHealthArchiveDetail(0)
+				this.applyArchiveDetail(data)
+			} catch (e) {}
+		},
+		applyArchiveDetail(data) {
+			const list = asArray(data)
+			const byType = {}
+			list.forEach((row) => {
+				const type = Number(
+					row.archiveType != null
+						? row.archiveType
+						: row.type != null
+							? row.type
+							: row.archive_type
+				)
+				if (!type) return
+				const items = asArray(row.items || row.itemList || row.records).map((it) => ({
+					optionId: it.optionId != null ? it.optionId : it.id != null ? it.id : null,
+					name: pickText(it.name, it.optionName, it.label, it.content)
+				})).filter((it) => it.name)
+				byType[type] = items
+			})
+			this.archiveList = ARCHIVE_META.map((meta) => {
+				const selected = byType[meta.archiveType] || []
+				return {
+					archiveType: meta.archiveType,
+					label: meta.label,
+					selected,
+					value: selected.length ? selected.map((i) => i.name).join('、') : '无'
+				}
+			})
+		},
+		async loadWeekly() {
+			if (!this.rangeStart) return
+			try {
+				const data = await getHealthArchiveWeekly(toYmd(this.rangeStart))
+				this.applyWeekly(data)
+			} catch (e) {
+				this.weeklyContents = []
+			}
+		},
+		applyWeekly(data) {
+			if (!data) {
+				this.weeklyContents = []
+				return
+			}
+			const contents = asArray(
+				data.contents || data.contentList || data.items || data.list || data.records
+			)
+			this.weeklyContents = contents
+				.map((item) => {
+					if (typeof item === 'string') return item
+					return pickText(
+						item.content,
+						item.name,
+						item.text,
+						item.title,
+						item.label,
+						item.desc
+					)
+				})
+				.filter(Boolean)
+		},
+		async refreshPartSummary() {
+			const part = this.partList[this.activePart]
+			if (!part || part.categoryId == null) {
+				this.summaryStatus = this.centerSummaryStatus || '今日整体状态良好'
+				this.summaryDesc = this.centerSummaryDesc || '活动、睡眠和心率数据均处于个人近期稳定范围'
+				this.organSummaryText = ''
+				return
+			}
+			try {
+				const data = await getHealthArchiveByOrgan(part.categoryId)
+				const text =
+					typeof data === 'string'
+						? data
+						: pickText(
+								data && data.content,
+								data && data.text,
+								data && data.desc,
+								data && data.description,
+								data && data.result,
+								data && data.data
+							)
+				this.organSummaryText = text
+				if (text) {
+					this.summaryStatus = `${part.name}相关档案`
+					this.summaryDesc = text
+				} else {
+					const fromOrganItems = asArray(part.items)
+						.map((it) => pickText(it.name, it.optionName))
+						.filter(Boolean)
+						.join('、')
+					this.summaryStatus = fromOrganItems ? `${part.name}有关联档案` : `${part.name}暂无关联档案`
+					this.summaryDesc = fromOrganItems || '当前健康档案中暂无该器官相关选项'
+				}
+			} catch (e) {
+				this.summaryStatus = `${part.name}健康解读`
+				this.summaryDesc = '暂无法获取该部位解读'
+			}
+		},
+		onSelectPart(index) {
+			if (this.activePart === index) return
+			this.activePart = index
+			this.refreshPartSummary()
+		},
+		goBack() {
+			const pages = getCurrentPages()
+			if (pages.length > 1) {
+				uni.navigateBack()
+				return
+			}
+			uni.reLaunch({
+				url: '/pages/index/index'
+			})
+		},
+		async onHistory() {
+			this.showHistoryPopup = true
+			if (this.historyLoading) return
+			this.historyLoading = true
+			try {
+				const data = await getPortraitList(7)
+				const list = asArray(data)
+				this.historyList = list.map((item) => {
+					const date = formatHistoryDate(
+						pickText(item.date, item.day, item.recordDate, item.statDate)
+					)
+					const status = pickText(
+						item.status,
+						item.statusText,
+						item.summary,
+						item.description,
+						item.title
+					) || '状态平稳'
+					const flag = pickText(item.flag, item.flagText, item.completeText, item.tag)
+					const score = item.score != null ? item.score : item.totalScore
+					return {
+						date: date || '--',
+						status: score != null && score !== '' ? `${status} · ${score}分` : status,
+						flag: flag || (date === '今天' ? '已更新' : '完整')
 					}
 				})
-			},
-			confirmArchivePopup() {
-				const index = this.archiveEditingIndex
-				if (index < 0) return
-				const selected = this.archiveSelected.slice()
-				const value = selected.length ? selected.join('、') : '无'
+				if (!this.historyList.length) {
+					this.historyPopupDesc = '近7天暂无健康画像数据'
+				} else {
+					const hasAbnormal = list.some((item) => {
+						const n = Number(item.abnormalCount != null ? item.abnormalCount : item.count)
+						return (n > 0) || /异常|偏低|偏高|不佳/.test(String(item.status || item.statusText || ''))
+					})
+					this.historyPopupDesc = hasAbnormal
+						? '近7天存在波动，建议结合异常记录查看'
+						: '当前数据未发现明显异常变化'
+				}
+			} catch (e) {
+				this.historyPopupDesc = '历史数据加载失败'
+			} finally {
+				this.historyLoading = false
+			}
+		},
+		closeHistoryPopup() {
+			this.showHistoryPopup = false
+		},
+		shiftRange(days) {
+			const next = new Date(this.rangeStart)
+			next.setDate(next.getDate() + days)
+			this.rangeStart = startOfWeekMonday(next)
+			this.loadWeekly()
+		},
+		onPrevRange() {
+			this.shiftRange(-7)
+		},
+		onNextRange() {
+			this.shiftRange(7)
+		},
+		async onArchiveTap(item) {
+			const index = this.archiveList.findIndex((row) => row.label === item.label)
+			if (index < 0) return
+			this.archiveEditingIndex = index
+			this.archiveSelected = (this.archiveList[index].selected || []).map((it) => ({
+				optionId: it.optionId != null ? it.optionId : null,
+				name: it.name
+			}))
+			this.archiveOptionList = []
+			this.showArchivePopup = true
+			try {
+				const data = await getHealthArchiveOptions(item.archiveType)
+				this.archiveOptionList = this.normalizeOptions(data)
+			} catch (e) {
+				this.archiveOptionList = []
+			}
+		},
+		normalizeOptions(data) {
+			const tags = asArray(
+				(data && (data.tags || data.tagList || data.options || data.list)) || data
+			)
+			const fromTags = tags
+				.map((tag) => {
+					if (typeof tag === 'string') {
+						return { optionId: null, name: tag }
+					}
+					return {
+						optionId:
+							tag.optionId != null
+								? tag.optionId
+								: tag.id != null
+									? tag.id
+									: null,
+						name: pickText(tag.name, tag.optionName, tag.label, tag.content)
+					}
+				})
+				.filter((tag) => tag.name)
+
+			if (fromTags.length) return fromTags
+
+			const groups = asArray(data && (data.groups || data.groupList))
+			const fromGroups = []
+			groups.forEach((g) => {
+				asArray(g.items || g.tags || g.options).forEach((tag) => {
+					if (typeof tag === 'string') {
+						fromGroups.push({ optionId: null, name: tag })
+						return
+					}
+					const name = pickText(tag.name, tag.optionName, tag.label)
+					if (!name) return
+					fromGroups.push({
+						optionId:
+							tag.optionId != null
+								? tag.optionId
+								: tag.id != null
+									? tag.id
+									: null,
+						name
+					})
+				})
+			})
+			return fromGroups
+		},
+		closeArchivePopup() {
+			this.showArchivePopup = false
+			this.archiveEditingIndex = -1
+			this.archiveSelected = []
+			this.archiveOptionList = []
+		},
+		isArchiveTagSelected(tag) {
+			const name = tag && tag.name
+			return this.archiveSelected.some((it) => it.name === name)
+		},
+		toggleArchiveTag(tag) {
+			const name = tag && tag.name
+			if (!name) return
+			const idx = this.archiveSelected.findIndex((it) => it.name === name)
+			if (idx > -1) {
+				this.archiveSelected.splice(idx, 1)
+				return
+			}
+			this.archiveSelected.push({
+				optionId: tag.optionId != null ? tag.optionId : null,
+				name
+			})
+		},
+		onAddOtherTag() {
+			uni.showModal({
+				title: this.archivePopup.otherLabel.replace(/\s*\+\s*$/, ''),
+				editable: true,
+				placeholderText: '请输入内容',
+				success: (res) => {
+					if (!res.confirm) return
+					const text = (res.content || '').trim()
+					if (!text) return
+					if (!this.archiveSelected.some((it) => it.name === text)) {
+						this.archiveSelected.push({
+							optionId: null,
+							name: text
+						})
+					}
+				}
+			})
+		},
+		async confirmArchivePopup() {
+			const index = this.archiveEditingIndex
+			if (index < 0 || this.archiveSaving) return
+			const row = this.archiveList[index]
+			const selected = this.archiveSelected
+				.map((it) => ({
+					optionId: it.optionId != null ? it.optionId : null,
+					name: it.name
+				}))
+				.filter((it) => it.name)
+			this.archiveSaving = true
+			try {
+				await saveHealthArchive({
+					archiveType: row.archiveType,
+					items: selected
+				})
+				const value = selected.length ? selected.map((i) => i.name).join('、') : '无'
 				this.$set(this.archiveList, index, {
-					...this.archiveList[index],
+					...row,
 					selected,
 					value
 				})
 				this.closeArchivePopup()
+				this.loadOrgans()
+				this.refreshPartSummary()
+				uni.showToast({
+					title: '已保存',
+					icon: 'none'
+				})
+			} catch (e) {
+			} finally {
+				this.archiveSaving = false
 			}
 		}
 	}
+}
+
 </script>
 
 <style lang="scss" scoped>
@@ -1154,22 +1400,33 @@
 	.archive-info {
 		flex: 1;
 		min-width: 0;
+		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
 
 	.archive-label {
+		display: block;
+		width: 100%;
 		font-size: 22rpx;
 		line-height: 32rpx;
 		color: rgba(255, 255, 255, 0.45);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.archive-value {
+		display: block;
+		width: 100%;
 		margin-top: 10rpx;
 		font-size: 30rpx;
 		font-weight: 600;
 		line-height: 42rpx;
 		color: #ffffff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.archive-arrow {

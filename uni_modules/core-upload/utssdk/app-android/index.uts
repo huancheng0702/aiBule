@@ -1,0 +1,91 @@
+import { FileInfo, PickFileOptions } from '../interface.uts'
+
+export function chooseNativeFile(options?: PickFileOptions): Promise<FileInfo> {
+  return new Promise<FileInfo>(function(resolve, reject) {
+    const mimeTypes: string[] = (options != null && options.mimeTypes != null) ? options.mimeTypes : ['*/*']
+
+    CoreFilePickerNative.startSinglePick(mimeTypes, function(uri: string | null) {
+      if (uri == null) {
+        reject(new Error('用户取消选择'))
+        return
+      }
+
+      const context = UTSAndroid.getAppContext()
+      if (context == null) {
+        reject(new Error('Context not available'))
+        return
+      }
+
+      const info = CoreFilePickerNative.getFileInfo(context, uri)
+      if (info == null) {
+        reject(new Error('获取文件信息失败'))
+        return
+      }
+
+      const filePath = CoreFilePickerNative.processUriToCache(context, uri, null)
+      if (filePath == null) {
+        reject(new Error('文件复制到沙盒失败'))
+        return
+      }
+
+      const name = info['fileName'] as string
+      const size = info['fileSize'] as number
+      const mime = info['mimeType'] as string
+      resolve({
+        filePath: filePath,
+        fileName: name != null ? name : 'unknown',
+        fileSize: size != null ? size : 0,
+        mimeType: mime != null ? mime : ''
+      })
+    })
+  })
+}
+
+export function chooseNativeFiles(options?: PickFileOptions): Promise<FileInfo[]> {
+  return new Promise<FileInfo[]>(function(resolve, reject) {
+    const mimeTypes: string[] = (options != null && options.mimeTypes != null) ? options.mimeTypes : ['*/*']
+
+    CoreFilePickerNative.startMultiPick(mimeTypes, function(jsonResult: string | null) {
+      if (jsonResult == null) {
+        reject(new Error('用户取消选择'))
+        return
+      }
+
+      const context = UTSAndroid.getAppContext()
+      if (context == null) {
+        reject(new Error('Context not available'))
+        return
+      }
+
+      const uriList = JSON.parse(jsonResult) as string[]
+      const results: FileInfo[] = []
+      for (let i = 0; i < uriList.length; i++) {
+        const uri = uriList[i]
+        if (uri == null) continue
+
+        const info = CoreFilePickerNative.getFileInfo(context, uri)
+        if (info == null) continue
+
+        const filePath = CoreFilePickerNative.processUriToCache(context, uri, null)
+        if (filePath == null) continue
+
+        const name = info['fileName'] as string
+        const size = info['fileSize'] as number
+        const mime = info['mimeType'] as string
+        results.push({
+          filePath: filePath,
+          fileName: name != null ? name : 'unknown',
+          fileSize: size != null ? size : 0,
+          mimeType: mime != null ? mime : ''
+        })
+      }
+
+      if (results.length > 0) {
+        resolve(results)
+      } else {
+        reject(new Error('未获取到文件'))
+      }
+    })
+  })
+}
+

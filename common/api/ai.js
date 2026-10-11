@@ -1,4 +1,4 @@
-import { postSse } from '@/common/sse.js'
+import { postSse, postSseEvents } from '@/common/sse.js'
 
 export function createAiSession() {
 	return uni.$post('/appApi/ai/session')
@@ -18,6 +18,31 @@ export function deleteAiSession(sessionId) {
 
 export function getAiQuickQuestions() {
 	return uni.$get('/appApi/ai/quickQuestions')
+}
+
+export function getReportHistory() {
+	return uni.$get('/appApi/ai/report/history')
+}
+
+export function getReportDetail(reportId) {
+	return uni.$get('/appApi/ai/report/history/' + reportId)
+}
+
+export function analyzeReportByUrl(imageUrl) {
+	return uni.$post('/appApi/ai/report/analyzeByUrl?imageUrl=' + encodeURIComponent(imageUrl || ''))
+}
+
+export function analyzeReportText(reportText) {
+	return uni.$post('/appApi/ai/report/analyzeText?reportText=' + encodeURIComponent(reportText || ''))
+}
+
+export function exportReportHistory(reportIds) {
+	const q = reportIds && reportIds.length ? '?reportIds=' + encodeURIComponent([].concat(reportIds).join(',')) : ''
+	return uni.$post('/appApi/ai/report/export' + q)
+}
+
+export function analyzeReportStreamByUrl(imageUrl, onEvent) {
+	return postSseEvents('/appApi/ai/report/analyzeByAi/stream?imageUrl=' + encodeURIComponent(imageUrl || ''), {}, onEvent)
 }
 
 export function chatAi(data) {

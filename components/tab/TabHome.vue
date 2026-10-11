@@ -7,14 +7,19 @@
 				<text class="greet-sub">今天也要关心自己</text>
 			</view>
 			<view class="battery">
-				<image class="battery-icon" mode="aspectFit"></image>
+				<image class="battery-icon" src="/static/lvdian.png" mode="aspectFit"></image>
 				<text class="battery-text">{{ batteryText }}</text>
 			</view>
 		</view>
 
 		<!-- 智能戒指横幅 -->
 		<view class="hero-banner">
-			<image src="/static/swiper.png" mode=""></image>
+			<swiper v-if="banners.length" class="hero-swiper" circular autoplay interval="4000" indicator-dots>
+				<swiper-item v-for="item in banners" :key="item.bannerId" @click="onBanner(item)">
+					<image class="hero-img" :src="item.imageUrl" mode="aspectFill"></image>
+				</swiper-item>
+			</swiper>
+			<image v-else src="/static/swiper.png" class="hero-img" mode="aspectFill"></image>
 		</view>
 
 		<!-- 健康管家 -->
@@ -71,7 +76,7 @@
 				</view>
 
 				<!-- 心率 -->
-				<view class="status-card" @click="goHeart">
+				<view class="status-card" @click="goHeart" style="height: 152rpx;">
 					<view class="card-head">
 						<image class="card-icon" src="/static/xinlv.png" mode="aspectFit"></image>
 						<text class="card-label">心率</text>
@@ -79,34 +84,22 @@
 					<view class="metric-body">
 						<view class="metric-left">
 							<view class="card-value-row">
-								<text class="card-value">98</text>
-								<text class="card-unit">ms</text>
+								<text class="card-value">{{ heartRateValue }}</text>
+								<text class="card-unit">{{ heartRateUnit }}</text>
 							</view>
 						</view>
 						<view class="metric-chart">
 							<view class="chart-box">
-								<qiun-data-charts
-									v-if="chartReady"
-									type="area"
-									canvasId="homeHeartRate"
-									:opts="heartRateOpts"
-									:chartData="heartRateData"
-									:tooltipShow="false"
-									:ontap="false"
-									:animation="false"
-								/>
-							</view>
-							<view class="chart-axis-line"></view>
-							<view class="chart-time">
-								<text>00:00</text>
-								<text>24:00</text>
+								<qiun-data-charts v-if="chartReady" type="area" canvasId="homeHeartRate"
+									:opts="heartRateOpts" :chartData="heartRateData" :tooltipShow="false" :ontap="false"
+									:animation="false" />
 							</view>
 						</view>
 					</view>
 				</view>
 
 				<!-- 血氧 -->
-				<view class="status-card" @click="goBoold">
+				<view class="status-card" @click="goBoold" style="height: 152rpx;">
 					<view class="card-head">
 						<image class="card-icon" src="/static/xueyang.png" mode="aspectFit"></image>
 						<text class="card-label">血氧</text>
@@ -114,33 +107,22 @@
 					<view class="metric-body">
 						<view class="metric-left">
 							<view class="card-value-row">
-								<text class="card-value">98</text>
-								<text class="card-unit">%</text>
+								<text class="card-value">{{ bloodOxygenValue }}</text>
+								<text class="card-unit">{{ bloodOxygenUnit }}</text>
 							</view>
 						</view>
 						<view class="metric-chart">
 							<view class="chart-box">
-								<qiun-data-charts
-									v-if="chartReady"
-									type="column"
-									canvasId="homeBloodOxygen"
-									:opts="bloodOxygenOpts"
-									:chartData="bloodOxygenData"
-									:tooltipShow="false"
-									:ontap="false"
-									:animation="false"
-								/>
-							</view>
-							<view class="chart-time">
-								<text>00:00</text>
-								<text>24:00</text>
+								<qiun-data-charts v-if="chartReady" type="column" canvasId="homeBloodOxygen"
+									:opts="bloodOxygenOpts" :chartData="bloodOxygenData" :tooltipShow="false"
+									:ontap="false" :animation="false" />
 							</view>
 						</view>
 					</view>
 				</view>
 
 				<!-- HRV -->
-				<view class="status-card" @click="goHrv">
+				<view class="status-card" @click="goHrv" style="height: 152rpx;">
 					<view class="card-head">
 						<image class="card-icon" src="/static/hrv.png" mode="aspectFit"></image>
 						<text class="card-label">HRV</text>
@@ -148,33 +130,21 @@
 					<view class="metric-body">
 						<view class="metric-left">
 							<view class="card-value-row">
-								<text class="card-value">98</text>
-								<text class="card-unit">ms</text>
+								<text class="card-value">{{ hrvValue }}</text>
+								<text class="card-unit">{{ hrvUnit }}</text>
 							</view>
 						</view>
 						<view class="metric-chart">
 							<view class="chart-box">
-								<qiun-data-charts
-									v-if="chartReady"
-									type="area"
-									canvasId="homeHrv"
-									:opts="hrvOpts"
-									:chartData="hrvData"
-									:tooltipShow="false"
-									:ontap="false"
-									:animation="false"
-								/>
-							</view>
-							<view class="chart-time">
-								<text>00:00</text>
-								<text>24:00</text>
+								<qiun-data-charts v-if="chartReady" type="area" canvasId="homeHrv" :opts="hrvOpts"
+									:chartData="hrvData" :tooltipShow="false" :ontap="false" :animation="false" />
 							</view>
 						</view>
 					</view>
 				</view>
 
 				<!-- 压力 -->
-				<view class="status-card" @click="goStress">
+				<view class="status-card" @click="goStress" style="height: 152rpx;">
 					<view class="card-head">
 						<image class="card-icon" src="/static/yali.png" mode="aspectFit"></image>
 						<text class="card-label">压力</text>
@@ -182,25 +152,15 @@
 					<view class="metric-body">
 						<view class="metric-left">
 							<view class="card-value-row">
-								<text class="card-value">98</text>
+								<text class="card-value">{{ stressValue }}</text>
+								<text class="card-unit">{{ stressUnit }}</text>
 							</view>
 						</view>
 						<view class="metric-chart">
 							<view class="chart-box">
-								<qiun-data-charts
-									v-if="chartReady"
-									type="column"
-									canvasId="homeStress"
-									:opts="stressOpts"
-									:chartData="stressData"
-									:tooltipShow="false"
-									:ontap="false"
-									:animation="false"
-								/>
-							</view>
-							<view class="chart-time">
-								<text>00:00</text>
-								<text>24:00</text>
+								<qiun-data-charts v-if="chartReady" type="column" canvasId="homeStress"
+									:opts="stressOpts" :chartData="stressData" :tooltipShow="false" :ontap="false"
+									:animation="false" />
 							</view>
 						</view>
 					</view>
@@ -260,7 +220,7 @@
 					<text class="butler-title">健康管家</text>
 					<view class="butler-qr-wrap">
 						<!-- 二维码图，自行补充 src -->
-						<image class="butler-qr" mode="aspectFit"></image>
+						<image class="butler-qr" :src="butlerQrcode" mode="aspectFit"></image>
 					</view>
 					<text class="butler-tip">微信扫码添加专属健康管家</text>
 					<view class="butler-footer">
@@ -268,7 +228,8 @@
 							<text class="butler-phone-label">管家联系电话</text>
 							<text class="butler-phone-num">{{ butlerPhone }}</text>
 						</view>
-						<image src="/static/copyPhone.png" @click="copyButlerPhone" class="butler-copy-btn" mode=""></image>
+						<image src="/static/copyPhone.png" @click="copyButlerPhone" class="butler-copy-btn" mode="">
+						</image>
 					</view>
 				</view>
 			</view>
@@ -279,31 +240,182 @@
 <script>
 	import qiunDataCharts from '@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue'
 	import BleService from '@/common/ble-service.js'
+	import {
+		getDeviceDashboard
+	} from '@/common/api/deviceData.js'
+	import {
+		getBannerList
+	} from '@/common/api/banner.js'
+	import {
+		getHealthManager
+	} from '@/common/api/config.js'
+	import {
+		getHomeDisplay,
+		updateHomeDisplay,
+		getManualHealthList
+	} from '@/common/api/manualHealth.js'
+	import {
+		getPeriodStatistics
+	} from '@/common/api/period.js'
+	import {
+		getUserInfo
+	} from '@/common/api/user.js'
+	import {
+		saveLoginSession
+	} from '@/common/auth.js'
+
+	const RECORD_META = {
+		'1': {
+			key: 'weight',
+			suffix: ' kg'
+		},
+		'2': {
+			key: 'sugar',
+			suffix: ' mmol/L'
+		},
+		'3': {
+			key: 'temp',
+			suffix: ' ℃'
+		},
+		'4': {
+			key: 'bp',
+			suffix: ' mmHg'
+		},
+		'5': {
+			key: 'period',
+			suffix: ''
+		}
+	}
+	const STRESS_COLORS = ['#FF9F0A', '#BF5AF2', '#64D2FF', '#0A84FF', '#5E5CE6', '#FF6B6B']
+
+	function pickDashItem(items, code) {
+		const list = Array.isArray(items) ? items : []
+		for (let i = 0; i < list.length; i++) {
+			if (list[i] && list[i].code === code) return list[i]
+		}
+		return null
+	}
+
+	function timeAxisCategories(len) {
+		const n = Math.max(Number(len) || 0, 2)
+		const cats = []
+		for (let i = 0; i < n; i++) {
+			cats.push('')
+		}
+		cats[0] = '00:00'
+		cats[n - 1] = '24:00'
+		return cats
+	}
+
+	function toChart(series, name, fallbackLen) {
+		const list = Array.isArray(series) ? series : []
+		if (!list.length) {
+			return {
+				categories: timeAxisCategories(fallbackLen || 8),
+				series: [{
+					name: name,
+					data: []
+				}]
+			}
+		}
+		return {
+			categories: timeAxisCategories(list.length),
+			series: [{
+				name: name,
+				data: list.map((p) => Number(p && p.value) || 0)
+			}]
+		}
+	}
+
+	function toStressChart(series) {
+		const list = Array.isArray(series) ? series : []
+		if (!list.length) {
+			return {
+				categories: timeAxisCategories(6),
+				series: [{
+					name: '压力',
+					data: []
+				}]
+			}
+		}
+		return {
+			categories: timeAxisCategories(list.length),
+			series: [{
+				name: '压力',
+				data: list.map((p, i) => ({
+					value: Number(p && p.value) || 0,
+					color: STRESS_COLORS[i % STRESS_COLORS.length]
+				}))
+			}]
+		}
+	}
+
+	function displayValue(item) {
+		if (!item) return '--'
+		const v = item.value
+		if (v === 0 || v === '0') return '0'
+		if (v === undefined || v === null || v === '') return '--'
+		return String(v)
+	}
+
+	function parseSleepValue(item) {
+		if (!item) return {
+			hours: 0,
+			minutes: 0
+		}
+		const text = String(item.value || '')
+		const hourMatch = text.match(/(\d+)\s*小时/)
+		const minMatch = text.match(/(\d+)\s*分/)
+		if (hourMatch || minMatch) {
+			return {
+				hours: hourMatch ? Number(hourMatch[1]) : 0,
+				minutes: minMatch ? Number(minMatch[1]) : 0
+			}
+		}
+		const num = Number(item.value)
+		if (!isNaN(num) && num > 0) {
+			if ((item.unit || '') === '小时' || num <= 24) {
+				const hours = Math.floor(num)
+				const minutes = Math.round((num - hours) * 60)
+				return {
+					hours,
+					minutes
+				}
+			}
+			const hours = Math.floor(num / 60)
+			const minutes = Math.round(num % 60)
+			return {
+				hours,
+				minutes
+			}
+		}
+		return {
+			hours: 0,
+			minutes: 0
+		}
+	}
 
 	function createChartOpts(extra = {}) {
 		return {
-			color: [],
-			padding: [2, 2, 2, 2],
-			legend: { show: false },
+			color: extra.color || [],
+			padding: extra.padding || [10, 10, 1, 4],
+			legend: {
+				show: false  
+			},
 			dataLabel: false,
 			dataPointShape: false,
 			enableScroll: false,
 			xAxis: {
-				disabled: true,
+				disabled: false,
 				disableGrid: true,
-				axisLine: false,
-				boundaryGap: 'center'
-			},
-			yAxis: {
-				disabled: true,
-				disableGrid: true
-			},
-			...extra,
-			xAxis: {
-				disabled: true,
-				disableGrid: true,
-				axisLine: false,
+				axisLine: true,
+				axisLineColor: 'rgba(142,142,147,0.45)',
+				fontSize: 8,
+				fontColor: '#8E8E93',
+				marginTop: 2,
+				calibration: false,
 				boundaryGap: 'center',
+				labelOffset: 0,
 				...(extra.xAxis || {})
 			},
 			yAxis: {
@@ -325,7 +437,6 @@
 				statusBarHeight: 20,
 				batteryLevel: null,
 				batteryCharging: false,
-				bleConnected: false,
 				unsubBle: null,
 				stepCurrent: 0,
 				stepTarget: 8000,
@@ -340,9 +451,20 @@
 				showManagePopup: false,
 				showButlerPopup: false,
 				butlerPhone: '400-820-1624',
+				butlerQrcode: '',
+				banners: [],
+				nickName: '',
+				heartRateValue: '--',
+				heartRateUnit: '次/分',
+				bloodOxygenValue: '--',
+				bloodOxygenUnit: '%',
+				hrvValue: '--',
+				hrvUnit: 'ms',
+				stressValue: '--',
+				stressUnit: '',
 				chartReady: false,
 				heartRateData: {
-					categories: Array.from({ length: 30 }, () => ''),
+					categories: timeAxisCategories(24),
 					series: [{
 						name: '心率',
 						data: [
@@ -353,7 +475,6 @@
 				},
 				heartRateOpts: createChartOpts({
 					color: ['#FF5E7B'],
-					xAxis: { boundaryGap: 'justify' },
 					yAxis: {
 						disabled: true,
 						disableGrid: true,
@@ -374,10 +495,10 @@
 					}
 				}),
 				bloodOxygenData: {
-					categories: Array.from({ length: 15 }, () => ''),
+					categories: timeAxisCategories(13),
 					series: [{
 						name: '血氧',
-						data: [62, 78, 55, 88, 70, 92, 48, 85, 66, 90, 58, 80, 72,]
+						data: [62, 78, 55, 88, 70, 92, 48, 85, 66, 90, 58, 80, 72, ]
 					}]
 				},
 				bloodOxygenOpts: createChartOpts({
@@ -393,15 +514,16 @@
 					}
 				}),
 				hrvData: {
-					categories: Array.from({ length: 30 }, () => ''),
+					categories: timeAxisCategories(24),
 					series: [{
 						name: 'HRV',
-						data: [35, 48, 72, 88, 70, 52, 40, 55, 78, 92, 80, 58, 42, 50, 68, 85, 75, 55, 38, 48, 62, 70, 58, 45]
+						data: [35, 48, 72, 88, 70, 52, 40, 55, 78, 92, 80, 58, 42, 50, 68, 85, 75, 55, 38, 48, 62,
+							70, 58, 45
+						]
 					}]
 				},
 				hrvOpts: createChartOpts({
 					color: ['#E1A2FF'],
-					xAxis: { boundaryGap: 'justify' },
 					yAxis: {
 						disabled: true,
 						disableGrid: true,
@@ -422,16 +544,33 @@
 					}
 				}),
 				stressData: {
-					categories: ['1', '2', '3', '4', '5', '6'],
+					categories: timeAxisCategories(6),
 					series: [{
 						name: '压力',
-						data: [
-							{ value: 88, color: '#FF9F0A' },
-							{ value: 52, color: '#BF5AF2' },
-							{ value: 78, color: '#64D2FF' },
-							{ value: 92, color: '#0A84FF' },
-							{ value: 48, color: '#5E5CE6' },
-							{ value: 70, color: '#FF6B6B' }
+						data: [{
+								value: 88,
+								color: '#FF9F0A'
+							},
+							{
+								value: 52,
+								color: '#BF5AF2'
+							},
+							{
+								value: 78,
+								color: '#64D2FF'
+							},
+							{
+								value: 92,
+								color: '#0A84FF'
+							},
+							{
+								value: 48,
+								color: '#5E5CE6'
+							},
+							{
+								value: 70,
+								color: '#FF6B6B'
+							}
 						]
 					}]
 				},
@@ -440,8 +579,8 @@
 					extra: {
 						column: {
 							type: 'group',
-							width: 10,
-							categoryGap: 6,
+							width:80,
+							categoryGap: 4,
 							barBorderCircle: true,
 							activeBgColor: 'transparent',
 							activeBgOpacity: 0
@@ -449,44 +588,49 @@
 					}
 				}),
 				recordList: [{
+						type: '1',
 						key: 'weight',
 						manageLabel: '体重',
 						homeLabel: '体重',
-						value: '45 kg',
+						value: '',
 						visible: true,
-						icon:'/static/tizhong.png'
+						icon: '/static/tizhong.png'
 					},
 					{
+						type: '2',
 						key: 'sugar',
 						manageLabel: '血糖',
 						homeLabel: '血糖',
 						value: '',
 						visible: true,
-						icon:'/static/xuetang.png'
+						icon: '/static/xuetang.png'
 					},
 					{
+						type: '3',
 						key: 'temp',
 						manageLabel: '体温',
 						homeLabel: '体温',
-						value: '36.5 ℃',
+						value: '',
 						visible: true,
-						icon:'/static/tiwen.png'
+						icon: '/static/tiwen.png'
 					},
 					{
+						type: '4',
 						key: 'bp',
 						manageLabel: '血压',
 						homeLabel: '血压',
-						value: '116/74 mmHg',
+						value: '',
 						visible: true,
-						icon:'/static/xueya.png'
+						icon: '/static/xueya.png'
 					},
 					{
+						type: '5',
 						key: 'period',
 						manageLabel: '经期',
 						homeLabel: '生理周期',
 						value: '',
 						visible: true,
-						icon:'/static/jingqi.png'
+						icon: '/static/jingqi.png'
 					}
 				]
 			}
@@ -494,33 +638,11 @@
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
+			this.nickName = uni.getStorageSync('nickName') || ''
 			this.unsubBle = BleService.subscribe((s) => {
-				this.bleConnected = !!s.connected
 				this.batteryLevel = s.batteryLevel
 				this.batteryCharging = !!s.batteryCharging
-				if (s.sport) {
-					this.stepCurrent = Number(s.sport.steps) || 0
-					this.calorieCurrent = Number(s.sport.calories) || 0
-					this.distanceCurrent = s.sport.distanceKm != null
-						? Number(s.sport.distanceKm)
-						: Math.round(((Number(s.sport.distanceM) || 0) / 1000) * 10) / 10
-				}
-				if (s.sleep) this.applyHomeSleep(s.sleep)
 			})
-			try {
-				const goals = uni.getStorageSync('todayStepGoals')
-				if (goals && goals.step > 0) this.stepTarget = goals.step
-			} catch (e) {}
-			const sport = BleService.getSport && BleService.getSport()
-			if (sport) {
-				this.stepCurrent = Number(sport.steps) || 0
-				this.calorieCurrent = Number(sport.calories) || 0
-				this.distanceCurrent = sport.distanceKm != null
-					? Number(sport.distanceKm)
-					: Math.round(((Number(sport.distanceM) || 0) / 1000) * 10) / 10
-			}
-			const sleep = BleService.getSleep && BleService.getSleep()
-			if (sleep) this.applyHomeSleep(sleep)
 		},
 		beforeDestroy() {
 			if (this.unsubBle) {
@@ -538,20 +660,21 @@
 		computed: {
 			batteryText() {
 				if (this.batteryLevel != null) {
-					return this.batteryCharging
-						? `${this.batteryLevel}% 充电中`
-						: `${this.batteryLevel}%`
+					return this.batteryCharging ?
+						this.batteryLevel + '% 充电中' :
+						this.batteryLevel + '%'
 				}
 				if (this.batteryCharging) return '充电中'
-				return this.bleConnected ? '--%' : '--'
+				return '--'
 			},
 			greetText() {
 				const hour = new Date().getHours()
-				if (hour < 6) return '夜深了'
-				if (hour < 12) return '早上好'
-				if (hour < 14) return '中午好'
-				if (hour < 18) return '下午好'
-				return '晚上好'
+				let text = '晚上好'
+				if (hour < 6) text = '夜深了'
+				else if (hour < 12) text = '早上好'
+				else if (hour < 14) text = '中午好'
+				else if (hour < 18) text = '下午好'
+				return this.nickName ? (text + '，' + this.nickName) : text
 			},
 			stepText() {
 				const n = Number(this.stepCurrent) || 0
@@ -571,7 +694,7 @@
 			},
 			sleepSubText() {
 				if (!this.hasSleepData) return ''
-				return this.sleepScore ? `得分 ${this.sleepScore}` : '戒指采集'
+				return this.sleepScore ? `得分 ${this.sleepScore}` : ''
 			},
 			hasSleepData() {
 				return !!(Number(this.sleepHours) || Number(this.sleepMinutes))
@@ -590,40 +713,177 @@
 			}
 		},
 		methods: {
-			applyHomeSleep(sleep) {
-				if (!sleep) return
-				this.sleepHours = Number(sleep.hours) || 0
-				this.sleepMinutes = Number(sleep.minutes) || 0
-				this.sleepScore = Number(sleep.score) || 0
-				const total = Math.max(1, Number(sleep.totalMin) || 0)
-				this.sleepDeepRatio = (Number(sleep.deepMin) || 0) / total
-				this.sleepLightRatio = (Number(sleep.lightMin) || 0) / total
-				this.sleepRemRatio = (Number(sleep.remMin) || 0) / total
+			onTabShow() {
+				this.loadHome()
 			},
-			goDetail(item){
-				if(item.key=='weight'){
-					uni.navigateTo({
-						url:'/pages/index/weight'
+			async loadHome() {
+				await Promise.all([
+					this.loadDashboard(),
+					this.loadBanners(),
+					this.loadManualRecords(),
+					this.loadUser()
+				])
+			},
+			async loadDashboard() {
+				try {
+					const data = await getDeviceDashboard()
+					this.applyDashboard(data)
+				} catch (e) {}
+			},
+			applyDashboard(data) {
+				const items = (data && data.items) || []
+				const steps = pickDashItem(items, 'steps')
+				if (steps) {
+					this.stepCurrent = Number(steps.value) || 0
+					this.distanceCurrent = Number(steps.distance) || 0
+					this.calorieCurrent = Number(steps.calories) || 0
+					if (Number(steps.target) > 0) this.stepTarget = Number(steps.target)
+					else this.stepTarget = 10000
+				}
+				const sleep = pickDashItem(items, 'sleep')
+				if (sleep) {
+					const parsed = parseSleepValue(sleep)
+					this.sleepHours = parsed.hours
+					this.sleepMinutes = parsed.minutes
+					this.sleepScore = Number(sleep.status) || Number((sleep.subText || '').replace(/\D/g, '')) || 0
+					const segs = sleep.segments || []
+					this.sleepDeepRatio = 0
+					this.sleepLightRatio = 0
+					this.sleepRemRatio = 0
+					segs.forEach((seg) => {
+						const name = String(seg.name || '')
+						const percent = Number(seg.percent)
+						const ratio = isNaN(percent) ? 0 : percent / 100
+						if (name.indexOf('深') !== -1) this.sleepDeepRatio = ratio
+						else if (name.indexOf('浅') !== -1) this.sleepLightRatio = ratio
+						else if (name.indexOf('眼动') !== -1 || name.toLowerCase().indexOf('rem') !== -1) this
+							.sleepRemRatio = ratio
 					})
 				}
-				if(item.key=='sugar'){
+				const heart = pickDashItem(items, 'heart_rate')
+				if (heart) {
+					this.heartRateValue = displayValue(heart)
+					this.heartRateUnit = heart.unit || '次/分'
+					this.heartRateData = toChart(heart.series, '心率', 24)
+				}
+				const spo2 = pickDashItem(items, 'blood_oxygen')
+				if (spo2) {
+					this.bloodOxygenValue = displayValue(spo2)
+					this.bloodOxygenUnit = spo2.unit || '%'
+					this.bloodOxygenData = toChart(spo2.series, '血氧', 15)
+				}
+				const hrv = pickDashItem(items, 'hrv')
+				if (hrv) {
+					this.hrvValue = displayValue(hrv)
+					this.hrvUnit = hrv.unit || 'ms'
+					this.hrvData = toChart(hrv.series, 'HRV', 24)
+				}
+				const stress = pickDashItem(items, 'stress')
+				if (stress) {
+					this.stressValue = displayValue(stress)
+					this.stressUnit = stress.unit || ''
+					this.stressData = toStressChart(stress.series)
+				}
+			},
+			async loadBanners() {
+				try {
+					const list = await getBannerList()
+					this.banners = Array.isArray(list) ? list : []
+				} catch (e) {}
+			},
+			async loadManualRecords() {
+				try {
+					const display = await getHomeDisplay()
+					const rows = Array.isArray(display) ? display : []
+					rows.forEach((row) => {
+						const rec = this.recordList.find((item) => item.type === String(row.type))
+						if (!rec) return
+						this.$set(rec, 'visible', String(row.isShow) !== '0')
+						if (row.name) rec.manageLabel = row.name
+					})
+				} catch (e) {}
+				try {
+					const list = await getManualHealthList()
+					const rows = Array.isArray(list) ? list : []
+					const latest = {}
+					rows.forEach((row) => {
+						const type = String(row.type)
+						const prev = latest[type]
+						const time = new Date(row.recordTime || row.createTime || 0).getTime()
+						if (!prev || time >= prev._t) {
+							latest[type] = Object.assign({}, row, {
+								_t: time
+							})
+						}
+					})
+					this.recordList.forEach((rec) => {
+						if (rec.type === '5') return
+						const row = latest[rec.type]
+						const meta = RECORD_META[rec.type]
+						if (!row || !row.value) {
+							rec.value = ''
+							return
+						}
+						const unit = row.unit ? (' ' + row.unit) : (meta && meta.suffix) || ''
+						rec.value = String(row.value) + unit
+					})
+				} catch (e) {}
+				try {
+					const stats = await getPeriodStatistics()
+					const rec = this.recordList.find((item) => item.type === '5')
+					if (!rec || !stats) return
+					if (Number(stats.periodDay) > 0) {
+						rec.value = '经期第' + stats.periodDay + '天'
+					} else if (stats.nextStartDate) {
+						rec.value = '下次 ' + String(stats.nextStartDate).slice(5)
+					} else {
+						rec.value = ''
+					}
+				} catch (e) {}
+			},
+			async loadUser() {
+				try {
+					const info = await getUserInfo()
+					if (info) {
+						saveLoginSession(info)
+						this.nickName = info.nickName || info.nickname || this.nickName
+					}
+				} catch (e) {}
+			},
+			onBanner(item) {
+				const url = item && item.linkUrl
+				if (!url) return
+				// #ifdef H5
+				window.open(url)
+				// #endif
+				// #ifdef APP-PLUS
+				plus.runtime.openURL(url)
+				// #endif
+			},
+			goDetail(item) {
+				if (item.key == 'weight') {
 					uni.navigateTo({
-						url:'/pages/index/sugar'
+						url: '/pages/index/weight'
 					})
 				}
-				if(item.key=='temp'){
+				if (item.key == 'sugar') {
 					uni.navigateTo({
-						url:'/pages/index/temperature'
+						url: '/pages/index/sugar'
 					})
 				}
-				if(item.key=='bp'){
+				if (item.key == 'temp') {
 					uni.navigateTo({
-						url:'/pages/index/pressure'
+						url: '/pages/index/temperature'
 					})
 				}
-				if(item.key=='period'){
+				if (item.key == 'bp') {
 					uni.navigateTo({
-						url:'/pages/index/period'
+						url: '/pages/index/pressure'
+					})
+				}
+				if (item.key == 'period') {
+					uni.navigateTo({
+						url: '/pages/index/period'
 					})
 				}
 			},
@@ -632,42 +892,64 @@
 					url: '/pages/index/todayStep'
 				})
 			},
-			goNight(){
+			goNight() {
 				uni.navigateTo({
 					url: '/pages/index/yesterdaynight'
 				})
 			},
-			goHeart(){
+			goHeart() {
 				uni.navigateTo({
-					url:'/pages/index/heartRate'
+					url: '/pages/index/heartRate'
 				})
 			},
-			goBoold(){
+			goBoold() {
 				uni.navigateTo({
-					url:'/pages/index/boold'
+					url: '/pages/index/boold'
 				})
 			},
-			goHrv(){
+			goHrv() {
 				uni.navigateTo({
-					url:'/pages/index/hrv'
+					url: '/pages/index/hrv'
 				})
 			},
-			goStress(){
+			goStress() {
 				uni.navigateTo({
-					url:'/pages/index/stress'
+					url: '/pages/index/stress'
 				})
 			},
 			openManagePopup() {
+				this.recordList.forEach((item) => {
+					this.$set(item, '_origVisible', item.visible)
+				})
 				this.showManagePopup = true
 			},
 			closeManagePopup() {
 				this.showManagePopup = false
 			},
-			confirmManagePopup() {
+			async confirmManagePopup() {
 				this.showManagePopup = false
+				for (let i = 0; i < this.recordList.length; i++) {
+					const item = this.recordList[i]
+					if (item.visible === item._origVisible) continue
+					try {
+						await updateHomeDisplay({
+							type: item.type,
+							isShow: item.visible ? '1' : '0'
+						})
+					} catch (e) {}
+				}
 			},
 			openButlerPopup() {
 				this.showButlerPopup = true
+				this.loadHealthManager()
+			},
+			async loadHealthManager() {
+				try {
+					const info = await getHealthManager()
+					if (!info) return
+					if (info.phone) this.butlerPhone = info.phone
+					if (info.qrcode) this.butlerQrcode = info.qrcode
+				} catch (e) {}
 			},
 			closeButlerPopup() {
 				this.showButlerPopup = false
@@ -751,8 +1033,11 @@
 	.hero-banner {
 		width: 100%;
 		height: 300rpx;
+		overflow: hidden;
+		border-radius: 24rpx;
 
-		image {
+		.hero-swiper,
+		.hero-img {
 			width: 100%;
 			height: 100%;
 		}
@@ -801,9 +1086,10 @@
 	.status-card {
 		width: 334rpx;
 		margin-bottom: 28rpx;
-		padding: 24rpx;
-		border-radius: 24rpx;
+		padding: 20rpx;
 		background: #1A1B25;
+		border-radius: 20rpx 20rpx 20rpx 20rpx;
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
 		overflow: hidden;
 	}
@@ -834,7 +1120,7 @@
 	}
 
 	.card-value {
-		font-size: 40rpx;
+		font-size: 36rpx;
 		font-weight: 700;
 		color: #ffffff;
 		line-height: 52rpx;
@@ -945,10 +1231,9 @@
 
 	.metric-body {
 		display: flex;
-		align-items: flex-end;
+		align-items: stretch;
 		justify-content: space-between;
 		margin-top: 8rpx;
-		overflow: hidden;
 	}
 
 	.metric-left {
@@ -957,42 +1242,25 @@
 	}
 
 	.metric-chart {
-		width: 168rpx;
-		flex-shrink: 0;
+		width: 152rpx;
+		height: 140rpx;
 		margin-left: 8rpx;
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		overflow: hidden;
+		position: relative;
+		top: -30rpx;
+		flex-shrink: 0;
+		overflow: visible;
 	}
 
 	.chart-box {
-		width: 168rpx;
-		height: 88rpx;
-		overflow: hidden;
+		width: 100%;
+		height: 100%;
 		position: relative;
+		top: -30rpx;
 	}
 
 	.chart-box ::v-deep .chartsview {
 		width: 100% !important;
 		height: 100% !important;
-		flex: none !important;
-	}
-
-	.chart-axis-line {
-		width: 100%;
-		height: 0;
-		margin-top: 2rpx;
-		border-bottom: 1px dashed rgba(142, 142, 147, 0.5);
-	}
-
-	.chart-time {
-		display: flex;
-		justify-content: space-between;
-		margin-top: 6rpx;
-		font-size: 18rpx;
-		color: #8e8e93;
-		line-height: 24rpx;
 	}
 
 	.record-grid {
@@ -1001,7 +1269,8 @@
 		justify-content: space-between;
 		margin-top: 20rpx;
 	}
-	.reTop{
+
+	.reTop {
 		display: flex;
 		align-items: center;
 		justify-content: flex-start;
@@ -1239,7 +1508,7 @@
 	}
 
 	.butler-copy-btn {
-		width:172rpx;
+		width: 172rpx;
 		height: 64rpx;
 	}
 </style>

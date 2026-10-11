@@ -42,12 +42,12 @@
 
 			<view class="cycle-chart">
 				<view class="cycle-y">
-					<text v-for="(label, idx) in stageLabels" :key="idx" class="cycle-y-label">{{ label }}</text>
+					<view v-for="(label, idx) in stageLabels" :key="idx" class="cycle-y-label">{{ label }}</view>
 				</view>
 				<view class="cycle-main">
-					<!-- 圆角阶梯面积图 hypnogram -->
+					<!-- Canvas圆角阶梯波形图 hypnogram -->
 					<view class="cycle-plot">
-						<image v-if="chartImageSrc" class="cycle-svg" :src="chartImageSrc" mode="scaleToFill" />
+						<canvas class="cycle-canvas" canvas-id="sleepCanvas" id="sleepCanvas"></canvas>
 					</view>
 					<view class="cycle-x">
 						<text class="cycle-x-label">{{ sleepStart }}</text>
@@ -117,6 +117,49 @@
 				</view>
 			</view>
 		</view>
+
+		<!-- 日历弹窗 -->
+		<view v-if="showCalendar" class="cal-mask" @click="closeCalendar">
+			<view class="cal-popup" @click.stop>
+				<image class="cal-popup-bg" src="/static/bushuPopBg.png" mode="aspectFill"></image>
+				<view class="cal-body">
+					<view class="cal-header">
+						<view class="cal-nav" @click="onCalPrevMonth">
+							<text class="cal-nav-arrow">‹</text>
+						</view>
+						<text class="cal-title">{{ calendarTitle }}</text>
+						<view class="cal-nav" :class="{ disabled: !canCalNextMonth }" @click="onCalNextMonth">
+							<text class="cal-nav-arrow">›</text>
+						</view>
+					</view>
+
+					<view class="cal-week">
+						<text v-for="(w, i) in weekLabels" :key="i" class="cal-week-item">{{ w }}</text>
+					</view>
+
+					<view class="cal-grid">
+						<view
+							v-for="(cell, index) in calendarCells"
+							:key="index"
+							class="cal-cell"
+							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
+							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)"
+						>
+							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
+							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
+						</view>
+					</view>
+
+					<view class="cal-btns">
+						<view class="cal-btn cancel" @click="closeCalendar">取消</view>
+						<view class="cal-btn confirm" @click="confirmCalendar">
+							<image class="cal-btn-bg" src="/static/confirmBg.png" mode=""></image>
+							<text class="cal-btn-text">确定</text>
+						</view>
+					</view>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
@@ -125,7 +168,7 @@
 		toSvgDataUrl
 	} from '@/common/svg-data-url.js'
 	import BleService from '@/common/ble-service.js'
-	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import { getSleepTrend } from '@/common/api/deviceData.js'
 
 	/**
 	 * 睡眠分期圆角阶梯面积图（hypnogram）
@@ -218,7 +261,13 @@
 	}
 
 	function buildHypnogramAreas(segments, chartW, chartH, padTop, padBottom) {
-		const list = segments && segments.length ? segments : DEFAULT_SEGMENTS
+		if (!segments || !segments.length) {
+			return {
+				areas: [],
+				connectors: []
+			}
+		}
+		const list = segments
 		const total = list.reduce((sum, item) => sum + item.dur, 0) || 1
 		const stageOrder = ['awake', 'rem', 'light', 'deep']
 		const levels = stageOrder.map((stage) => stageY(stage, chartH, padTop, padBottom))
@@ -252,6 +301,59 @@
 			areas,
 			connectors
 		}
+	}
+
+	function dateToYmd(d) {
+		const y = d.getFullYear()
+		const m = d.getMonth() + 1
+		const day = d.getDate()
+		return y + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day)
+	}
+
+	function startOfDay(d) {
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+	}
+
+	function isFutureDate(year, month, day) {
+		const target = new Date(year, month, day)
+		return startOfDay(target).getTime() > startOfDay(new Date()).getTime()
+	}
+
+	function formatClock(value) {
+		if (!value) return '--:--'
+		const raw = String(value)
+		const hm = raw.match(/(\d{1,2}:\d{2})/)
+		if (hm && raw.indexOf('T') === -1 && raw.length <= 8) return hm[1].length === 4 ? '0' + hm[1] : hm[1]
+		const d = new Date(raw.replace(/-/g, '/').replace('T', ' '))
+		if (isNaN(d.getTime())) {
+			return hm ? (hm[1].length === 4 ? '0' + hm[1] : hm[1]) : '--:--'
+		}
+		const h = d.getHours()
+		const mi = d.getMinutes()
+		return (h < 10 ? '0' + h : h) + ':' + (mi < 10 ? '0' + mi : mi)
+	}
+
+	function formatRecentDate(ymd, minutes) {
+		if (!ymd) return '最近'
+		const parts = String(ymd).split('-')
+		if (parts.length < 3) return ymd
+		const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+		const now = new Date()
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+		const yest = new Date(today)
+		yest.setDate(today.getDate() - 1)
+		const cur = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+		if (cur.getTime() === today.getTime()) return '今天'
+		if (cur.getTime() === yest.getTime()) return '昨天'
+		return (d.getMonth() + 1) + '月' + d.getDate() + '日'
+	}
+
+	const STAGE_BY_VALUE = {
+		1: 'light',
+		2: 'deep',
+		3: 'light',
+		4: 'awake',
+		5: 'rem'
 	}
 
 	function formatDuration(mins) {
@@ -303,7 +405,7 @@
 				name: '快速眼动',
 				duration: '0分',
 				percent: 0,
-				color: '#64D2FF'
+				color: '#A78BFA'
 			},
 			{
 				key: 'awake',
@@ -332,12 +434,23 @@
 				chartH: 0,
 				padTop: 6,
 				padBottom: 6,
-				cycleSegments: DEFAULT_SEGMENTS.slice(),
+				cycleSegments: [],
+				canvasCtx: null,
+				canvasW: 0,
+				canvasH: 0,
+				bandRadius: 5,
+				chartRects: [],
+				sleepSample: null,
+				touchValue: {},
+				movaX: 0,
+				_lastDrawKey: '',
 				structureList: emptyStructure(),
 				recentList: [],
-				sleepSessions: [],
-				unsubBle: null,
-				bleConnected: false
+				showCalendar: false,
+				calYear: new Date().getFullYear(),
+				calMonth: new Date().getMonth(),
+				calSelectedDay: new Date().getDate(),
+				weekLabels: ['一', '二', '三', '四', '五', '六', '日']
 			}
 		},
 		computed: {
@@ -348,6 +461,36 @@
 				const day = d.getDate()
 				return `${y}年${m}月${day}日`
 			},
+			calendarTitle() {
+				return `${this.calYear}年${this.calMonth + 1}月`
+			},
+			canCalNextMonth() {
+				const today = new Date()
+				return this.calYear < today.getFullYear() ||
+					(this.calYear === today.getFullYear() && this.calMonth < today.getMonth())
+			},
+			calendarCells() {
+				const year = this.calYear
+				const month = this.calMonth
+				const daysInMonth = new Date(year, month + 1, 0).getDate()
+				const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
+				const cells = []
+				for (let i = 0; i < firstWeekday; i++) {
+					cells.push({ day: 0, active: false, disabled: false })
+				}
+				for (let d = 1; d <= daysInMonth; d++) {
+					const disabled = isFutureDate(year, month, d)
+					cells.push({
+						day: d,
+						active: !disabled && d === this.calSelectedDay,
+						disabled
+					})
+				}
+				while (cells.length % 7 !== 0) {
+					cells.push({ day: 0, active: false, disabled: false })
+				}
+				return cells
+			},
 			qualityMarkerLeft() {
 				const p = Number(this.qualityMarkerPercent)
 				const safe = Number.isNaN(p) ? 0 : Math.max(0, Math.min(100, p))
@@ -355,58 +498,25 @@
 			},
 			qualityKeyword() {
 				const t = this.qualityText || ''
-				if (t.indexOf('很好') >= 0) return '很好'
-				if (t.indexOf('较好') >= 0) return '较好'
+				if (t.indexOf('优秀') >= 0 || t.indexOf('很好') >= 0) return '很好'
+				if (t.indexOf('良好') >= 0 || t.indexOf('较好') >= 0) return '较好'
 				if (t.indexOf('偏差') >= 0 || t.indexOf('较差') >= 0) return '较差'
 				if (t.indexOf('一般') >= 0) return '一般'
 				if (t.indexOf('暂无') >= 0) return ''
 				return ''
 			},
 			gridLineYs() {
-				if (!this.chartH) return []
-				const usable = this.chartH - this.padTop - this.padBottom
+				if (!this.canvasH) return []
+				const usable = this.canvasH - this.padTop - this.padBottom
 				return [0, 1, 2, 3, 4].map((level) => this.padTop + (usable / 4) * level)
 			},
-			hypnogramAreas() {
-				return this.hypnogramData.areas
-			},
-			hypnogramConnectors() {
-				return this.hypnogramData.connectors
-			},
-			hypnogramData() {
-				if (!this.chartW || !this.chartH) return {
-					areas: [],
-					connectors: []
-				}
-				return buildHypnogramAreas(
-					this.cycleSegments,
-					this.chartW,
-					this.chartH,
-					this.padTop,
-					this.padBottom
-				)
-			},
-			chartImageSrc() {
-				if (!this.chartW || !this.chartH) return ''
-				const grids = (this.gridLineYs || []).map((y) =>
-					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.16)" stroke-width="1" stroke-dasharray="3 4"/>`
-				).join('')
-				const connectors = (this.hypnogramConnectors || []).map((c) =>
-					`<line x1="${c.x}" y1="${c.y1}" x2="${c.x}" y2="${c.y2}" stroke="${c.stroke}" stroke-width="6" stroke-linecap="round"/>`
-				).join('')
-				const areas = (this.hypnogramAreas || []).map((a) =>
-					`<path d="${a.d}" fill="${a.fill}"/>`
-				).join('')
-				return toSvgDataUrl(grids + connectors + areas, this.chartW, this.chartH, 'preserveAspectRatio="none"')
+			tipColor() {
+				const m = { awake: '#A78BFA', rem: '#A78BFA', light: '#7B61FF', deep: '#7B61FF' }
+				return m[this.touchValue.stage] || '#7B61FF'
 			}
 		},
 		created() {
-			this.unsubBle = BleService.subscribe((s) => {
-				this.bleConnected = !!s.connected
-				if (s.sleep) this.onSleepUpdate(s.sleep)
-			})
-			const cached = BleService.getSleep && BleService.getSleep()
-			if (cached) this.onSleepUpdate(cached)
+			this.loadTrend()
 		},
 		mounted() {
 			this.$nextTick(() => {
@@ -421,12 +531,6 @@
 		onShow() {
 			this.refreshSleep()
 		},
-		onUnload() {
-			if (this.unsubBle) {
-				this.unsubBle()
-				this.unsubBle = null
-			}
-		},
 		methods: {
 			measureChart(retry = 0) {
 				uni.createSelectorQuery()
@@ -439,61 +543,175 @@
 						}
 						this.chartW = rect.width
 						this.chartH = rect.height
+						this.canvasW = rect.width
+						this.canvasH = rect.height
+						if (!this.canvasCtx) this.canvasCtx = uni.createCanvasContext('sleepCanvas', this)
+						this.initSample()
 					})
 					.exec()
 			},
-			async refreshSleep() {
-				const ble = BleService.getState()
-				if (!ble.connected) {
-					const cached = BleService.getSleep && BleService.getSleep()
-					if (cached) this.onSleepUpdate(cached)
-					return
+			stageColor(stage) {
+				if (stage === 'light' || stage === 'deep') return '#7B61FF'
+				return '#A78BFA'
+			},
+			stageIndex(stage) {
+				return { awake: 0, rem: 1, light: 2, deep: 3 }[stage] ?? 2
+			},
+			stageName(stage) {
+				return { awake: '清醒', rem: '快速眼动', light: '浅睡', deep: '深睡' }[stage] || '浅睡'
+			},
+			// ===== 示例原样照搬：睡眠波图表 =====
+			sampleColors() { return ['#A78BFA', '#A78BFA', '#7B61FF', '#7B61FF'] },
+			sampleY(H) {
+				const padTop = 12
+				const padBottom = 24
+				const step = (H - padTop - padBottom) / 3
+				return [padTop, padTop + step, padTop + step * 2, padTop + step * 3]
+			},
+			buildSleepData() {
+				let t = new Date(this.currentDate); t.setHours(22, 0, 0, 0)
+				let ts = t.getTime()
+				return this.cycleSegments.map((s) => {
+					const durMs = Math.max(60000, Number(s.dur || 1) * 60000)
+					const o = { startTimestamp: ts, endTimestamp: ts + durMs, state: this.stageIndex(s.stage) }
+					ts += durMs
+					return o
+				})
+			},
+			initSample() {
+				const W = this.canvasW, H = this.canvasH
+				const sleepData = this.buildSleepData()
+				if (!W || !H || !sleepData.length) return
+				const yValue = this.sampleY(H)
+				let xValue = 0
+				const widths = sleepData.map(it => it.endTimestamp - it.startTimestamp)
+				const total = widths.reduce((a, b) => a + b, 0)
+				const ratio = (W * 0.95) / total
+				for (let i = 0; i < sleepData.length; i++) {
+					const item = sleepData[i]
+					const yHeight = H * 0.13
+					const xWidth = Math.max(3, Math.floor((item.endTimestamp - item.startTimestamp) * ratio))
+					const state = item.state
+					item.rect = { x: xValue, y: yValue[state], w: xWidth, h: yHeight }
+					if (i < sleepData.length - 1) {
+						const ns = sleepData[i + 1].state
+						item.line = {
+							x1: xValue + xWidth, y1: yValue[state] + (state > ns ? yHeight - this.bandRadius : this.bandRadius),
+							x2: xValue + xWidth, y2: yValue[ns] + (state > ns ? this.bandRadius : yHeight - this.bandRadius)
+						}
+					}
+					xValue += xWidth
 				}
+				for (let i = 0; i < sleepData.length; i++) {
+					const item = sleepData[i]
+					const up = i > 0 ? sleepData[i - 1] : null
+					const nx = i < sleepData.length - 1 ? sleepData[i + 1] : null
+					item.left = up ? up.state < item.state : false
+					item.right = nx ? item.state > nx.state : false
+				}
+				this.sleepSample = sleepData
+				this.draftSample()
+			},
+			draftSample() {
+				const context = this.canvasCtx
+				if (!context || !this.sleepSample) return
+				context.clearRect(0, 0, this.canvasW, this.canvasH)
+				// Y轴横线：4档各一条
 				try {
-					await BleService.syncSleep()
-				} catch (e) {
-					console.log('[yesterdaynight] syncSleep failed', e)
-					try {
-						await CoolWearBLE.sendSyncInfo()
-					} catch (err) {
-						console.log('[yesterdaynight] sendSyncInfo failed', err)
+					const yValue = this.sampleY(this.canvasH)
+					context.setLineWidth(1)
+					context.setStrokeStyle('rgba(255,255,255,0.16)')
+					try { if (context.setLineDash) context.setLineDash([4, 4]) } catch (e) {}
+					yValue.slice(1).forEach((y) => {
+						context.beginPath()
+						context.moveTo(0, y)
+						context.lineTo(this.canvasW, y)
+						context.stroke()
+					})
+					try { if (context.setLineDash) context.setLineDash([]) } catch (e) {}
+				} catch (e) {}
+				const _sy = this.sampleY(this.canvasH)
+				const gg = context.createLinearGradient(0, _sy[0], 0, _sy[3])
+				const c = this.sampleColors()
+				gg.addColorStop(0, c[0]); gg.addColorStop(0.33, c[1]); gg.addColorStop(0.66, c[2]); gg.addColorStop(1, c[3])
+				context.setLineWidth(1); context.setStrokeStyle(gg); context.setFillStyle(gg)
+				for (let i = 0; i < this.sleepSample.length; i++) {
+					const item = this.sleepSample[i]
+					context.beginPath()
+					this.drawSampleRect(context, item.rect.x, item.rect.y, item.rect.w, item.rect.h, item.left, item.right)
+					context.fill()
+					if (i < this.sleepSample.length - 1 && item.line) {
+						context.beginPath()
+						context.moveTo(item.line.x1, item.line.y1)
+						context.lineTo(item.line.x2, item.line.y2)
+						context.stroke()
 					}
 				}
+				if (this.touchValue.touchX) {
+					const gline = context.createLinearGradient(0, 0, 0, this.canvasH)
+					gline.addColorStop(0, 'rgba(255,255,255,0)'); gline.addColorStop(0.5, 'rgba(255,255,255,1)'); gline.addColorStop(1, 'rgba(255,255,255,0)')
+					context.setStrokeStyle(gline); context.setFillStyle(gline)
+					context.fillRect(this.touchValue.touchX, 0, 0.5, this.canvasH)
+					context.fill()
+				}
+				context.draw()
 			},
-			onSleepUpdate(sleep) {
-				if (!sleep) return
-				this.sleepSessions = Array.isArray(sleep.sessions) && sleep.sessions.length ?
-					sleep.sessions :
-					[sleep]
-				this.applySleepForDate(this.currentDate)
+			drawSampleRect(context, x, y, width, height, left, right) {
+				let rset = this.bandRadius
+				if (width < this.bandRadius * 2) rset = width / 2
+				const lr = left ? -1 * rset : rset
+				const rr = right ? -1 * rset : rset
+				const arr = []
+				arr.push([x + rset, y + lr, Math.PI, left ? Math.PI / 2 : Math.PI * 3 / 2])
+				arr.push([x + width - rset, y])
+				arr.push([x + width - rset, y + rr, right ? Math.PI / 2 : Math.PI * 3 / 2, 0])
+				arr.push([x + width, y + height + rr])
+				arr.push([x + width - rset, y + height + rr, 0, right ? Math.PI / 2 : Math.PI * 3 / 2])
+				arr.push([x + rset, y + height])
+				arr.push([x + rset, y + height + lr, left ? Math.PI / 2 : Math.PI * 3 / 2, Math.PI])
+				arr.push([x, y + rr])
+				context.beginPath()
+				context.arc(arr[0][0], arr[0][1], rset, arr[0][2], arr[0][3], left)
+				context.lineTo(arr[1][0], arr[1][1])
+				context.arc(arr[2][0], arr[2][1], rset, arr[2][2], arr[2][3], right)
+				context.lineTo(arr[3][0], arr[3][1])
+				context.arc(arr[4][0], arr[4][1], rset, arr[4][2], arr[4][3], !right)
+				context.lineTo(arr[5][0], arr[5][1])
+				context.arc(arr[6][0], arr[6][1], rset, arr[6][2], arr[6][3], !left)
+				context.lineTo(arr[7][0], arr[7][1])
+				context.closePath()
 			},
-			findSleepForDate(date) {
-				const list = this.sleepSessions || []
-				if (!list.length) return null
-				const y = date.getFullYear()
-				const m = date.getMonth()
-				const d = date.getDate()
-				const matched = list.find((item) => {
-					const sec = Number(item.sleepDay || item.endTime || item.startTime) || 0
-					if (!sec) return false
-					const dt = new Date(sec * 1000)
-					return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d
-				})
-				if (matched) return matched
-				// 无精确匹配时：选中“今天/昨天”则用最近一晚
-				const today = new Date()
-				const isToday =
-					y === today.getFullYear() && m === today.getMonth() && d === today.getDate()
-				const yest = new Date(today)
-				yest.setDate(today.getDate() - 1)
-				const isYest =
-					y === yest.getFullYear() && m === yest.getMonth() && d === yest.getDate()
-				if (isToday || isYest) return list[list.length - 1]
-				return null
+			onScrubChange(e) {
+				if (!this.sleepSample || !this.sleepSample.length) return
+				const areaW = this.canvasW || 300
+				const touchX = (Number(e.detail.x) || 0) / Math.max(1, areaW - 36) * areaW
+				for (const item of this.sleepSample) {
+					if (touchX >= item.rect.x && touchX <= item.rect.x + item.rect.w) {
+						const st = ['清醒', '快速眼动', '浅睡', '深睡'][item.state]
+						this.touchValue = { stage: ['awake', 'rem', 'light', 'deep'][item.state], sleepStateText: st, startLabel: this.sleepStart, endLabel: this.wakeTime, touchX }
+						break
+					}
+				}
+				this.draftSample()
 			},
-			applySleepForDate(date) {
-				const sleep = this.findSleepForDate(date)
-				if (!sleep || !sleep.totalMin) {
+			async refreshSleep() {
+				try {
+					if (BleService.getState().connected) {
+						await BleService.syncSleep()
+					}
+				} catch (e) {}
+				this.loadTrend()
+			},
+			async loadTrend() {
+				try {
+					const data = await getSleepTrend(dateToYmd(this.currentDate), 'day')
+					this.applyTrend(data)
+				} catch (e) {
+					this.applyTrend(null)
+				}
+			},
+			applyTrend(data) {
+				if (!data || (!(Number(data.score) > 0) && !(data.series && data.series.length) && !(data.segments && data.segments.length))) {
 					this.sleepHours = 0
 					this.sleepMinutes = 0
 					this.recoverStatus = '暂无数据'
@@ -503,74 +721,113 @@
 					this.qualityText = '暂无睡眠数据'
 					this.qualityMarkerPercent = 8
 					this.structureList = emptyStructure()
-					this.cycleSegments = DEFAULT_SEGMENTS.slice()
-					this.rebuildRecent()
+					this.cycleSegments = []
+					this.applyRecent(data && data.recentList)
+					this.$nextTick(() => this.measureChart(0))
 					return
 				}
 
-				this.sleepHours = sleep.hours || Math.floor((sleep.totalMin || 0) / 60)
-				this.sleepMinutes = sleep.minutes != null ? sleep.minutes : ((sleep.totalMin || 0) % 60)
-				this.recoverStatus = sleep.recoverStatus || '恢复一般'
-				this.sleepStart = sleep.sleepStart || '--:--'
-				this.wakeTime = sleep.wakeTime || '--:--'
-				this.sleepScore = sleep.score || 0
-				this.qualityText = sleep.qualityText || '睡眠质量一般'
-				this.qualityMarkerPercent = sleep.qualityMarkerPercent != null ? sleep.qualityMarkerPercent : 50
+				const series = Array.isArray(data.series) ? data.series : []
+				const segs = Array.isArray(data.segments) ? data.segments : []
+				let totalMin = 0
+				series.forEach((p) => {
+					totalMin += Number(p.value2) || 0
+				})
+				if (!totalMin) {
+					segs.forEach((s) => {
+						totalMin += Number(s.value) || 0
+					})
+				}
+				if (!totalMin && data.startTime && data.endTime) {
+					const a = new Date(String(data.startTime).replace(/-/g, '/').replace('T', ' ')).getTime()
+					const b = new Date(String(data.endTime).replace(/-/g, '/').replace('T', ' ')).getTime()
+					if (b > a) totalMin = Math.round((b - a) / 60000)
+				}
 
-				const total = Math.max(1, sleep.totalMin || 0)
-				const deep = sleep.deepMin || 0
-				const light = sleep.lightMin || 0
-				const rem = sleep.remMin || 0
-				const awake = sleep.awakeMin || 0
+				this.sleepHours = Math.floor(totalMin / 60)
+				this.sleepMinutes = totalMin % 60
+				this.recoverStatus = data.status || data.scoreText || '恢复一般'
+				this.sleepStart = formatClock(data.startTime)
+				this.wakeTime = formatClock(data.endTime)
+				this.sleepScore = Number(data.score) || 0
+				this.qualityText = data.scoreText ? ('睡眠质量' + data.scoreText) : (data.status || '睡眠质量一般')
+				this.qualityMarkerPercent = this.sleepScore > 0 ? Math.max(4, Math.min(96, this.sleepScore)) : 8
+
+				const mapped = {
+					deep: { min: 0, percent: 0 },
+					light: { min: 0, percent: 0 },
+					rem: { min: 0, percent: 0 },
+					awake: { min: 0, percent: 0 }
+				}
+				segs.forEach((seg) => {
+					const name = String(seg.name || '')
+					const min = Number(seg.value) || 0
+					const percent = Number(seg.percent) || 0
+					if (name.indexOf('深') !== -1) mapped.deep = { min, percent }
+					else if (name.indexOf('浅') !== -1) mapped.light = { min, percent }
+					else if (name.indexOf('眼动') !== -1 || name.toLowerCase().indexOf('rem') !== -1) mapped.rem = { min, percent }
+					else if (name.indexOf('醒') !== -1 || name.indexOf('清醒') !== -1) mapped.awake = { min, percent }
+				})
 				this.structureList = [{
 						key: 'deep',
 						name: '深睡',
-						duration: formatDuration(deep),
-						percent: Math.round(deep / total * 100),
+						duration: formatDuration(mapped.deep.min),
+						percent: mapped.deep.percent,
 						color: '#7B61FF'
 					},
 					{
 						key: 'light',
 						name: '浅睡',
-						duration: formatDuration(light),
-						percent: Math.round(light / total * 100),
+						duration: formatDuration(mapped.light.min),
+						percent: mapped.light.percent,
 						color: '#A78BFA'
 					},
 					{
 						key: 'rem',
 						name: '快速眼动',
-						duration: formatDuration(rem),
-						percent: Math.round(rem / total * 100),
+						duration: formatDuration(mapped.rem.min),
+						percent: mapped.rem.percent,
 						color: '#64D2FF'
 					},
 					{
 						key: 'awake',
 						name: '清醒',
-						duration: formatDuration(awake),
-						percent: Math.round(awake / total * 100),
+						duration: formatDuration(mapped.awake.min),
+						percent: mapped.awake.percent,
 						color: '#FF9F0A'
 					}
 				]
 
-				this.cycleSegments = (sleep.segments && sleep.segments.length) ?
-					sleep.segments.slice() :
-					DEFAULT_SEGMENTS.slice()
-				this.rebuildRecent()
+				this.cycleSegments = series.map((p) => ({
+					stage: STAGE_BY_VALUE[Number(p.value)] || 'light',
+					dur: Number(p.value2) || 1
+				})).filter((item) => item.dur > 0)
+
+				this.applyRecent(data.recentList)
+				this.touchValue = {}
+				this._lastDrawKey = ''
 				this.$nextTick(() => this.measureChart(0))
 			},
-			rebuildRecent() {
-				const list = (this.sleepSessions || []).slice().reverse().slice(0, 8)
-				this.recentList = list.map((item) => ({
-					time: formatRecentTime(item.endTime || item.startTime || item.sleepDay),
+			applyRecent(list) {
+				const rows = Array.isArray(list) ? list : []
+				this.recentList = rows.map((item) => ({
+					time: formatRecentDate(item.date),
 					source: '戒指采集',
-					duration: formatDuration(item.totalMin).replace('小时', ' 小时 ').replace('分', ' 分')
+					duration: formatDuration(item.totalMinutes).replace('小时', ' 小时 ').replace('分', ' 分')
 				}))
 			},
 			shiftDate(delta) {
 				const next = new Date(this.currentDate)
 				next.setDate(next.getDate() + delta)
+				if (startOfDay(next).getTime() > startOfDay(new Date()).getTime()) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = next
-				this.applySleepForDate(next)
+				this.loadTrend()
 			},
 			onPrevDay() {
 				this.shiftDate(-1)
@@ -579,7 +836,67 @@
 				this.shiftDate(1)
 			},
 			openCalendar() {
-				// 日历弹层后续接入，先保持与心率页交互结构一致
+				const d = this.currentDate
+				this.calYear = d.getFullYear()
+				this.calMonth = d.getMonth()
+				this.calSelectedDay = d.getDate()
+				this.showCalendar = true
+			},
+			closeCalendar() {
+				this.showCalendar = false
+			},
+			onCalPrevMonth() {
+				if (this.calMonth === 0) {
+					this.calYear -= 1
+					this.calMonth = 11
+				} else {
+					this.calMonth -= 1
+				}
+				const maxDay = new Date(this.calYear, this.calMonth + 1, 0).getDate()
+				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					const today = new Date()
+					this.calSelectedDay = today.getDate()
+				}
+			},
+			onCalNextMonth() {
+				if (!this.canCalNextMonth) return
+				if (this.calMonth === 11) {
+					this.calYear += 1
+					this.calMonth = 0
+				} else {
+					this.calMonth += 1
+				}
+				const maxDay = new Date(this.calYear, this.calMonth + 1, 0).getDate()
+				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					const today = new Date()
+					this.calYear = today.getFullYear()
+					this.calMonth = today.getMonth()
+					this.calSelectedDay = today.getDate()
+				}
+			},
+			onSelectCalDay(day) {
+				if (isFutureDate(this.calYear, this.calMonth, day)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
+				this.calSelectedDay = day
+			},
+			confirmCalendar() {
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
+				this.currentDate = new Date(this.calYear, this.calMonth, this.calSelectedDay)
+				this.showCalendar = false
+				this.loadTrend()
 			}
 		}
 	}
@@ -718,6 +1035,188 @@
 		margin-left: 10rpx;
 	}
 
+	.cal-mask {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 1000;
+		background: rgba(0, 0, 0, 0.55);
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		box-sizing: border-box;
+		padding: 0 30rpx 30rpx;
+	}
+
+	.cal-popup {
+		position: relative;
+		width: 100%;
+		border-radius: 40rpx;
+		overflow: hidden;
+		background: #1a1b25;
+	}
+
+	.cal-popup-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		z-index: 0;
+		pointer-events: none;
+	}
+
+	.cal-body {
+		position: relative;
+		z-index: 1;
+		padding: 36rpx 28rpx 32rpx;
+		box-sizing: border-box;
+	}
+
+	.cal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 28rpx;
+	}
+
+	.cal-nav {
+		width: 56rpx;
+		height: 56rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.cal-nav.disabled {
+		opacity: 0.35;
+	}
+
+	.cal-nav-arrow {
+		font-size: 44rpx;
+		color: #ffffff;
+		line-height: 56rpx;
+	}
+
+	.cal-title {
+		font-size: 32rpx;
+		font-weight: 600;
+		color: #ffffff;
+		line-height: 44rpx;
+	}
+
+	.cal-week {
+		display: flex;
+		align-items: center;
+		margin-bottom: 12rpx;
+	}
+
+	.cal-week-item {
+		flex: 1;
+		text-align: center;
+		font-size: 26rpx;
+		color: #ffffff;
+		line-height: 36rpx;
+	}
+
+	.cal-grid {
+		display: flex;
+		flex-wrap: wrap;
+	}
+
+	.cal-cell {
+		position: relative;
+		width: 14.28%;
+		height: 104rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 8rpx;
+		box-sizing: border-box;
+		overflow: hidden;
+	}
+
+	.cal-cell.active {
+		border-radius: 12rpx;
+	}
+
+	.cal-cell.disabled .cal-day {
+		color: rgba(255, 255, 255, 0.28);
+	}
+
+	.cal-day-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		z-index: 0;
+		pointer-events: none;
+	}
+
+	.cal-day {
+		position: relative;
+		z-index: 1;
+		font-size: 28rpx;
+		color: #ffffff;
+		line-height: 40rpx;
+	}
+
+	.cal-btns {
+		display: flex;
+		align-items: center;
+		margin-top: 28rpx;
+	}
+
+	.cal-btn {
+		position: relative;
+		flex: 1;
+		height: 88rpx;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 16rpx;
+		font-size: 30rpx;
+		font-weight: 500;
+		color: #ffffff;
+		box-sizing: border-box;
+		overflow: hidden;
+	}
+
+	.cal-btn + .cal-btn {
+		margin-left: 24rpx;
+	}
+
+	.cal-btn.cancel {
+		background: transparent;
+		border: 2rpx solid #3b82f6;
+	}
+
+	.cal-btn.confirm {
+		background: transparent;
+	}
+
+	.cal-btn-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		z-index: 0;
+		pointer-events: none;
+	}
+
+	.cal-btn-text {
+		position: relative;
+		z-index: 1;
+		font-size: 30rpx;
+		font-weight: 500;
+		color: #ffffff;
+		line-height: 88rpx;
+	}
+
 	.card-title {
 		display: block;
 		font-size: 32rpx;
@@ -767,9 +1266,6 @@
 		width: 110rpx;
 		flex-shrink: 0;
 		height: 280rpx;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
 		padding-top: 4rpx;
 		padding-bottom: 4rpx;
 		box-sizing: border-box;
@@ -779,7 +1275,19 @@
 		font-size: 20rpx;
 		color: #8e8e93;
 		line-height: 28rpx;
+		margin-top: 36rpx;
 	}
+	.cycle-y-label:first-child{
+		margin-top: 20rpx;
+	}
+	.cycle-y-label:nth-child(2){
+		margin-top: 56rpx;
+	}
+	.cycle-y-label:last-child{
+		margin-top: 28rpx;
+	}
+	
+	
 
 	.cycle-main {
 		flex: 1;
@@ -788,14 +1296,50 @@
 
 	.cycle-plot {
 		width: 100%;
-		height: 280rpx;
+		height: 269.46rpx;
 	}
 
-	.cycle-svg {
+	.cycle-canvas {
 		width: 100%;
 		height: 100%;
 		display: block;
-		overflow: visible;
+	}
+
+	.cycle-tip {
+		align-self: flex-start;
+		padding: 8rpx 20rpx;
+		border-radius: 20rpx;
+		margin-bottom: 10rpx;
+	}
+
+	.cycle-tip-text {
+		font-size: 22rpx;
+		color: #fff;
+		line-height: 32rpx;
+	}
+
+	.cycle-mova {
+		width: 100%;
+		height: 36rpx;
+		margin-top: 12rpx;
+		background: rgba(255,255,255,0.08);
+		border-radius: 18rpx;
+	}
+
+	.cycle-dot {
+		width: 36rpx;
+		height: 36rpx;
+		border-radius: 50%;
+		background: #fff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.cycle-dot-line {
+		width: 4rpx;
+		height: 20rpx;
+		background: #666;
 	}
 
 	.cycle-x {

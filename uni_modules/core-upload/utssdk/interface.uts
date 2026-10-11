@@ -1,0 +1,13 @@
+export type FileInfo = {
+  filePath: string
+  fileName: string
+  fileSize: number
+  mimeType: string
+}
+
+export type PickFileOptions = {
+  mimeTypes?: string[]
+  multiple?: boolean
+}
+
+

@@ -201,6 +201,70 @@ function canUsePlusXhr() {
 	return false
 }
 
+export function postSseEvents(path, payload, onEvent = () => {}) {
+	const url = buildApiUrl(path)
+	const headers = buildHeaders()
+	const body = JSON.stringify(payload || {})
+	let buffer = ''
+	let eventName = 'message'
+	function dispatch(rawData) {
+		const name = (eventName || 'message').toLowerCase()
+		const text = rawData == null ? '' : String(rawData)
+		let parsed = null
+		try { parsed = text ? JSON.parse(text) : null } catch (e) { parsed = null }
+		if (name === 'error') {
+			onEvent({ type: 'error', data: parsed || { msg: text || '解析失败' }, raw: text })
+		} else if (name === 'item') {
+			onEvent({ type: 'item', data: parsed || { key: text, value: '' }, raw: text })
+		} else if (name === 'delta') {
+			const content = parsed != null && typeof parsed === 'object'
+				? (parsed.content != null ? String(parsed.content) : text)
+				: text
+			onEvent({ type: 'delta', data: { content }, raw: text })
+		} else if (name === 'done' || name === 'end' || name === 'complete' || name === 'finish') {
+			onEvent({ type: 'done', data: parsed || {}, raw: text })
+		} else if (text === '[DONE]') {
+			onEvent({ type: 'done', data: {}, raw: text })
+		} else if (text) {
+			const parsedBody = parsed
+			if (parsedBody && typeof parsedBody === 'object' && (parsedBody.code !== undefined)) {
+				const code = Number(parsedBody.code)
+				if ([0, 1, 200].indexOf(code) === -1) {
+					onEvent({ type: 'error', data: parsedBody, raw: text })
+					return
+				}
+			}
+			onEvent({ type: 'message', data: parsedBody != null ? parsedBody : text, raw: text })
+		}
+		eventName = 'message'
+	}
+	function handleLine(line) {
+		if (line === '') { eventName = 'message'; return }
+		if (line.indexOf('event:') === 0) { eventName = line.slice(6).trim(); return }
+		if (line.indexOf('data:') === 0) { dispatch(line.slice(5).replace(/^\s/, '')); return }
+	}
+	const onChunk = (chunk) => {
+		buffer += String(chunk || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+		let idx = buffer.indexOf('\n')
+		while (idx !== -1) {
+			handleLine(buffer.slice(0, idx))
+			buffer = buffer.slice(idx + 1)
+			idx = buffer.indexOf('\n')
+		}
+	}
+	let task
+	if (canUsePlusXhr()) {
+		task = streamWithPlusXhr(url, { body, headers, onChunk })
+	} else if (typeof fetch === 'function') {
+		task = streamWithFetch(url, { body, headers, onChunk })
+	} else {
+		return Promise.reject(new Error('当前环境不支持流式'))
+	}
+	return task.then(() => {
+		if (buffer.trim()) handleLine(buffer.trim())
+	})
+}
+
 export function postSse(path, payload, handlers = {}) {
 	const url = buildApiUrl(path)
 	const headers = buildHeaders()

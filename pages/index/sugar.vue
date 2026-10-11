@@ -43,7 +43,7 @@
 			<text class="bmi-desc">{{ tipText }}</text>
 			<view class="sugar-footer">
 				<text class="sugar-footer-left">建议管理目标</text>
-				<text class="sugar-footer-right">按测量时点持续记录</text>
+				<text class="sugar-footer-right">{{ targetHint }}</text>
 			</view>
 		</view>
 
@@ -94,62 +94,7 @@
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
-						<svg v-if="chartW > 0" class="trend-svg" :viewBox="'0 0 ' + chartW + ' ' + chartH"
-							preserveAspectRatio="none">
-							<defs>
-								<linearGradient id="weightAreaGrad" x1="0" y1="0" x2="0" y2="1">
-									<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35" />
-									<stop offset="55%" stop-color="#3B82F6" stop-opacity="0.12" />
-									<stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
-								</linearGradient>
-							</defs>
-							<line
-								v-for="(y, i) in gridYs"
-								:key="'g' + i"
-								:x1="0"
-								:y1="y"
-								:x2="chartW"
-								:y2="y"
-								stroke="rgba(255,255,255,0.12)"
-								stroke-width="1"
-								stroke-dasharray="4 5"
-							/>
-							<path :d="areaPath" fill="url(#weightAreaGrad)" />
-							<path
-								:d="linePath"
-								fill="none"
-								stroke="#3B82F6"
-								stroke-width="2.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-							<template v-if="touchActive && touchPoint">
-								<line
-									:x1="touchPoint.x"
-									:y1="0"
-									:x2="touchPoint.x"
-									:y2="chartH"
-									stroke="rgba(255,255,255,0.35)"
-									stroke-width="1"
-								/>
-								<circle
-									:cx="touchPoint.x"
-									:cy="touchPoint.y"
-									r="5"
-									fill="#3B82F6"
-									stroke="#ffffff"
-									stroke-width="2"
-								/>
-							</template>
-							<line
-								:x1="0"
-								:y1="chartH - 1"
-								:x2="chartW"
-								:y2="chartH - 1"
-								stroke="rgba(255,255,255,0.28)"
-								stroke-width="1"
-							/>
-						</svg>
+						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view
 							v-if="touchActive && touchPoint"
 							class="chart-tip"
@@ -235,7 +180,7 @@
 							<text class="cal-nav-arrow">‹</text>
 						</view>
 						<text class="cal-title">{{ calendarTitle }}</text>
-						<view class="cal-nav" @click="onCalNextMonth">
+						<view class="cal-nav" :class="{ disabled: !canCalNextMonth }" @click="onCalNextMonth">
 							<text class="cal-nav-arrow">›</text>
 						</view>
 					</view>
@@ -249,8 +194,8 @@
 							v-for="(cell, index) in calendarCells"
 							:key="index"
 							class="cal-cell"
-							:class="{ empty: !cell.day, active: cell.active }"
-							@click="cell.day && onSelectCalDay(cell.day)"
+							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
+							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)"
 						>
 							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
 							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
@@ -299,6 +244,8 @@
 </template>
 
 <script>
+	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import { getBloodSugarTrend, addManualHealthRecord } from '@/common/api/manualHealth.js'
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
 	const Y_MIN = 0
@@ -380,50 +327,81 @@
 		return '正常'
 	}
 
+	function pad2(n) {
+		return n < 10 ? '0' + n : String(n)
+	}
+
+	function dateToYmd(d) {
+		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+	}
+
+	function startOfDay(d) {
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+	}
+
+	function isFutureDate(year, month, day) {
+		return startOfDay(new Date(year, month, day)).getTime() > startOfDay(new Date()).getTime()
+	}
+
+	function pickXLabels(labels) {
+		const times = (labels || []).filter(Boolean)
+		if (!times.length) return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
+		if (times.length <= 7) return times
+		const out = []
+		for (let i = 0; i < 7; i++) {
+			out.push(times[Math.round(i * (times.length - 1) / 6)])
+		}
+		return out
+	}
+
 	export default {
 		data() {
 			return {
-				latestTime: '今天 09:41',
+				latestTime: '--',
 				latestValue: null,
-				latestValueText: '暂无数据',
-				latestStatus: '等待首次记录',
-				sugarValueText: '暂无数据',
+				latestValueText: '--',
+				latestStatus: '暂无数据',
+				sugarValueText: '--',
+				targetHint: '按测量时点持续记录',
+				apiAdvice: '',
 				period: 'week',
 				periodList: [
 					{ key: 'day', label: '日' },
 					{ key: 'week', label: '周' },
 					{ key: 'month', label: '月' }
 				],
-				currentDate: new Date(2026, 8, 4),
-				trendTime: '近一周',
+				currentDate: new Date(),
+				trendTime: '',
 				chartW: 0,
 				chartH: 220,
-				chartValues: [5.2, 6.8, 5.6, 7.2, 5.4, 6.1, 5.8],
+				chartValues: [],
+				chartTimes: [],
 				yLabels: [120, 90, 60, 30],
-				xLabels: ['一', '二', '三', '四', '五', '六', '日'],
-				statsMax: '暂无',
-				statsMin: '暂无',
-				statsAvg: '暂无',
+				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+				statsMax: '--',
+				statsMin: '--',
+				statsAvg: '--',
 				chartLeft: 0,
 				touchActive: false,
 				touchIndex: -1,
 				showCalendar: false,
 				showEnter: false,
 				enterValue: '',
-				calYear: 2026,
-				calMonth: 8,
-				calSelectedDay: 4,
+				saving: false,
+				apiPosition: null,
+				calYear: new Date().getFullYear(),
+				calMonth: new Date().getMonth(),
+				calSelectedDay: new Date().getDate(),
 				weekLabels: ['一', '二', '三', '四', '五', '六', '日'],
 				tipText: '血糖需结合空腹或餐后测量时点解读。请记录测量时间与进食状态；如多次结果明显超出个人正常范围，建议咨询专业医生。',
-				recentList: [
-					{ time: '今天 09:41', source: '手动录入', valueText: '暂无数据 Mmol/L' },
-					{ time: '昨天 21:16', source: '手动录入', valueText: '暂无数据 Mmol/L' },
-					{ time: '8月6日 08:32', source: '手动录入', valueText: '暂无数据 Mmol/L' }
-				]
+				recentList: []
 			}
 		},
 		computed: {
 			bmiPointerLeft() {
+				if (this.apiPosition != null && this.apiPosition !== '') {
+					return Number(this.apiPosition) + '%'
+				}
 				return `${sugarToPercent(this.latestValue)}%`
 			},
 			dateText() {
@@ -445,6 +423,30 @@
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
 			},
+			chartImageSrc() {
+				if (!this.chartW || !this.chartH || !this.linePath) return ''
+				const grids = (this.gridYs || []).map((y) =>
+					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
+				).join('')
+				let touch = ''
+				if (this.touchActive && this.touchPoint) {
+					touch =
+						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
+						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#3B82F6" stroke="#ffffff" stroke-width="2"/>`
+				}
+				const inner =
+					`<defs><linearGradient id="sugarAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
+					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
+					`<stop offset="55%" stop-color="#3B82F6" stop-opacity="0.12"/>` +
+					`<stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>` +
+					`</linearGradient></defs>` +
+					grids +
+					`<path d="${this.areaPath}" fill="url(#sugarAreaGrad)"/>` +
+					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+					touch +
+					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
+			},
 			touchPoint() {
 				if (this.touchIndex < 0 || this.touchIndex >= this.chartPoints.length) return null
 				return this.chartPoints[this.touchIndex]
@@ -455,6 +457,7 @@
 			},
 			touchLabel() {
 				if (this.touchIndex < 0) return ''
+				if (this.chartTimes[this.touchIndex]) return this.chartTimes[this.touchIndex]
 				return this.xLabels[this.touchIndex] || ''
 			},
 			chartTipStyle() {
@@ -476,6 +479,12 @@
 			calendarTitle() {
 				return `${this.calYear}年${this.calMonth + 1}月`
 			},
+			canCalNextMonth() {
+				const today = new Date()
+				if (this.calYear > today.getFullYear()) return false
+				if (this.calYear === today.getFullYear() && this.calMonth >= today.getMonth()) return false
+				return true
+			},
 			calendarCells() {
 				const year = this.calYear
 				const month = this.calMonth
@@ -483,37 +492,112 @@
 				const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
-					cells.push({ day: 0, active: false })
+					cells.push({ day: 0, active: false, disabled: false })
 				}
 				for (let d = 1; d <= daysInMonth; d++) {
+					const disabled = isFutureDate(year, month, d)
 					cells.push({
 						day: d,
-						active: d === this.calSelectedDay
+						active: !disabled && d === this.calSelectedDay,
+						disabled
 					})
 				}
 				while (cells.length % 7 !== 0) {
-					cells.push({ day: 0, active: false })
+					cells.push({ day: 0, active: false, disabled: false })
 				}
 				return cells
 			}
 		},
 		mounted() {
 			this.$nextTick(() => {
-				this.measureChart()
+				this.measureChart(0)
 			})
 		},
+		onShow() {
+			this.loadTrend()
+		},
 		methods: {
-			measureChart() {
+			measureChart(retry = 0) {
 				uni.createSelectorQuery()
 					.in(this)
 					.select('.trend-plot')
 					.boundingClientRect((rect) => {
-						if (!rect || !rect.width) return
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureChart(retry + 1), 80)
+							return
+						}
 						this.chartW = rect.width
 						this.chartH = rect.height || 220
 						this.chartLeft = rect.left || 0
 					})
 					.exec()
+			},
+			async loadTrend() {
+				try {
+					const data = await getBloodSugarTrend({
+						range: this.period,
+						date: dateToYmd(this.currentDate),
+						pageNum: 1,
+						pageSize: 10
+					})
+					this.applyTrend(data)
+				} catch (e) {
+					this.applyTrend(null)
+				}
+			},
+			applyTrend(data) {
+				if (!data) {
+					this.latestValue = null
+					this.latestValueText = '--'
+					this.sugarValueText = '--'
+					this.latestStatus = '暂无数据'
+					this.latestTime = '--'
+					this.apiPosition = null
+					this.chartValues = []
+					this.chartTimes = []
+					this.xLabels = pickXLabels([])
+					this.statsMax = '--'
+					this.statsMin = '--'
+					this.statsAvg = '--'
+					this.recentList = []
+					this.trendTime = ''
+					return
+				}
+				const latest = data.latest || {}
+				const info = data.bloodSugar || {}
+				const latestNum = Number(latest.value != null ? latest.value : info.value)
+				this.latestValue = latestNum > 0 ? latestNum : null
+				this.latestValueText = this.latestValue != null ? String(this.latestValue) : '--'
+				this.sugarValueText = info.value != null && Number(info.value) > 0 ? String(info.value) : this.latestValueText
+				this.latestStatus = info.status || latest.subText || (this.latestValue != null ? sugarStatusOf(this.latestValue) : '暂无数据')
+				this.latestTime = latest.timeText || '--'
+				this.apiPosition = info.position != null ? info.position : null
+				this.targetHint = data.targetHint || '按测量时点持续记录'
+				if (data.advice || data.desc) this.tipText = data.advice || data.desc
+				this.trendTime = (data.trend && data.trend.title) || ''
+
+				const labels = (data.trend && data.trend.labels) || []
+				const values = ((data.trend && data.trend.values) || []).map((v) => Number(v))
+				const points = []
+				values.forEach((v, i) => {
+					if (v > 0) points.push({ value: v, time: labels[i] || '' })
+				})
+				this.chartValues = points.map((p) => p.value)
+				this.chartTimes = points.map((p) => p.time)
+				this.xLabels = pickXLabels(labels.length ? labels : this.chartTimes)
+
+				const stats = data.stats || {}
+				this.statsMax = Number(stats.max) > 0 ? Number(stats.max) : '--'
+				this.statsMin = Number(stats.min) > 0 ? Number(stats.min) : '--'
+				this.statsAvg = Number(stats.avg) > 0 ? Number(Number(stats.avg).toFixed(1)) : '--'
+
+				const records = Array.isArray(data.records) ? data.records : []
+				this.recentList = records.map((item) => ({
+					time: item.timeText || '--',
+					source: item.source || '手动录入',
+					valueText: (item.value || '--') + ' ' + (item.unit || 'Mmol/L')
+				}))
+				this.$nextTick(() => this.measureChart(0))
 			},
 			onChartTouch(e) {
 				const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
@@ -532,26 +616,24 @@
 				this.touchIndex = -1
 			},
 			onPeriodChange(key) {
+				if (this.period === key) return
 				this.period = key
-				if (key === 'day') {
-					this.trendTime = '今日'
-					this.xLabels = ['一', '二', '三', '四', '五', '六', '日']
-					this.chartValues = [5.2, 6.8, 5.6, 7.2, 5.4, 6.1, 5.8]
-				} else if (key === 'week') {
-					this.trendTime = '近一周'
-					this.xLabels = ['一', '二', '三', '四', '五', '六', '日']
-					this.chartValues = [5.4, 6.2, 5.8, 7.0, 5.5, 6.4, 5.9]
-				} else {
-					this.trendTime = '本月'
-					this.xLabels = ['1', '5', '10', '15', '20', '25', '30']
-					this.chartValues = [5.6, 6.0, 5.8, 6.5, 5.7, 6.2, 5.9]
-				}
-				this.$nextTick(() => this.measureChart())
+				this.loadTrend()
 			},
 			shiftDate(delta) {
 				const next = new Date(this.currentDate)
-				next.setDate(next.getDate() + delta)
+				if (this.period === 'week') next.setDate(next.getDate() + delta * 7)
+				else if (this.period === 'month') next.setMonth(next.getMonth() + delta)
+				else next.setDate(next.getDate() + delta)
+				if (startOfDay(next).getTime() > startOfDay(new Date()).getTime()) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = next
+				this.loadTrend()
 			},
 			onPrevDay() {
 				this.shiftDate(-1)
@@ -580,6 +662,7 @@
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
 			},
 			onCalNextMonth() {
+				if (!this.canCalNextMonth) return
 				if (this.calMonth === 11) {
 					this.calYear += 1
 					this.calMonth = 0
@@ -588,13 +671,34 @@
 				}
 				const maxDay = new Date(this.calYear, this.calMonth + 1, 0).getDate()
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					const today = new Date()
+					this.calYear = today.getFullYear()
+					this.calMonth = today.getMonth()
+					this.calSelectedDay = today.getDate()
+				}
 			},
 			onSelectCalDay(day) {
+				if (isFutureDate(this.calYear, this.calMonth, day)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.calSelectedDay = day
 			},
 			confirmCalendar() {
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = new Date(this.calYear, this.calMonth, this.calSelectedDay)
 				this.showCalendar = false
+				this.loadTrend()
 			},
 			onEnterWeight() {
 				this.enterValue = ''
@@ -603,27 +707,28 @@
 			closeEnter() {
 				this.showEnter = false
 			},
-			confirmEnter() {
+			async confirmEnter() {
+				if (this.saving) return
 				const value = parseFloat(this.enterValue)
-				if (!value || value <= 0 || value > 40) {
-					uni.showToast({ title: '请输入有效血糖值', icon: 'none' })
+				if (!value || value < 1 || value > 50) {
+					uni.showToast({ title: '请输入1~50之间的血糖值', icon: 'none' })
 					return
 				}
 				const sugar = Math.round(value * 10) / 10
-				this.latestValue = sugar
-				this.latestValueText = String(sugar)
-				this.sugarValueText = String(sugar)
-				this.latestStatus = sugarStatusOf(sugar)
-				this.latestTime = '今天 刚刚'
-				this.statsMax = sugar
-				this.statsMin = sugar
-				this.statsAvg = sugar
-				this.recentList = [
-					{ time: '今天 刚刚', source: '手动录入', valueText: `${sugar} Mmol/L` },
-					...this.recentList
-				]
-				this.showEnter = false
-				uni.showToast({ title: '录入成功', icon: 'success' })
+				this.saving = true
+				try {
+					await addManualHealthRecord({
+						type: '2',
+						value: String(sugar)
+					})
+					this.showEnter = false
+					uni.showToast({ title: '录入成功', icon: 'success' })
+					await this.loadTrend()
+				} catch (e) {
+					console.log('[sugar] add failed', e && (e.msg || e.message))
+				} finally {
+					this.saving = false
+				}
 			}
 		}
 	}
@@ -1257,6 +1362,10 @@
 		justify-content: center;
 	}
 
+	.cal-nav.disabled {
+		opacity: 0.35;
+	}
+
 	.cal-nav-arrow {
 		font-size: 44rpx;
 		color: #ffffff;
@@ -1317,6 +1426,10 @@
 		font-size: 28rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+
+	.cal-cell.disabled .cal-day {
+		opacity: 0.28;
 	}
 
 	.cal-btns {

@@ -3,10 +3,10 @@
 		<!-- 头部 -->
 		<view class="header">
 			<view class="header-left">
-				<text class="title">完善基础信息</text>
-				<text class="subtitle">完善个人资料信息</text>
+				<text class="title">{{ fromMine ? '个人资料' : '完善基础信息' }}</text>
+				<text class="subtitle">{{ fromMine ? '编辑个人资料信息' : '完善个人资料信息' }}</text>
 			</view>
-			<view class="step-badge">
+			<view v-if="!fromMine" class="step-badge">
 				<view class="step-badge-text">首次使用 · <text style="color: #2C89FF;">1</text> /2</view>
 			</view>
 		</view>
@@ -35,7 +35,6 @@
 						:class="{ active: gender === 'male' }"
 						@click="gender = 'male'"
 					>
-						<!-- 男性图标，自行补充 src -->
 						<image class="gender-icon" src="/static/nan.png" mode=""></image>
 						<text class="gender-text">男</text>
 					</view>
@@ -44,7 +43,6 @@
 						:class="{ active: gender === 'female' }"
 						@click="gender = 'female'"
 					>
-						<!-- 女性图标，自行补充 src -->
 						<image class="gender-icon" src="/static/nv.png" mode=""></image>
 						<text class="gender-text">女</text>
 					</view>
@@ -54,10 +52,11 @@
 			<!-- 出生日期 -->
 			<view class="field">
 				<text class="field-label">出生日期</text>
-				<picker mode="date" :value="birthday" :end="todayStr" @change="onBirthdayChange">
+				<picker mode="date" :value="birthday || todayStr" :end="todayStr" @change="onBirthdayChange">
 					<view class="field-picker">
-						<text class="field-picker-text">{{ birthday }}</text>
-						<!-- 日历图标 -->
+						<text class="field-picker-text" :class="{ 'field-placeholder': !birthday }">
+							{{ birthday || '请选择出生日期' }}
+						</text>
 						<image class="field-calendar" src="/static/rili.png" mode=""></image>
 					</view>
 				</picker>
@@ -92,14 +91,17 @@
 		<view class="footer">
 			<view class="save-btn" @click="onSave">
 				<image class="save-btn-bg" src="/static/btnBan.png" mode="scaleToFill"></image>
-				<text class="save-btn-text">保存并继续</text>
+				<text class="save-btn-text">{{ fromMine ? '保存' : '保存并继续' }}</text>
 			</view>
-			<text class="skip-link" @click="onSkip">稍后完善</text>
+			<text v-if="!fromMine" class="skip-link" @click="onSkip">稍后完善</text>
 		</view>
 	</view>
 </template>
 
 <script>
+	import { getUserInfo, editUserInfo } from '@/common/api/user.js'
+	import { saveLoginSession, USER_ID_KEY, USER_INFO_KEY } from '@/common/auth.js'
+
 	function pad(n) {
 		return String(n).padStart(2, '0')
 	}
@@ -108,27 +110,71 @@
 		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 	}
 
+	function mapGenderToUi(gender) {
+		const g = String(gender == null ? '' : gender)
+		if (g === '1' || g === 'male' || g === '男') return 'male'
+		if (g === '2' || g === 'female' || g === '女') return 'female'
+		return ''
+	}
+
+	function mapGenderToApi(gender) {
+		if (gender === 'male') return '1'
+		if (gender === 'female') return '2'
+		return '0'
+	}
+
 	export default {
 		data() {
 			return {
-				nickname: '小安',
-				gender: 'male',
-				birthday: '2003-01-24',
-				height: '165',
-				weight: '52',
+				fromMine: false,
+				saving: false,
+				userId: null,
+				nickname: '',
+				gender: '',
+				birthday: '',
+				height: '',
+				weight: '',
 				todayStr: toDateStr(new Date())
 			}
 		},
-		onLoad() {
-			const cached = uni.getStorageSync('userBasicInfo')
-			if (!cached) return
-			this.nickname = cached.nickname || this.nickname
-			this.gender = cached.gender || this.gender
-			this.birthday = cached.birthday || this.birthday
-			this.height = cached.height != null ? String(cached.height) : this.height
-			this.weight = cached.weight != null ? String(cached.weight) : this.weight
+		onLoad(query) {
+			this.fromMine = !!(query && (query.from === 'mine' || query.mode === 'edit'))
+			this.applyCached()
+			this.loadUser()
 		},
 		methods: {
+			applyCached() {
+				const cached = uni.getStorageSync('userBasicInfo') || {}
+				const userInfo = uni.getStorageSync(USER_INFO_KEY) || {}
+				const src = Object.keys(cached).length ? cached : userInfo
+				this.userId = uni.getStorageSync(USER_ID_KEY) || userInfo.userId || null
+				this.nickname = src.nickName || src.nickname || this.nickname
+				this.gender = mapGenderToUi(src.gender) || this.gender
+				this.birthday = src.birthday || this.birthday
+				if (src.height != null && src.height !== '') {
+					this.height = String(src.height)
+				}
+				if (src.weight != null && src.weight !== '') {
+					this.weight = String(src.weight)
+				}
+			},
+			async loadUser() {
+				try {
+					const info = await getUserInfo()
+					if (!info) return
+					saveLoginSession(info)
+					this.userId = info.userId != null ? info.userId : this.userId
+					this.nickname = info.nickName || info.nickname || this.nickname
+					this.gender = mapGenderToUi(info.gender) || this.gender
+					this.birthday = info.birthday || this.birthday
+					if (info.height != null && info.height !== '') {
+						this.height = String(info.height)
+					}
+					if (info.weight != null && info.weight !== '') {
+						this.weight = String(info.weight)
+					}
+				} catch (e) {}
+			},
 			onBirthdayChange(e) {
 				this.birthday = e.detail.value
 			},
@@ -157,24 +203,65 @@
 				}
 				return true
 			},
-			saveProfile() {
-				uni.setStorageSync('userBasicInfo', {
-					nickname: String(this.nickname).trim(),
-					gender: this.gender,
+			buildPayload() {
+				const nickName = String(this.nickname).trim()
+				const height = Number(this.height)
+				const weight = Number(this.weight)
+				return {
+					userId: this.userId || uni.getStorageSync(USER_ID_KEY),
+					nickName,
+					gender: mapGenderToApi(this.gender),
 					birthday: this.birthday,
-					height: Number(this.height),
-					weight: Number(this.weight)
+					height,
+					weight
+				}
+			},
+			persistLocal(payload) {
+				uni.setStorageSync('userBasicInfo', {
+					nickname: payload.nickName,
+					nickName: payload.nickName,
+					gender: this.gender,
+					birthday: payload.birthday,
+					height: payload.height,
+					weight: payload.weight
+				})
+				saveLoginSession({
+					userId: payload.userId,
+					nickName: payload.nickName,
+					gender: payload.gender,
+					birthday: payload.birthday,
+					height: payload.height,
+					weight: payload.weight
 				})
 			},
-			onSave() {
-				if (!this.validate()) return
-				this.saveProfile()
-				uni.redirectTo({
-					url: '/pages/mine/bluePower'
-				})
+			async onSave() {
+				if (this.saving || !this.validate()) return
+				const payload = this.buildPayload()
+				if (payload.userId == null || payload.userId === '') {
+					uni.showToast({ title: '用户信息缺失，请重新登录', icon: 'none' })
+					return
+				}
+				this.saving = true
+				try {
+					await editUserInfo(payload)
+					this.persistLocal(payload)
+					if (this.fromMine) {
+						uni.showToast({ title: '已保存', icon: 'none' })
+						setTimeout(() => {
+							uni.navigateBack()
+						}, 400)
+						return
+					}
+					uni.redirectTo({
+						url: '/pages/mine/bluePower'
+					})
+				} catch (e) {
+					// http 层已 toast
+				} finally {
+					this.saving = false
+				}
 			},
 			onSkip() {
-				// 稍后完善：同样进入蓝牙权限申请页
 				uni.redirectTo({
 					url: '/pages/mine/bluePower'
 				})

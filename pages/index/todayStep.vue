@@ -14,9 +14,14 @@
 		<!-- 活动概览 -->
 		<view class="summary-card">
 			<view class="summary-top">
-				<!-- 真实三环进度图：底部起笔、渐变、外粗内细 -->
+				<!-- 三环进度图：App 端用 canvas 绘制 -->
 				<view class="rings">
-					<image class="rings-svg" :src="ringsImageSrc" mode="aspectFit" />
+					<canvas
+						class="rings-canvas"
+						canvas-id="stepRingsCanvas"
+						id="stepRingsCanvas"
+						:style="ringsSize ? { width: ringsSize + 'px', height: ringsSize + 'px' } : {}"
+					></canvas>
 				</view>
 
 				<view class="summary-metrics">
@@ -128,27 +133,15 @@
 </template>
 
 <script>
-	import { toSvgDataUrl } from '@/common/svg-data-url.js'
-	import BleService from '@/common/ble-service.js'
-	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import { getSportTrend } from '@/common/api/deviceData.js'
+	import { saveDeviceConfig } from '@/common/api/device.js'
 
 	const GOAL_STORAGE_KEY = 'todayStepGoals'
 
-	function ringDash(r, percent) {
-		const c = 2 * Math.PI * r
-		const p = Math.max(0, Math.min(1, percent))
-		return `${c * p} ${c}`
-	}
-
-	function ringGroup(ring, gradId) {
-		// 起笔方向仍由 .rings-svg 的 CSS rotate(90deg) 控制，与原 SVG 一致
-		return (
-			`<circle cx="100" cy="100" r="${ring.r + ring.stroke / 2}" fill="none" stroke-width="1.2" stroke="${ring.edge}"/>` +
-			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke}" stroke="${ring.track}"/>` +
-			`<circle cx="100" cy="100" r="${ring.r - ring.stroke / 2}" fill="none" stroke-width="1.2" stroke="${ring.edge}"/>` +
-			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke + 2.5}" stroke="${ring.border}" stroke-dasharray="${ring.dash}" stroke-linecap="round"/>` +
-			`<circle cx="100" cy="100" r="${ring.r}" fill="none" stroke-width="${ring.stroke}" stroke="url(#${gradId})" stroke-dasharray="${ring.dash}" stroke-linecap="round"/>`
-		)
+	function progressOpacity(t) {
+		const p = Math.max(0, Math.min(1, t))
+		// 暗尾(起点)→亮头(终点)：起点隐入底色，终点最亮领跑
+		return 0.12 + (1 - 0.12) * Math.pow(p, 1.6)
 	}
 
 	function safeRatio(current, target) {
@@ -157,11 +150,21 @@
 		return Math.max(0, Math.min(1, Number(current) / t))
 	}
 
+	function hexToRgba(hex, opacity) {
+		const h = String(hex || '').replace('#', '')
+		if (h.length !== 6) return `rgba(255,255,255,${opacity})`
+		const r = parseInt(h.slice(0, 2), 16)
+		const g = parseInt(h.slice(2, 4), 16)
+		const b = parseInt(h.slice(4, 6), 16)
+		return `rgba(${r},${g},${b},${opacity})`
+	}
+
 	export default {
 		data() {
 			return {
 				weekList: [],
-				ringStroke: 8,
+				ringsSize: 0,
+				ringsCtx: null,
 				stepCurrent: 0,
 				stepTarget: 8000,
 				calorieCurrent: 0,
@@ -198,13 +201,10 @@
 						placeholder: '设置活动时长目标'
 					}
 				],
-				stepSamples: [],
 				statsMax: 0,
 				statsMin: 0,
 				statsAvg: 0,
-				bleConnected: false,
-				unsubBle: null,
-				tipText: '步数、距离与消耗由智能戒指实时统计。晃动或行走时会持续更新；进入本页会向戒指请求同步。本设备仅用于健康管理参考，不能用于医疗诊断。'
+				tipText: '步数、距离与消耗由智能戒指统计后同步到云端。本设备仅用于健康管理参考，不能用于医疗诊断。'
 			}
 		},
 		computed: {
@@ -220,92 +220,137 @@
 			distanceRatio() {
 				return safeRatio(this.distanceCurrent, this.distanceTarget)
 			},
-			ringOuter() {
-				const r = 86
-				const stroke = 18
-				return {
-					r,
-					stroke,
-					track: '#292524',
-					edge: 'rgba(255, 255, 255, 0.22)',
-					border: '#E8C84A',
-					dash: ringDash(r, this.stepRatio)
-				}
-			},
-			ringMiddle() {
-				const r = 58
-				const stroke = 12
-				return {
-					r,
-					stroke,
-					track: '#221B24',
-					edge: 'rgba(255, 255, 255, 0.2)',
-					border: '#FF8A80',
-					dash: ringDash(r, this.calorieRatio)
-				}
-			},
-			ringInner() {
-				const r = 34
-				const stroke = 10
-				return {
-					r,
-					stroke,
-					track: '#172039',
-					edge: 'rgba(255, 255, 255, 0.2)',
-					border: '#7EC8FF',
-					dash: ringDash(r, this.distanceRatio)
-				}
-			},
-			ringsImageSrc() {
-				const inner =
-					`<defs>` +
-					`<linearGradient id="gradYellow" x1="0%" y1="100%" x2="100%" y2="0%">` +
-					`<stop offset="0%" stop-color="#BE8A1A"/><stop offset="50%" stop-color="#795D22"/><stop offset="100%" stop-color="#BE8A1A"/>` +
-					`</linearGradient>` +
-					`<linearGradient id="gradRed" x1="0%" y1="100%" x2="100%" y2="0%">` +
-					`<stop offset="0%" stop-color="#FF6961"/><stop offset="50%" stop-color="#FF453A"/><stop offset="100%" stop-color="#FF2D55"/>` +
-					`</linearGradient>` +
-					`<linearGradient id="gradBlue" x1="0%" y1="100%" x2="100%" y2="0%">` +
-					`<stop offset="0%" stop-color="#64D2FF"/><stop offset="50%" stop-color="#0A84FF"/><stop offset="100%" stop-color="#0055FF"/>` +
-					`</linearGradient>` +
-					`</defs>` +
-					ringGroup(this.ringOuter, 'gradYellow') +
-					ringGroup(this.ringMiddle, 'gradRed') +
-					ringGroup(this.ringInner, 'gradBlue')
-				return toSvgDataUrl(inner, 200, 200)
-			},
-			isTodaySelected() {
-				const active = (this.weekList || []).find((item) => item.active)
-				if (!active) return true
-				const today = new Date()
-				const y = today.getFullYear()
-				const m = String(today.getMonth() + 1).padStart(2, '0')
-				const d = String(today.getDate()).padStart(2, '0')
-				return active.fullDate === `${y}-${m}-${d}`
+			ringsKey() {
+				return [this.stepRatio, this.calorieRatio, this.distanceRatio].join('|')
+			}
+		},
+		watch: {
+			ringsKey() {
+				this.$nextTick(() => this.drawRings())
 			}
 		},
 		created() {
 			this.initWeekList()
 			this.loadGoals()
-			this.unsubBle = BleService.subscribe((s) => {
-				this.bleConnected = !!s.connected
-				if (s.sport && this.isTodaySelected) {
-					this.applySport(s.sport)
-				}
+			this.loadTrend()
+		},
+		mounted() {
+			this.$nextTick(() => {
+				setTimeout(() => this.measureRings(0), 50)
 			})
-			const cached = BleService.getSport && BleService.getSport()
-			if (cached) this.applySport(cached)
+		},
+		onReady() {
+			this.measureRings(0)
 		},
 		onShow() {
-			this.refreshSport()
-		},
-		onUnload() {
-			if (this.unsubBle) {
-				this.unsubBle()
-				this.unsubBle = null
-			}
+			this.loadTrend()
+			this.$nextTick(() => this.drawRings())
 		},
 		methods: {
+			measureRings(retry = 0) {
+				uni.createSelectorQuery()
+					.in(this)
+					.select('.rings')
+					.boundingClientRect((rect) => {
+						if (!rect || !rect.width) {
+							if (retry < 8) setTimeout(() => this.measureRings(retry + 1), 80)
+							return
+						}
+						this.ringsSize = Math.round(rect.width)
+						if (!this.ringsCtx) {
+							this.ringsCtx = uni.createCanvasContext('stepRingsCanvas', this)
+						}
+						this.$nextTick(() => this.drawRings())
+					})
+					.exec()
+			},
+			drawRings() {
+				const ctx = this.ringsCtx
+				const size = this.ringsSize
+				if (!ctx || !size) return
+
+				const scale = size / 100
+				const cx = size / 2
+				const cy = size / 2
+				// 6 点钟起笔，顺时针推进
+				const startAngle = Math.PI / 2
+
+				const rings = [{
+						r: 42 * scale,
+						stroke: 8 * scale,
+						color: '#FFC53D',
+						track: '#2E2410',
+						ratio: this.stepRatio
+					},
+					{
+						r: 32 * scale,
+						stroke: 8 * scale,
+						color: '#FF2C30',
+						track: '#2E1418',
+						ratio: this.calorieRatio
+					},
+					{
+						r: 22 * scale,
+						stroke: 8 * scale,
+						color: '#3D9BFF',
+						track: '#12233A',
+						ratio: this.distanceRatio
+					}
+				]
+
+				ctx.clearRect(0, 0, size, size)
+
+				for (let ri = 0; ri < rings.length; ri++) {
+					const ring = rings[ri]
+					ctx.beginPath()
+					ctx.setLineWidth(ring.stroke)
+					ctx.setStrokeStyle(ring.track)
+					ctx.setLineCap('butt')
+					ctx.arc(cx, cy, ring.r, 0, Math.PI * 2, false)
+					ctx.stroke()
+
+					const percent = Math.max(0, Math.min(1, ring.ratio))
+					if (percent <= 0) continue
+
+					const totalAngle = Math.PI * 2 * percent
+					const count = Math.max(24, Math.round(120 * percent))
+					const segAngle = totalAngle / count
+					const overlap = 0.01
+
+					for (let i = 0; i < count; i++) {
+						// 亮头(起点)→暗尾(终点)，与原先视觉一致
+						const t = 1 - (i + 0.5) / count
+						const opacity = progressOpacity(t)
+						const a0 = startAngle + i * segAngle
+						const a1 = startAngle + (i + 1) * segAngle + overlap
+						const isEnd = i === 0 || i === count - 1
+						ctx.beginPath()
+						ctx.setLineWidth(ring.stroke)
+						ctx.setStrokeStyle(hexToRgba(ring.color, opacity))
+						ctx.setLineCap(isEnd ? 'round' : 'butt')
+						ctx.arc(cx, cy, ring.r, a0, a1, false)
+						ctx.stroke()
+					}
+
+					// 亮头轻微发光，增强起笔辨识
+					const headStart = startAngle
+					const headEnd = startAngle + segAngle
+					ctx.beginPath()
+					ctx.setLineWidth(ring.stroke)
+					ctx.setStrokeStyle(hexToRgba(ring.color, 1))
+					ctx.setLineCap('round')
+					try {
+						if (ctx.setShadow) ctx.setShadow(0, 0, 3 * scale, ring.color)
+					} catch (e) {}
+					ctx.arc(cx, cy, ring.r, headStart, headEnd, false)
+					ctx.stroke()
+					try {
+						if (ctx.setShadow) ctx.setShadow(0, 0, 0, 'rgba(0,0,0,0)')
+					} catch (e) {}
+				}
+
+				ctx.draw()
+			},
 			loadGoals() {
 				try {
 					const saved = uni.getStorageSync(GOAL_STORAGE_KEY)
@@ -340,54 +385,45 @@
 					duration: durationGoal ? durationGoal.value : 45
 				})
 			},
-			async refreshSport() {
-				const ble = BleService.getState()
-				if (!ble.connected) {
-					const cached = BleService.getSport && BleService.getSport()
-					if (cached) this.applySport(cached)
-					return
-				}
+			getActiveDate() {
+				const active = (this.weekList || []).find((item) => item.active)
+				return (active && active.fullDate) || ''
+			},
+			async loadTrend() {
+				const date = this.getActiveDate()
 				try {
-					await BleService.syncSport()
-				} catch (e) {
-					console.log('[todayStep] syncSport failed', e)
-					try {
-						await CoolWearBLE.sendSyncInfo()
-					} catch (err) {
-						console.log('[todayStep] sendSyncInfo failed', err)
-					}
-				}
+					const data = await getSportTrend(date)
+					this.applyTrend(data)
+				} catch (e) {}
 			},
-			applySport(sport) {
-				if (!sport) return
-				const steps = Number(sport.steps) || 0
-				const calories = Number(sport.calories) || 0
-				const distanceKm = sport.distanceKm != null
-					? Number(sport.distanceKm)
-					: (Number(sport.distanceM) || 0) / 1000
-
-				this.stepCurrent = steps
-				this.calorieCurrent = calories
-				this.distanceCurrent = Math.round(distanceKm * 10) / 10
-
-				if (steps > 0) {
-					this.stepSamples = this.stepSamples.concat(steps).slice(-48)
-					this.updateStats()
+			applyTrend(data) {
+				if (!data) return
+				this.stepCurrent = Number(data.totalSteps) || 0
+				this.calorieCurrent = Math.round(Number(data.totalCalories) || 0)
+				const meters = Number(data.totalDistance) || 0
+				this.distanceCurrent = Math.round((meters / 1000) * 10) / 10
+				if (Number(data.target) > 0) {
+					this.stepTarget = Number(data.target)
+					const g = this.goalList.find((i) => i.key === 'step')
+					if (g) g.value = this.stepTarget
 				}
-				console.log('[todayStep] applySport', steps, calories, this.distanceCurrent)
-			},
-			updateStats() {
-				const list = this.stepSamples
-				if (!list.length) {
-					this.statsMax = this.stepCurrent
-					this.statsMin = this.stepCurrent
-					this.statsAvg = this.stepCurrent
-					return
+				if (Number(data.calorieTarget) > 0) {
+					this.calorieTarget = Number(data.calorieTarget)
+					const g = this.goalList.find((i) => i.key === 'calorie')
+					if (g) g.value = this.calorieTarget
 				}
-				this.statsMax = Math.max.apply(null, list)
-				this.statsMin = Math.min.apply(null, list)
-				const sum = list.reduce((a, b) => a + b, 0)
-				this.statsAvg = Math.round(sum / list.length)
+				if (Number(data.distanceTarget) > 0) {
+					this.distanceTarget = Math.round((Number(data.distanceTarget) / 1000) * 10) / 10
+				}
+				if (Number(data.sportTimeTarget) > 0) {
+					const g = this.goalList.find((i) => i.key === 'duration')
+					if (g) g.value = Number(data.sportTimeTarget)
+				}
+				this.statsMax = this.stepCurrent
+				this.statsMin = this.stepCurrent
+				this.statsAvg = this.stepCurrent
+				const desc = data.description || data.desc || data.status
+				if (desc) this.tipText = desc
 			},
 			initWeekList() {
 				const dayNames = ['日', '一', '二', '三', '四', '五', '六']
@@ -420,11 +456,7 @@
 					item.active = i === index
 					item.label = item.active ? monthDay : String(item.dateNum)
 				})
-				if (this.isTodaySelected) {
-					const cached = BleService.getSport && BleService.getSport()
-					if (cached) this.applySport(cached)
-					else this.refreshSport()
-				}
+				this.loadTrend()
 			},
 			onGoalTap(item) {
 				this.editingGoal = {
@@ -439,7 +471,7 @@
 			closeGoalPopup() {
 				this.showGoalPopup = false
 			},
-			saveGoalPopup() {
+			async saveGoalPopup() {
 				const num = Number(this.goalInput)
 				if (!this.goalInput || isNaN(num) || num <= 0) {
 					uni.showToast({
@@ -456,6 +488,14 @@
 				}
 				this.persistGoals()
 				this.showGoalPopup = false
+				const durationGoal = this.goalList.find((i) => i.key === 'duration')
+				try {
+					await saveDeviceConfig({
+						step: this.stepTarget,
+						calorie: this.calorieTarget,
+						sprotTime: durationGoal ? durationGoal.value : undefined
+					})
+				} catch (e) {}
 			}
 		}
 	}
@@ -545,19 +585,10 @@
 		margin-right: 24rpx;
 	}
 
-	.rings-svg {
+	.rings-canvas {
 		width: 100%;
 		height: 100%;
-		/* 默认从右侧起笔，旋转 90° 后从底部起、顺时针绘制 */
-		transform: rotate(90deg);
-		overflow: visible;
-	}
-
-	.ring-track,
-	.ring-track-edge,
-	.ring-progress,
-	.ring-progress-border {
-		fill: none;
+		display: block;
 	}
 
 	.summary-metrics {
@@ -587,18 +618,18 @@
 	}
 
 	.dot.yellow {
-		background: #ffd60a;
-		box-shadow: 0 0 10rpx rgba(255, 214, 10, 0.6);
+		background: #FFC53D;
+		box-shadow: 0 0 10rpx rgba(255, 197, 61, 0.6);
 	}
 
 	.dot.red {
-		background: #ff453a;
-		box-shadow: 0 0 10rpx rgba(255, 69, 58, 0.6);
+		background: #FF2C30;
+		box-shadow: 0 0 10rpx rgba(255, 44, 48, 0.6);
 	}
 
 	.dot.blue {
-		background: #0a84ff;
-		box-shadow: 0 0 10rpx rgba(10, 132, 255, 0.6);
+		background: #3D9BFF;
+		box-shadow: 0 0 10rpx rgba(61, 155, 255, 0.6);
 	}
 
 	.metric-label {

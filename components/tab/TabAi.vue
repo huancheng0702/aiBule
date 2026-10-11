@@ -36,7 +36,9 @@
 				<template v-else>
 					<image class="ai-avatar" src="/static/aiHic.png" mode=""></image>
 					<view class="bubble ai-bubble">
-						<text class="bubble-text">{{ msg.content || (msg.streaming ? '正在思考...' : '') }}</text>
+						<text v-if="msg.content" class="bubble-text">{{ msg.content }}<text v-if="msg.streaming" class="typing-cursor">|</text></text>
+						<view v-else-if="msg.streaming" class="thinking"><text class="thinking-text">正在思考</text><text class="thinking-dot d1">.</text><text class="thinking-dot d2">.</text><text class="thinking-dot d3">.</text></view>
+						<text v-else class="bubble-text"></text>
 					</view>
 				</template>
 			</view>
@@ -492,6 +494,47 @@
 		font-size: 28rpx;
 		line-height: 42rpx;
 		color: #ffffff;
+	}
+
+	.typing-cursor {
+		display: inline-block;
+		margin-left: 4rpx;
+		color: #4da3ff;
+		animation: cursorBlink 0.8s infinite;
+	}
+
+	@keyframes cursorBlink {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0; }
+	}
+
+	.thinking {
+		display: flex;
+		align-items: center;
+		flex-direction: row;
+	}
+
+	.thinking-text {
+		font-size: 28rpx;
+		line-height: 42rpx;
+		color: rgba(255,255,255,0.75);
+	}
+
+	.thinking-dot {
+		font-size: 32rpx;
+		font-weight: 700;
+		line-height: 42rpx;
+		color: #4da3ff;
+		opacity: 0.2;
+		animation: thinkingDot 1.2s infinite;
+	}
+
+	.thinking-dot.d2 { animation-delay: 0.2s; }
+	.thinking-dot.d3 { animation-delay: 0.4s; }
+
+	@keyframes thinkingDot {
+		0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
+		30% { opacity: 1; transform: translateY(-6rpx); }
 	}
 
 	.chat-bottom {

@@ -45,8 +45,7 @@
 				<image class="card-icon" src="/static/qushijianyi.png" mode=""></image>
 				<view class="card-main">
 					<image class="card-title" style="width: 148rpx;" src="/static/qushiText.png" mode=""></image>
-					<text class="card-text">建议结合日常活动量和长期趋势进行观察。保持规律作息与适量运动；</text>
-					<text class="card-text">如连续出现明显异常或伴随不适，请及时咨询专业医生。</text>
+					<text v-for="(line, index) in adviceList" :key="index" class="card-text">{{ line }}</text>
 				</view>
 			</view>
 		</view>
@@ -58,12 +57,21 @@
 </template>
 
 <script>
+	import { getMeasureResult } from '@/common/api/deviceData.js'
 	// 刻度图三等分：供养不足 / 正常血氧 / 血氧偏高，色块交界对应 60、100。
 	// 数字刻度不绘制，只用来算指示针位置。
 	const SCALE_MIN = 40
 	const SCALE_LOW = 60
 	const SCALE_HIGH = 100
 	const SCALE_MAX = 120
+	const DEFAULT_REFERENCE = [
+		'正常人体动脉血氧饱和度为95%~98%，',
+		'静脉血氧饱和度为70%~75%。'
+	]
+	const DEFAULT_ADVICE = [
+		'建议结合日常活动量和长期趋势进行观察。保持规律作息与适量运动；',
+		'如连续出现明显异常或伴随不适，请及时咨询专业医生。'
+	]
 
 	function clamp01(value) {
 		if (value < 0) return 0
@@ -82,14 +90,23 @@
 		return third * 2 + clamp01((spo2 - SCALE_HIGH) / (SCALE_MAX - SCALE_HIGH)) * third
 	}
 
+	function splitLines(text) {
+		if (!text) return []
+		return String(text)
+			.split(/\n+|；|;/)
+			.map((s) => s.trim())
+			.filter(Boolean)
+	}
+
 	export default {
 		data() {
 			return {
 				spo2: 98,
-				referenceList: [
-					'正常人体动脉血氧饱和度为95%~98%，',
-					'静脉血氧饱和度为70%~75%。'
-				]
+				measureId: '',
+				apiStatus: '',
+				apiResultText: '',
+				apiAdvice: '',
+				referenceList: DEFAULT_REFERENCE.slice()
 			}
 		},
 		computed: {
@@ -99,11 +116,13 @@
 				return 'normal'
 			},
 			statusText() {
+				if (this.apiStatus) return this.apiStatus
 				if (this.statusKey === 'low') return '供养不足'
 				if (this.statusKey === 'high') return '血氧偏高'
 				return '正常血氧'
 			},
 			resultText() {
+				if (this.apiResultText) return this.apiResultText
 				if (this.statusKey === 'low') {
 					return '您的血氧饱和度偏低。建议保持静息、注意保暖；如持续偏低或伴随不适，请及时咨询专业医生。'
 				}
@@ -112,6 +131,10 @@
 				}
 				return '您的血氧饱和度处于正常范围。建议你继续保持良好的生活习惯，规律睡眠，适量运动。'
 			},
+			adviceList() {
+				const lines = splitLines(this.apiAdvice)
+				return lines.length ? lines : DEFAULT_ADVICE
+			},
 			pointerLeft() {
 				return `${spo2ToPercent(this.spo2).toFixed(2)}%`
 			}
@@ -119,8 +142,34 @@
 		onLoad(options) {
 			const spo2 = Number(options && (options.spo2 || options.value))
 			if (spo2) this.spo2 = spo2
+			this.measureId = (options && options.measureId) ? decodeURIComponent(options.measureId) : ''
+			this.loadResult()
 		},
 		methods: {
+			async loadResult(retry = 0) {
+				if (!this.measureId) return
+				try {
+					const data = await getMeasureResult(this.measureId, 'blood_oxygen')
+					const ready = data && (Number(data.value) > 0 || data.status || data.resultText)
+					if (!ready) {
+						if (retry < 2) {
+							setTimeout(() => this.loadResult(retry + 1), 600)
+						}
+						return
+					}
+					const value = Number(data.value)
+					if (value > 0) this.spo2 = Math.round(value)
+					if (data.status) this.apiStatus = data.status
+					if (data.resultText) this.apiResultText = data.resultText
+					if (data.advice) this.apiAdvice = data.advice
+					const refs = splitLines(data.referenceRange)
+					if (refs.length) this.referenceList = refs
+				} catch (e) {
+					if (retry < 2) {
+						setTimeout(() => this.loadResult(retry + 1), 600)
+					}
+				}
+			},
 			onRetry() {
 				const pages = getCurrentPages()
 				if (pages.length > 1) {

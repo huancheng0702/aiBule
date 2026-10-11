@@ -138,7 +138,7 @@
 							<text class="cal-nav-arrow">‹</text>
 						</view>
 						<text class="cal-title">{{ calendarTitle }}</text>
-						<view class="cal-nav" @click="onCalNextMonth">
+						<view class="cal-nav" :class="{ disabled: !canCalNextMonth }" @click="onCalNextMonth">
 							<text class="cal-nav-arrow">›</text>
 						</view>
 					</view>
@@ -149,8 +149,8 @@
 
 					<view class="cal-grid">
 						<view v-for="(cell, index) in calendarCells" :key="index" class="cal-cell"
-							:class="{ empty: !cell.day, active: cell.active }"
-							@click="cell.day && onSelectCalDay(cell.day)">
+							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
+							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)">
 							<!-- 选中日期背景图，自行补充 src -->
 							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill">
 							</image>
@@ -239,6 +239,13 @@
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
 	import CoolWearBLE from '@/common/coolwear-ble.js'
 	import BleService from '@/common/ble-service.js'
+	import { hasLogin } from '@/common/auth.js'
+	import {
+		getDeviceLatest,
+		getHrvTrend,
+		getDeviceDataList,
+		uploadDeviceData
+	} from '@/common/api/deviceData.js'
 
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
@@ -280,10 +287,97 @@
 		return '正常范围'
 	}
 
+	function pad2(n) {
+		return n < 10 ? '0' + n : String(n)
+	}
+
+	function dateToYmd(d) {
+		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+	}
+
+	function startOfDay(d) {
+		return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+	}
+
+	function isFutureDate(year, month, day) {
+		return startOfDay(new Date(year, month, day)).getTime() > startOfDay(new Date()).getTime()
+	}
+
+	function parseDateTime(value) {
+		if (!value) return null
+		if (value instanceof Date) return isNaN(value.getTime()) ? null : value
+		if (typeof value === 'number') {
+			const d = new Date(value < 1e12 ? value * 1000 : value)
+			return isNaN(d.getTime()) ? null : d
+		}
+		const d = new Date(String(value).replace(/-/g, '/').replace('T', ' '))
+		return isNaN(d.getTime()) ? null : d
+	}
+
 	function formatLatestTime(date = new Date()) {
-		const h = String(date.getHours()).padStart(2, '0')
-		const m = String(date.getMinutes()).padStart(2, '0')
-		return `今天 ${h}:${m}`
+		return `今天 ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+	}
+
+	function formatRecordTime(value) {
+		const d = parseDateTime(value)
+		if (!d) return value ? String(value) : '--'
+		const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+		const today = startOfDay(new Date())
+		const that = startOfDay(d)
+		const yest = new Date(today)
+		yest.setDate(today.getDate() - 1)
+		if (that.getTime() === today.getTime()) return '今天 ' + hm
+		if (that.getTime() === yest.getTime()) return '昨天 ' + hm
+		return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm
+	}
+
+	function formatMeasureTime(value) {
+		const d = parseDateTime(value) || new Date()
+		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+			' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds())
+	}
+
+	function createMeasureId() {
+		return 'hrv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10)
+	}
+
+	function sourceText(source) {
+		return String(source) === '2' ? '手动测量' : '戒指采集'
+	}
+
+	function unwrapList(data) {
+		if (Array.isArray(data)) return data
+		if (!data || typeof data !== 'object') return []
+		if (Array.isArray(data.records)) return data.records
+		if (Array.isArray(data.list)) return data.list
+		if (Array.isArray(data.rows)) return data.rows
+		return []
+	}
+
+	function pickHrvValue(item) {
+		if (!item) return 0
+		const n = Number(
+			item.hrvNum != null ? item.hrvNum
+				: (item.hrvNums != null ? item.hrvNums
+					: (item.hrv != null ? item.hrv
+						: (item.heartNum != null ? item.heartNum : item.value)))
+		)
+		return n > 0 ? n : 0
+	}
+
+	function pickXLabels(times, period) {
+		if (!times.length) {
+			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
+			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
+		}
+		const count = period === 'month' ? 6 : 7
+		if (times.length <= count) return times
+		const out = []
+		for (let i = 0; i < count; i++) {
+			out.push(times[Math.round(i * (times.length - 1) / (count - 1))])
+		}
+		return out
 	}
 
 	function toPoints(values, chartW, chartH) {
@@ -325,9 +419,9 @@
 	export default {
 		data() {
 			return {
-				latestTime: '今天 09:41',
-				latestValue: 72,
-				latestStatus: '正常范围',
+				latestTime: '--',
+				latestValue: '--',
+				latestStatus: '暂无数据',
 				period: 'day',
 				periodList: [{
 						key: 'day',
@@ -342,15 +436,16 @@
 						label: '月'
 					}
 				],
-				currentDate: new Date(2026, 8, 4),
+				currentDate: new Date(),
 				chartW: 0,
 				chartH: 220,
-				chartValues: [42, 55, 68, 48, 72, 88, 60, 52, 78, 95, 70, 58, 82, 65, 45, 74, 90, 62, 50, 76, 84, 56],
+				chartValues: [],
+				chartTimes: [],
 				yLabels: [120, 90, 60, 30],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
-				statsMax: 88,
-				statsMin: 38,
-				statsAvg: 52,
+				statsMax: '--',
+				statsMin: '--',
+				statsAvg: '--',
 				chartLeft: 0,
 				touchActive: false,
 				touchIndex: -1,
@@ -373,27 +468,12 @@
 						text: '测量过程中身体尽可能保持静止，请勿走动或晃动'
 					}
 				],
-				calYear: 2026,
-				calMonth: 8,
-				calSelectedDay: 4,
+				calYear: new Date().getFullYear(),
+				calMonth: new Date().getMonth(),
+				calSelectedDay: new Date().getDate(),
 				weekLabels: ['一', '二', '三', '四', '五', '六', '日'],
 				tipText: 'HRV表示连续心跳间期的细微变化，可用于观察自主神经调节、压力和恢复状态，更适合与自己的长期基线比较。',
-				recentList: [{
-						time: '今天 09:41',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					},
-					{
-						time: '昨天 21:16',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					},
-					{
-						time: '8月6日 08:32',
-						source: '戒指采集',
-						duration: '7 小时 32 分'
-					}
-				]
+				recentList: []
 			}
 		},
 		computed: {
@@ -450,6 +530,7 @@
 			},
 			touchTimeText() {
 				if (this.touchIndex < 0 || !this.chartValues.length) return ''
+				if (this.chartTimes[this.touchIndex]) return this.chartTimes[this.touchIndex]
 				const totalMin = 24 * 60
 				const ratio = this.chartValues.length === 1 ? 0 : this.touchIndex / (this.chartValues.length - 1)
 				const minutes = Math.round(totalMin * ratio)
@@ -476,6 +557,12 @@
 			calendarTitle() {
 				return `${this.calYear}年${this.calMonth + 1}月`
 			},
+			canCalNextMonth() {
+				const today = new Date()
+				if (this.calYear > today.getFullYear()) return false
+				if (this.calYear === today.getFullYear() && this.calMonth >= today.getMonth()) return false
+				return true
+			},
 			calendarCells() {
 				const year = this.calYear
 				const month = this.calMonth
@@ -485,19 +572,23 @@
 				for (let i = 0; i < firstWeekday; i++) {
 					cells.push({
 						day: 0,
-						active: false
+						active: false,
+						disabled: false
 					})
 				}
 				for (let d = 1; d <= daysInMonth; d++) {
+					const disabled = isFutureDate(year, month, d)
 					cells.push({
 						day: d,
-						active: d === this.calSelectedDay
+						active: !disabled && d === this.calSelectedDay,
+						disabled
 					})
 				}
 				while (cells.length % 7 !== 0) {
 					cells.push({
 						day: 0,
-						active: false
+						active: false,
+						disabled: false
 					})
 				}
 				return cells
@@ -510,6 +601,9 @@
 		},
 		onReady() {
 			this.measureChart(0)
+		},
+		onShow() {
+			this.loadPageData()
 		},
 		onBackPress() {
 			if (!this.showMeasuring && !this.showCancelConfirm) return false
@@ -535,6 +629,90 @@
 					})
 					.exec()
 			},
+			async loadPageData() {
+				await Promise.all([
+					this.loadLatest(),
+					this.loadTrend(),
+					this.loadRecent()
+				])
+			},
+			async loadLatest() {
+				try {
+					const data = await getDeviceLatest('hrv')
+					this.applyLatest(data)
+				} catch (e) {}
+			},
+			applyLatest(data) {
+				const value = pickHrvValue(data)
+				if (!data || !value) {
+					this.latestValue = '--'
+					this.latestStatus = '暂无数据'
+					this.latestTime = '--'
+					return
+				}
+				this.latestValue = value
+				this.latestStatus = hrvStatusText(value)
+				this.latestTime = formatRecordTime(data.measureTime)
+			},
+			async loadTrend() {
+				try {
+					const data = await getHrvTrend(dateToYmd(this.currentDate), this.period)
+					this.applyTrend(data)
+				} catch (e) {
+					this.applyTrend(null)
+				}
+			},
+			applyTrend(data) {
+				if (!data) {
+					this.chartValues = []
+					this.chartTimes = []
+					this.xLabels = pickXLabels([], this.period)
+					this.statsMax = '--'
+					this.statsMin = '--'
+					this.statsAvg = '--'
+					return
+				}
+				const series = Array.isArray(data.series) ? data.series : []
+				const points = series.filter((p) => Number(p.value) > 0)
+				this.chartValues = points.map((p) => Number(p.value))
+				this.chartTimes = points.map((p) => p.time || '')
+				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
+				const stats = data.stats || {}
+				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
+				this.statsMin = Number(stats.minValue) > 0 ? Math.round(Number(stats.minValue)) : '--'
+				this.statsAvg = Number(stats.avgValue) > 0 ? Math.round(Number(stats.avgValue)) : '--'
+				if (data.description || data.desc) this.tipText = data.description || data.desc
+				this.$nextTick(() => this.measureChart(0))
+			},
+			async loadRecent() {
+				try {
+					const end = new Date()
+					const start = new Date()
+					start.setDate(end.getDate() - 30)
+					const list = await getDeviceDataList({
+						dataType: 'hrv',
+						startDate: dateToYmd(start),
+						endDate: dateToYmd(end)
+					})
+					this.applyRecent(unwrapList(list))
+				} catch (e) {}
+			},
+			applyRecent(list) {
+				const rows = unwrapList(list)
+				const sorted = rows.slice().sort((a, b) => {
+					const ta = parseDateTime(a.measureTime || a.fullTime)
+					const tb = parseDateTime(b.measureTime || b.fullTime)
+					return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0)
+				})
+				this.recentList = sorted.slice(0, 10).map((item) => {
+					const value = pickHrvValue(item)
+					return {
+						time: formatRecordTime(item.measureTime || item.fullTime),
+						source: sourceText(item.source),
+						duration: value > 0 ? (value + ' ms') : '--'
+					}
+				})
+			},
 			onChartTouch(e) {
 				const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
 				if (!touch || !this.chartW || !this.chartValues.length) return
@@ -552,12 +730,24 @@
 				this.touchIndex = -1
 			},
 			onPeriodChange(key) {
+				if (this.period === key) return
 				this.period = key
+				this.loadTrend()
 			},
 			shiftDate(delta) {
 				const next = new Date(this.currentDate)
-				next.setDate(next.getDate() + delta)
+				if (this.period === 'week') next.setDate(next.getDate() + delta * 7)
+				else if (this.period === 'month') next.setMonth(next.getMonth() + delta)
+				else next.setDate(next.getDate() + delta)
+				if (startOfDay(next).getTime() > startOfDay(new Date()).getTime()) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = next
+				this.loadTrend()
 			},
 			onPrevDay() {
 				this.shiftDate(-1)
@@ -586,6 +776,7 @@
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
 			},
 			onCalNextMonth() {
+				if (!this.canCalNextMonth) return
 				if (this.calMonth === 11) {
 					this.calYear += 1
 					this.calMonth = 0
@@ -594,13 +785,34 @@
 				}
 				const maxDay = new Date(this.calYear, this.calMonth + 1, 0).getDate()
 				if (this.calSelectedDay > maxDay) this.calSelectedDay = maxDay
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					const today = new Date()
+					this.calYear = today.getFullYear()
+					this.calMonth = today.getMonth()
+					this.calSelectedDay = today.getDate()
+				}
 			},
 			onSelectCalDay(day) {
+				if (isFutureDate(this.calYear, this.calMonth, day)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.calSelectedDay = day
 			},
 			confirmCalendar() {
+				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
+					uni.showToast({
+						title: '不能选择今天之后的日期',
+						icon: 'none'
+					})
+					return
+				}
 				this.currentDate = new Date(this.calYear, this.calMonth, this.calSelectedDay)
 				this.showCalendar = false
+				this.loadTrend()
 			},
 			onStartMeasure() {
 				if (this.measuring) return
@@ -735,15 +947,40 @@
 				this.latestValue = value
 				this.latestStatus = hrvStatusText(value)
 				this.latestTime = formatLatestTime()
-				this.recentList = [{
-					time: this.latestTime,
-					source: '戒指采集',
-					duration: '即时测量'
-				}].concat(this.recentList).slice(0, 10)
-
 				await this.stopRealMeasure(true)
-				uni.navigateTo({
-					url: '/pages/index/hrvSuccess?hrv=' + value
+
+				let measureId = createMeasureId()
+				uni.showLoading({ title: '保存中', mask: true })
+				try {
+					await this.uploadHrvOnce(value, measureId)
+				} catch (e) {
+					measureId = ''
+					console.log('[hrv] upload failed', e && (e.msg || e.message))
+				} finally {
+					uni.hideLoading()
+				}
+
+				let url = '/pages/index/hrvSuccess?hrv=' + value
+				if (measureId) url += '&measureId=' + encodeURIComponent(measureId)
+				uni.navigateTo({ url })
+			},
+			async uploadHrvOnce(hrv, measureId) {
+				if (!hasLogin()) {
+					return Promise.reject(new Error('未登录'))
+				}
+				const ble = BleService.getState()
+				const device = (ble && ble.device) || {}
+				await uploadDeviceData({
+					deviceMac: device.mac || device.id || '',
+					deviceVersion: (ble && ble.firmware) || '',
+					batteryLevel: ble && ble.batteryLevel != null ? ble.batteryLevel : undefined,
+					dataList: [{
+						dataType: 'hrv',
+						heartNum: Number(hrv),
+						measureTime: formatMeasureTime(new Date()),
+						source: '2',
+						measureId
+					}]
 				})
 			},
 			onTryCloseMeasuring() {
@@ -1322,6 +1559,10 @@
 		justify-content: center;
 	}
 
+	.cal-nav.disabled {
+		opacity: 0.35;
+	}
+
 	.cal-nav-arrow {
 		font-size: 44rpx;
 		color: #ffffff;
@@ -1386,6 +1627,10 @@
 		font-size: 28rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+
+	.cal-cell.disabled .cal-day {
+		opacity: 0.28;
 	}
 
 	.cal-btns {

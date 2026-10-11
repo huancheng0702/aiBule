@@ -1,10 +1,10 @@
 <template>
 	<view class="page">
 		<view class="page-body">
-			<TabHome v-show="current === 0" />
-			<TabHealth v-show="current === 1" />
-			<TabAi v-show="current === 2" />
-			<TabMine v-show="current === 3" />
+			<TabHome ref="tabHome" v-show="current === 0" />
+			<TabHealth ref="tabHealth" v-show="current === 1" />
+			<TabAi ref="tabAi" v-show="current === 2" />
+			<TabMine ref="tabMine" v-show="current === 3" />
 		</view>
 
 		<view class="tabbar-wrap">
@@ -64,6 +64,10 @@
 		onLoad() {
 			this.checkEntry()
 		},
+		onShow() {
+			// 首次进入时等子组件挂载完成再通知
+			this.$nextTick(() => this.notifyTabShow())
+		},
 		methods: {
 			checkEntry() {
 				const token = uni.getStorageSync('token')
@@ -83,6 +87,15 @@
 			switchTab(index) {
 				if (index === this.current) return
 				this.current = index
+				this.$nextTick(() => this.notifyTabShow())
+			},
+			// 组件嵌套无页面 onShow，由宿主页在显示/切 Tab 时主动通知当前 Tab 刷新
+			notifyTabShow() {
+				const refMap = ['tabHome', 'tabHealth', 'tabAi', 'tabMine']
+				const tab = this.$refs[refMap[this.current]]
+				if (tab && typeof tab.onTabShow === 'function') {
+					tab.onTabShow()
+				}
 			}
 		}
 	}

@@ -1,0 +1,29 @@
+// #ifdef APP-ANDROID
+export {
+  chooseNativeFile,
+  chooseNativeFiles,
+} from "./utssdk/app-android/index.uts";
+// #endif
+
+// #ifdef APP-IOS
+export {
+  chooseNativeFile,
+  chooseNativeFiles,
+} from "./utssdk/app-ios/index.uts";
+// #endif
+
+// #ifndef APP-PLUS
+import { FileInfo, PickFileOptions } from "./utssdk/interface.uts";
+
+export function chooseNativeFile(
+  _options?: PickFileOptions,
+): Promise<FileInfo> {
+  return Promise.reject(new Error("文件选择功能仅在 App 端可用"));
+}
+
+export function chooseNativeFiles(
+  _options?: PickFileOptions,
+): Promise<FileInfo[]> {
+  return Promise.reject(new Error("文件选择功能仅在 App 端可用"));
+}
+// #endif

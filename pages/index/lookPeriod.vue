@@ -17,7 +17,7 @@
 		<!-- 什么是生理周期 -->
 		<view class="card">
 			<text class="card-title">什么是生理周期?</text>
-			<text class="card-text">生理周期从一次月经来潮的第一天开始，到下一次月经来潮前一天结束。周期长度存在个体差异，也可能受睡眠、压力、运动和生活方式影响。</text>
+			<text class="card-text">{{ introText }}</text>
 		</view>
 
 		<!-- 四个阶段 -->
@@ -43,33 +43,87 @@
 				<image class="tip-icon" src="/static/qushijianyi.png" mode="aspectFit"></image>
 				<text class="tip-title">记录建议</text>
 			</view>
-			<text class="tip-text">准确记录每次月经开始与结束日期；记录经量、痛经及其他身体感受；关注睡眠、压力和运动对周期的影响；周期持续异常或伴明显不适时咨询医生。</text>
+			<text class="tip-text">{{ tipText }}</text>
 		</view>
 	</view>
 </template>
 
 <script>
+	import { getHealthTypeInfoList } from '@/common/api/config.js'
+
+	const DEFAULT_INTRO = '生理周期从一次月经来潮的第一天开始，到下一次月经来潮前一天结束。周期长度存在个体差异，也可能受睡眠、压力、运动和生活方式影响。'
+	const DEFAULT_TIP = '准确记录每次月经开始与结束日期；记录经量、痛经及其他身体感受；关注睡眠、压力和运动对周期的影响；周期持续异常或伴明显不适时咨询医生。'
+	const DEFAULT_PHASES = [
+		{
+			title: '经期',
+			desc: '子宫内膜脱落并出现月经，适合关注休息、经量及身体感受。'
+		},
+		{
+			title: '卵泡期',
+			desc: '月经结束后进入卵泡发育阶段，身体状态通常逐渐恢复。'
+		},
+		{
+			title: '排卵期',
+			desc: '排卵日前后为易孕时段，日历预测仅用于周期管理参考。'
+		},
+		{
+			title: '黄体期',
+			desc: '排卵后至下次月经前，部分人可能出现情绪或身体变化。'
+		}
+	]
+
+	function pickText(item, keys) {
+		if (!item) return ''
+		for (let i = 0; i < keys.length; i++) {
+			const v = item[keys[i]]
+			if (v) return String(v)
+		}
+		return ''
+	}
+
 	export default {
 		data() {
 			return {
-				phaseList: [
-					{
-						title: '经期',
-						desc: '子宫内膜脱落并出现月经，适合关注休息、经量及身体感受。'
-					},
-					{
-						title: '卵泡期',
-						desc: '月经结束后进入卵泡发育阶段，身体状态通常逐渐恢复。'
-					},
-					{
-						title: '排卵期',
-						desc: '排卵日前后为易孕时段，日历预测仅用于周期管理参考。'
-					},
-					{
-						title: '黄体期',
-						desc: '排卵后至下次月经前，部分人可能出现情绪或身体变化。'
-					}
-				]
+				introText: DEFAULT_INTRO,
+				tipText: DEFAULT_TIP,
+				phaseList: DEFAULT_PHASES.slice()
+			}
+		},
+		onShow() {
+			this.loadTypeInfo()
+		},
+		methods: {
+			async loadTypeInfo() {
+				try {
+					const data = await getHealthTypeInfoList('5')
+					const list = Array.isArray(data) ? data : (data && (data.list || data.items || data.records)) || []
+					if (!list.length) return
+					const sorted = list.slice().sort((a, b) => {
+						return Number(a.sort || a.sortNo || a.orderNum || 0) - Number(b.sort || b.sortNo || b.orderNum || 0)
+					})
+					const intro = []
+					const phases = []
+					const tips = []
+					sorted.forEach((item) => {
+						const title = pickText(item, ['title', 'name', 'blockTitle', 'label'])
+						const desc = pickText(item, ['content', 'desc', 'description', 'text', 'remark'])
+						if (!title && !desc) return
+						if (/建议|提示|注意/.test(title)) {
+							tips.push(desc || title)
+							return
+						}
+						if (/阶段|经期|卵泡|排卵|黄体/.test(title) && desc) {
+							phases.push({ title: title || '阶段', desc })
+							return
+						}
+						intro.push(desc || title)
+					})
+					if (intro.length) this.introText = intro.join('\n')
+					if (phases.length) this.phaseList = phases
+					if (tips.length) this.tipText = tips.join('\n')
+				} catch (e) {
+					console.log('[lookPeriod] type info failed', e && (e.msg || e.message))
+				}
 			}
 		}
 	}

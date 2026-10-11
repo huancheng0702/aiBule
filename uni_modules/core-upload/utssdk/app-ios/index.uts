@@ -1,0 +1,45 @@
+import { FileInfo, PickFileOptions } from '../interface.uts'
+
+export function chooseNativeFile(options?: PickFileOptions): Promise<FileInfo> {
+  return new Promise<FileInfo>((resolve, reject) => {
+    const mimeTypes: string[] = (options != null && options.mimeTypes != null) ? options.mimeTypes! : ['*/*']
+
+    CoreFilePickerNative.pickFile(mimeTypes, function(
+      filePath: string | null,
+      fileName: string | null,
+      fileSize: number,
+      mimeType: string | null
+    ) {
+      if (filePath == null) {
+        reject(new Error('用户取消选择或文件选择失败'))
+      } else {
+        resolve({
+          filePath: filePath,
+          fileName: fileName != null ? fileName : 'unknown',
+          fileSize: fileSize,
+          mimeType: mimeType != null ? mimeType : ''
+        })
+      }
+    })
+  })
+}
+
+export function chooseNativeFiles(options?: PickFileOptions): Promise<FileInfo[]> {
+  return new Promise<FileInfo[]>((resolve, reject) => {
+    const mimeTypes: string[] = (options != null && options.mimeTypes != null) ? options.mimeTypes! : ['*/*']
+
+    CoreFilePickerNative.pickFiles(mimeTypes, function(jsonResult: string | null) {
+      if (jsonResult == null) {
+        reject(new Error('用户取消选择或文件选择失败'))
+      } else {
+        try {
+          const arr = JSON.parse(jsonResult) as FileInfo[]
+          resolve(arr)
+        } catch (e) {
+          reject(new Error('解析文件列表失败'))
+        }
+      }
+    })
+  })
+}
+

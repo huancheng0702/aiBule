@@ -14,9 +14,12 @@
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
 				<!-- 血氧装饰图，自行补充 src -->
-				<image class="hero-o2" mode="aspectFit"></image>
-				<view class="measure-btn" @click="onStartMeasure">
+				<!-- <image class="hero-o2" mode="aspectFit"></image> -->
+			<!-- 	<view class="measure-btn" @click="onStartMeasure">
 					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
+				</view> -->
+				<view class="measure-btn" @click="onStartMeasure">
+					<image src="/static/kaishiceliang.png" style="width:201rpx;height: 104rpx;" mode=""></image>
 				</view>
 			</view>
 		</view>
@@ -73,7 +76,7 @@
 					<view
 						class="trend-plot"
 						@touchstart="onChartTouch"
-						@touchmove.stop.prevent="onChartTouch"
+						@touchmove.stop="onChartTouch"
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
@@ -419,10 +422,17 @@
 	}
 
 	function pickXLabels(times, period) {
-		if (!times.length) {
+		const list = (times || []).filter(Boolean)
+		if (!list.length) {
 			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
-			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '22:40']
+			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
+		}
+		if (period === 'day' && list.length > 7) {
+			const out = []
+			for (let i = 0; i < list.length; i += 4) out.push(list[i])
+			if (out[out.length - 1] !== list[list.length - 1]) out.push(list[list.length - 1])
+			return out
 		}
 		const count = period === 'month' ? 6 : 7
 		if (times.length <= count) return times
@@ -454,7 +464,7 @@
 				chartValues: [],
 				chartTimes: [],
 				yLabels: [100, 99, 98, 97, 96, 95, 94],
-				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '22:40'],
+				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				legendList: [
 					{ color: '#3EE0C3', label: '≥95%' },
 					{ color: '#3B82F6', label: '90~94%' },
@@ -689,16 +699,17 @@
 					return
 				}
 				const series = Array.isArray(data.series) ? data.series : []
-				const points = series.filter((p) => Number(p.value) > 0)
-				this.chartValues = points.map((p) => Number(p.value))
-				this.chartTimes = points.map((p) => p.time || '')
-				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
+				const allTimes = series.map((p) => p.time || '')
+				this.chartValues = series.map((p) => (p.value == null ? 0 : Number(p.value)))
+				this.chartTimes = allTimes
+				this.xLabels = pickXLabels(allTimes, this.period)
 
 				const stats = data.stats || {}
 				const avg = Number(stats.avgValue)
 				this.trendAvg = avg > 0 ? Math.round(avg) : '--'
 				this.trendStatus = data.status || (avg > 0 ? spo2StatusText(avg) : '暂无数据')
-				const last = points.length ? points[points.length - 1] : (data.latest || null)
+				const validPts = series.filter((p) => Number(p.value) > 0)
+				const last = validPts.length ? validPts[validPts.length - 1] : (data.latest || null)
 				this.trendTime = (last && (last.time || last.fullTime)) ? (last.time || formatRecordTime(last.fullTime)) : '--'
 
 				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
@@ -1051,6 +1062,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
 	}
 
@@ -1101,20 +1113,7 @@
 		margin: 0 12rpx;
 	}
 
-	.measure-btn {
-		flex-shrink: 0;
-		padding: 16rpx 28rpx;
-		border-radius: 40rpx;
-		background: linear-gradient(90deg, #1a53ec 0%, #2f7bff 50%, #4da3ff 100%);
-		box-shadow: 0 0 20rpx rgba(47, 123, 255, 0.45);
-	}
-
-	.measure-btn-text {
-		font-size: 26rpx;
-		font-weight: 500;
-		color: #ffffff;
-		line-height: 36rpx;
-	}
+	.measure-btn {}
 
 	.period-bar {
 		display: flex;

@@ -31,6 +31,9 @@ export function saveLoginSession(data = {}, loginType = '') {
 	if (data.avatar) {
 		uni.setStorageSync('avatar', data.avatar)
 	}
+	if (data.phoneBound !== undefined) {
+		uni.setStorageSync('phoneBound', !!data.phoneBound)
+	}
 	if (loginType) {
 		uni.setStorageSync('loginType', loginType)
 	}
@@ -39,7 +42,7 @@ export function saveLoginSession(data = {}, loginType = '') {
 }
 
 export function clearLoginSession() {
-	;[LOGIN_TOKEN_KEY, USER_ID_KEY, USER_INFO_KEY, 'phone', 'nickName', 'avatar', 'loginType'].forEach((key) => {
+	;[LOGIN_TOKEN_KEY, USER_ID_KEY, USER_INFO_KEY, 'phone', 'nickName', 'avatar', 'loginType', 'phoneBound'].forEach((key) => {
 		uni.removeStorageSync(key)
 	})
 }

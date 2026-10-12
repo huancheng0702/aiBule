@@ -220,6 +220,42 @@
 		})
 	}
 
+	// 后端 item 是 {key, value} 碎片流：名称/正常/异常 三连为一组，
+	// 或同名 key 出现两次（第一次=正常范围，第二次=异常含义），拼成一张指标卡
+	function groupStreamItems(rawList) {
+		const ABNORMAL_RE = /偏高|偏低|异常|阳性|\+|↑|↓|超标|增高|降低|临界/
+		const out = []
+		let pending = null
+		const flush = () => { if (pending && (pending.name || pending.value)) out.push(pending); pending = null }
+		;(rawList || []).forEach((r) => {
+			const k = String((r && r.k) || '').trim()
+			const v = String((r && r.v) || '').trim()
+			if (!k && !v) return
+			if (k === '名称') { flush(); pending = { name: v, ref: '', status: '正常', value: '', abnormal: '' }; return }
+			if (k === '正常' && pending) { pending.ref = v; return }
+			if (k === '异常' && pending) { pending.abnormal = v; pending.value = pending.value || v; flush(); return }
+			if (pending && pending.name === k) {
+				if (!pending.ref) pending.ref = v
+				else { pending.abnormal = v; pending.value = pending.value || v; flush() }
+				return
+			}
+			flush()
+			pending = { name: k || '指标', ref: '', status: '正常', value: v, abnormal: '' }
+		})
+		flush()
+		return out.map((it) => {
+			const abnormalText = String(it.abnormal || '').trim()
+			const valueText = String(it.value || it.ref || '').trim()
+			const hit = ABNORMAL_RE.test(abnormalText) || ABNORMAL_RE.test(valueText)
+			return {
+				name: it.name,
+				ref: it.ref,
+				status: hit ? (abnormalText || '异常') : '正常',
+				value: it.abnormal ? (it.ref ? `${it.ref}｜${it.abnormal}` : it.abnormal) : (it.value || it.ref)
+			}
+		})
+	}
+
 	export default {
 		data() {
 			return {
@@ -342,38 +378,11 @@
 				// #endif
 
 				// #ifdef APP-PLUS
-				if (typeof plus !== 'undefined' && plus.io && plus.io.chooseFile) {
-					plus.io.chooseFile({
-						multiple: false
-					}, (e) => {
-						const path = (e && e.files && e.files[0]) || ''
-						if (!path) return
-						this.closeUploadPopup()
-						const name = String(path.split('/').pop() || 'PDF报告').replace(/\.pdf$/i, '')
-						this.uploadAndAnalyze(path, name)
-					}, () => {
-						uni.showToast({ title: '选择PDF失败', icon: 'none' })
-					})
-					return
-				}
-				if (typeof uni.chooseFile === 'function') {
-					uni.chooseFile({
-						count: 1,
-						extension: ['.pdf'],
-						success: (res) => {
-							const file = (res.tempFiles && res.tempFiles[0]) || null
-							if (!file || !file.path) return
-							this.closeUploadPopup()
-							this.uploadAndAnalyze(file.path, (file.name || 'PDF报告').replace(/\.pdf$/i, ''))
-						},
-						fail: (err) => {
-							if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
-							uni.showToast({ title: '选择PDF失败', icon: 'none' })
-						}
-					})
-					return
-				}
-				uni.showToast({ title: '当前端暂不支持PDF上传', icon: 'none' })
+				this.closeUploadPopup()
+				// App 端原生选 PDF 不稳定，走远端 H5 中转页上传，成功后通过 onPdfUploaded 回跳解析
+				const htmlParam = `?html=${encodeURIComponent('https://fx.tailunkaluo.com/html/pdf-upload.html')}`
+				uni.navigateTo({ url: `/pages/health/pdfWebview${htmlParam}` })
+				return
 				// #endif
 
 				// #ifdef H5
@@ -397,6 +406,104 @@
 				uni.showToast({ title: '当前端暂不支持PDF上传', icon: 'none' })
 				// #endif
 			},
+			onPdfUploaded(fileUrl, name) {
+				if (!fileUrl) return
+				this.closeUploadPopup()
+				this.analyzeByRemoteUrl(fileUrl, name || 'PDF报告')
+			},
+			async analyzeByRemoteUrl(fileUrl, title) {
+				if (!fileUrl) return
+				const reportTitle = title || '体检报告'
+				this.streaming = true
+				this.streamItems = []
+				this.streamAdvice = ''
+				this.parseResult = {
+					category: '体检报告',
+					title: 'AI解析中...',
+					sourceTitle: reportTitle,
+					path: fileUrl,
+					reportId: null,
+					items: [],
+					advice: '',
+					detail: null
+				}
+				uni.showLoading({ title: 'AI解析中...', mask: true })
+				try {
+					await this.runReportStream(fileUrl, reportTitle, fileUrl)
+					uni.showToast({ title: '解析完成', icon: 'success' })
+				} catch (e) {
+					uni.showToast({ title: (e && e.message) || '解析失败，请重试', icon: 'none' })
+				} finally {
+					uni.hideLoading()
+					this.streaming = false
+				}
+			},
+			async runReportStream(fileUrl, reportTitle, localPath) {
+				let firstChunk = false
+				const rawStream = []
+				const hideMaskOnFirstChunk = () => {
+					if (!firstChunk) { firstChunk = true; uni.hideLoading() }
+				}
+				await analyzeReportStreamByUrl(fileUrl, (evt) => {
+					if (!evt) return
+					if (evt.type === 'item') {
+						hideMaskOnFirstChunk()
+						const d = evt.data || {}
+						const k = pickText(d.key, d.name, d.indicator)
+						const v = pickText(d.value, d.detectValue, d.val)
+						if (!k && !v) return
+						rawStream.push({ k, v })
+						this.streamItems = groupStreamItems(rawStream)
+						this.parseResult.items = this.streamItems.slice()
+						this.parseResult.title = `${this.streamItems.length}项指标识别中...`
+					} else if (evt.type === 'delta') {
+						hideMaskOnFirstChunk()
+						this.streamAdvice += (evt.data && evt.data.content) || ''
+						this.parseResult.advice = this.streamAdvice
+					} else if (evt.type === 'done') {
+						this.finishReportStream(evt.data || {}, reportTitle, localPath)
+					} else if (evt.type === 'message') {
+						const m = evt.data
+						if (m && typeof m === 'object' && (m.items || m.analysis || m.reportId != null)) {
+							this.finishReportStream(m.data !== undefined && typeof m.data === 'object' ? m.data : m, reportTitle, localPath)
+						}
+					} else if (evt.type === 'error') {
+						throw new Error((evt.data && (evt.data.msg || evt.data.message)) || '解析失败')
+					}
+				})
+			},
+			finishReportStream(full, reportTitle, localPath) {
+				const finalItems = asArray(full.items)
+				if (finalItems.length) {
+					this.streamItems = groupStreamItems(finalItems.map((it) => ({
+						k: pickText(it.key, it.name, it.indicator),
+						v: pickText(it.value, it.detectValue, it.val)
+					})))
+				}
+				const analysis = pickText(full.analysis, full.advice, full.suggestion)
+				if (analysis) this.streamAdvice = analysis
+				const abnormalCount = this.streamItems.filter((it) => /偏高|偏低|异常|关注|阳性|\+|↑|↓/.test(it.status || '')).length
+				this.parseResult = {
+					category: pickText(full.category) || '体检报告',
+					title: abnormalCount ? `${abnormalCount}项需要关注` : `${this.streamItems.length}项指标`,
+					sourceTitle: reportTitle,
+					path: localPath,
+					reportId: full.reportId != null ? full.reportId : null,
+					items: this.streamItems.slice(),
+					advice: this.streamAdvice || '请结合专业医生意见解读。',
+					detail: {
+						subText: `${reportTitle} · ${this.streamItems.length}项指标`,
+						alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
+						cells: [
+							{ label: '指标总数', value: `${this.streamItems.length}项`, icon: '/static/baogaoDate.png' },
+							{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
+							{ label: '正常项目', value: `${Math.max(this.streamItems.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
+							{ label: '报告来源', value: reportTitle, icon: '/static/tijiancenter.png' }
+						]
+					}
+				}
+				this.loadHistory()
+			},
 			async uploadAndAnalyze(localPath, title) {
 				if (!localPath) return
 				const reportTitle = title || '体检报告'
@@ -416,60 +523,7 @@
 				uni.showLoading({ title: 'AI解析中...', mask: true })
 				try {
 					const imageUrl = await uploadToUrl(localPath)
-					await analyzeReportStreamByUrl(imageUrl, (evt) => {
-						if (!evt) return
-						if (evt.type === 'item') {
-							const d = evt.data || {}
-							const row = {
-								name: pickText(d.key, d.name, d.indicator) || '指标',
-								ref: pickText(d.ref, d.reference, d.range),
-								status: '',
-								value: pickText(d.value, d.detectValue, d.val)
-							}
-							this.streamItems.push(row)
-							this.parseResult.items = this.streamItems.slice()
-							this.parseResult.title = `${this.streamItems.length}项指标识别中...`
-						} else if (evt.type === 'delta') {
-							this.streamAdvice += (evt.data && evt.data.content) || ''
-							this.parseResult.advice = this.streamAdvice
-						} else if (evt.type === 'done') {
-							const full = evt.data || {}
-							const finalItems = asArray(full.items)
-							if (finalItems.length) {
-								this.streamItems = finalItems.map((it) => ({
-									name: pickText(it.key, it.name, it.indicator) || '指标',
-									ref: pickText(it.ref, it.reference, it.range),
-									status: pickText(it.status, it.level, it.flag),
-									value: pickText(it.value, it.detectValue, it.val)
-								}))
-							}
-							const analysis = pickText(full.analysis, full.advice, full.suggestion)
-							if (analysis) this.streamAdvice = analysis
-							const abnormalCount = this.streamItems.filter((it) => /偏高|偏低|异常|关注|阳性/.test(it.status || '')).length
-							this.parseResult = {
-								category: pickText(full.category) || '体检报告',
-								title: abnormalCount ? `${abnormalCount}项需要关注` : `${this.streamItems.length}项指标`,
-								sourceTitle: reportTitle,
-								path: localPath,
-								reportId: full.reportId != null ? full.reportId : null,
-								items: this.streamItems.slice(),
-								advice: this.streamAdvice || '请结合专业医生意见解读。',
-								detail: {
-									subText: `${reportTitle} · ${this.streamItems.length}项指标`,
-									alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
-									cells: [
-										{ label: '指标总数', value: `${this.streamItems.length}项`, icon: '/static/baogaoDate.png' },
-										{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
-										{ label: '正常项目', value: `${Math.max(this.streamItems.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
-										{ label: '报告来源', value: reportTitle, icon: '/static/tijiancenter.png' }
-									]
-								}
-							}
-							this.loadHistory()
-						} else if (evt.type === 'error') {
-							throw new Error((evt.data && (evt.data.msg || evt.data.message)) || '解析失败')
-						}
-					})
+					await this.runReportStream(imageUrl, reportTitle, localPath)
 					uni.showToast({ title: '解析完成', icon: 'success' })
 				} catch (e) {
 					uni.showToast({ title: (e && e.message) || '解析失败，请重试', icon: 'none' })

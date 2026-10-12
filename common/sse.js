@@ -140,7 +140,11 @@ function streamWithFetch(url, { body, headers, onChunk, signal }) {
 		const decoder = new TextDecoder('utf-8')
 		function readNext() {
 			return reader.read().then(({ done, value }) => {
-				if (done) return
+				if (done) {
+					const tail = decoder.decode()
+					if (tail) onChunk(tail)
+					return
+				}
 				onChunk(decoder.decode(value, { stream: true }))
 				return readNext()
 			})
@@ -206,10 +210,19 @@ export function postSseEvents(path, payload, onEvent = () => {}) {
 	const headers = buildHeaders()
 	const body = JSON.stringify(payload || {})
 	let buffer = ''
-	let eventName = 'message'
-	function dispatch(rawData) {
-		const name = (eventName || 'message').toLowerCase()
-		const text = rawData == null ? '' : String(rawData)
+	function dispatchFrame(frame) {
+		const lines = String(frame || '').split('\n')
+		let name = 'message'
+		const dataLines = []
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i]
+			if (!line || line.charAt(0) === ':') continue
+			if (line.indexOf('event:') === 0) { name = line.slice(6).trim().toLowerCase() || 'message'; continue }
+			if (line.indexOf('id:') === 0 || line.indexOf('retry:') === 0) continue
+			if (line.indexOf('data:') === 0) { dataLines.push(line.slice(5).replace(/^\s/, '')); continue }
+		}
+		if (!dataLines.length) return
+		const text = dataLines.join('\n')
 		let parsed = null
 		try { parsed = text ? JSON.parse(text) : null } catch (e) { parsed = null }
 		if (name === 'error') {
@@ -227,29 +240,39 @@ export function postSseEvents(path, payload, onEvent = () => {}) {
 			onEvent({ type: 'done', data: {}, raw: text })
 		} else if (text) {
 			const parsedBody = parsed
-			if (parsedBody && typeof parsedBody === 'object' && (parsedBody.code !== undefined)) {
-				const code = Number(parsedBody.code)
-				if ([0, 1, 200].indexOf(code) === -1) {
+			if (parsedBody && typeof parsedBody === 'object') {
+				const code = parsedBody.code
+				if (code !== undefined && code !== null && code !== '' && [0, 1, 200].indexOf(Number(code)) === -1) {
 					onEvent({ type: 'error', data: parsedBody, raw: text })
+					return
+				}
+				if (parsedBody.done === true || parsedBody.finished === true ||
+					(parsedBody.items && parsedBody.items.length) ||
+					parsedBody.analysis || parsedBody.advice || parsedBody.reportId != null) {
+					onEvent({ type: 'done', data: parsedBody.data !== undefined && typeof parsedBody.data === 'object' ? parsedBody.data : parsedBody, raw: text })
+					return
+				}
+				if (parsedBody.key != null || parsedBody.name != null || parsedBody.indicator != null) {
+					onEvent({ type: 'item', data: parsedBody, raw: text })
+					return
+				}
+				if (parsedBody.content != null || parsedBody.delta != null || parsedBody.text != null) {
+					const content = parsedBody.content != null ? String(parsedBody.content)
+						: parsedBody.delta != null ? String(parsedBody.delta) : String(parsedBody.text)
+					onEvent({ type: 'delta', data: { content }, raw: text })
 					return
 				}
 			}
 			onEvent({ type: 'message', data: parsedBody != null ? parsedBody : text, raw: text })
 		}
-		eventName = 'message'
-	}
-	function handleLine(line) {
-		if (line === '') { eventName = 'message'; return }
-		if (line.indexOf('event:') === 0) { eventName = line.slice(6).trim(); return }
-		if (line.indexOf('data:') === 0) { dispatch(line.slice(5).replace(/^\s/, '')); return }
 	}
 	const onChunk = (chunk) => {
 		buffer += String(chunk || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-		let idx = buffer.indexOf('\n')
+		let idx = buffer.indexOf('\n\n')
 		while (idx !== -1) {
-			handleLine(buffer.slice(0, idx))
-			buffer = buffer.slice(idx + 1)
-			idx = buffer.indexOf('\n')
+			dispatchFrame(buffer.slice(0, idx))
+			buffer = buffer.slice(idx + 2)
+			idx = buffer.indexOf('\n\n')
 		}
 	}
 	let task
@@ -261,7 +284,8 @@ export function postSseEvents(path, payload, onEvent = () => {}) {
 		return Promise.reject(new Error('当前环境不支持流式'))
 	}
 	return task.then(() => {
-		if (buffer.trim()) handleLine(buffer.trim())
+		if (buffer.trim()) dispatchFrame(buffer)
+		buffer = ''
 	})
 }
 

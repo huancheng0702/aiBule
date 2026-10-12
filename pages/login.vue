@@ -10,21 +10,27 @@
 		></image>
 		<!-- 授权页失败 / 非 App / 用户返回时，展示与授权页一致的兜底 UI -->
 		<view v-if="showFallback" class="container">
-			<view class="conPhone">
+		<!-- 	<view class="conPhone">
 				{{ maskPhone || '本机号码' }}
+			</view> -->
+			<view class="oneBtn" @click="onOpenSmsLogin">
+				<image src="/static/btnBan.png" class="benBan" mode=""></image>
+				<view class="btntext">
+					验证码登录
+				</view>
 			</view>
-			<view class="oneBtn" @click="onPhoneLogin">
+		<!-- 	<view class="oneBtn" @click="onPhoneLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					本机号码一键登录
 				</view>
-			</view>
+			</view> -->
 			<view class="wxLogin" @click="onWxLogin">
 				微信登录
 			</view>
-			<view class="smsEntry" @click="onOpenSmsLogin">
+		<!-- 	<view class="smsEntry" @click="onOpenSmsLogin">
 				验证码登录
-			</view>
+			</view> -->
 			<view class="agreement" @click="agreed = !agreed">
 				<image :src="agreed ? '/static/check-circle-fil.png' : '/static/checkCircle.png'" class="agreImg" mode=""></image>
 				<view class="agreText">
@@ -238,9 +244,9 @@
 						phone: this.smsPhone,
 						code: this.smsCode
 					})
-					await this.applyLoginResult(res, 'phone')
+					const loginData = await this.applyLoginResult(res, 'phone')
 					this.showSmsLogin = false
-					this.afterLogin()
+					this.afterLogin(loginData)
 				} catch (e) {
 					const msg = (e && (e.msg || e.message)) || ''
 					if (!msg) {
@@ -255,11 +261,18 @@
 				}
 			},
 			async applyLoginResult(res, loginType) {
-				saveLoginSession(res || {}, loginType)
+				const loginData = (res && res.data) || res || {}
+				saveLoginSession(loginData || {}, loginType)
 				try {
 					const info = await getUserInfo()
-					saveLoginSession(info || {}, loginType)
+					const infoData = (info && info.data) || info || {}
+					// 用户信息接口一般不带 phoneBound，避免覆盖一键登录返回的绑定态
+					if (infoData && loginData && loginData.phoneBound !== undefined && infoData.phoneBound === undefined) {
+						infoData.phoneBound = loginData.phoneBound
+					}
+					saveLoginSession(infoData || {}, loginType)
 				} catch (e) {}
+				return loginData
 			},
 			onWxLogin() {
 				if (this.showFallback && !this.ensureAgree()) return
@@ -299,10 +312,23 @@
 						uni.hideLoading()
 						this.launching = false
 						this.showFallback = true
+						// 调试：完整打印原生错误（屏幕 toast 只能看半截）
+						try {
+							console.error('[shanyan] onFail full:', JSON.stringify(err))
+						} catch (e) {
+							console.error('[shanyan] onFail:', err)
+						}
+						try {
+							uni.setStorageSync('shanyanLastError', JSON.stringify(err || {}))
+						} catch (e) {}
+						const code = (err && (err.code ?? err.innerCode)) || '-'
 						const msg = (err && (err.message || err.innerDesc)) || '一键登录暂不可用'
-						uni.showToast({
-							title: String(msg).slice(0, 40),
-							icon: 'none'
+						const inner = (err && (err.innerDesc || err.innerCode)) || ''
+						uni.showModal({
+							title: '一键登录失败 ' + code,
+							content: String(msg) + (inner ? '\n' + String(inner) : '') + '\n\n完整信息已存，可在控制台看 [shanyan] onFail full',
+							showCancel: false,
+							confirmText: '知道了'
 						})
 					}
 				})
@@ -321,10 +347,14 @@
 					mask: true
 				})
 				try {
-					const res = await exchangeLoginByShanYanToken(shanyanToken)
-					await this.applyLoginResult(res, 'phone')
-					this.afterLogin()
+					// 新版 POST /appApi/auth/oneKeyLogin：{ token, platform: ios/android } -> WxLoginVO{ token,userId,nickName,avatar,phoneBound }
+					// token 为闪验 SDK 返回的一次性运营商 token
+					const loginData = await exchangeLoginByShanYanToken(shanyanToken)
+					await this.applyLoginResult(loginData, 'phone')
+					finishAuthPage()
+					this.afterLogin(loginData)
 				} catch (e) {
+					finishAuthPage()
 					this.showFallback = true
 					const msg = (e && (e.msg || e.message)) || '登录失败'
 					uni.showToast({
@@ -349,7 +379,24 @@
 					this.afterLogin()
 				}, 600)
 			},
-			afterLogin() {
+			afterLogin(loginData) {
+				let data = (loginData && loginData.data) || loginData || {}
+				if (data.phoneBound === undefined) {
+					const stored = uni.getStorageSync('phoneBound')
+					if (stored !== '' && stored !== undefined && stored !== null) {
+						data = Object.assign({}, data, { phoneBound: !!stored })
+					}
+				}
+				// phoneBound=false（未绑定手机号）：停在登录页引导走验证码绑定/登录
+				if (data.phoneBound === false) {
+					this.showFallback = true
+					this.showSmsLogin = true
+					uni.showToast({
+						title: '请绑定手机号',
+						icon: 'none'
+					})
+					return
+				}
 				if (!uni.getStorageSync('onboardingDone')) {
 					uni.reLaunch({
 						url: '/pages/mine/myInfo'

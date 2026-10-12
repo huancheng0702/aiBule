@@ -384,11 +384,13 @@
 					const s = BleService.getState()
 					this.boundDevice = s.device || this.boundDevice
 					this.connected = !!s.connected
+					if (s.batteryLevel != null) this.batteryLevel = s.batteryLevel
+					this.batteryCharging = !!s.batteryCharging
 					this.serverDevice = null
 				} catch (e) {
 					this.serverDevice = null
 				}
-				this.deviceName = '未连接设备'
+				this.syncDeviceName()
 			},
 			async loadContacts() {
 				try {

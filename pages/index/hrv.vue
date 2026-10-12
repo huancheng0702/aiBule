@@ -14,7 +14,6 @@
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
 				<!-- 波形装饰图，自行补充 src -->
-				<image class="hero-wave" mode="aspectFit"></image>
 				<view class="measure-btn" @click="onStartMeasure">
 					<image src="/static/kaishiceliang.png" style="width:201rpx;height: 104rpx;" mode=""></image>
 				</view>
@@ -55,7 +54,7 @@
 					<view class="y-axis">
 						<text v-for="label in yLabels" :key="label" class="y-label">{{ label }}</text>
 					</view>
-					<view class="trend-plot" @touchstart="onChartTouch" @touchmove.stop.prevent="onChartTouch"
+					<view class="trend-plot" @touchstart="onChartTouch" @touchmove.stop="onChartTouch"
 						@touchend="onChartTouchEnd" @touchcancel="onChartTouchEnd">
 						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view v-if="touchActive && touchPoint" class="chart-tip" :style="chartTipStyle">
@@ -366,52 +365,75 @@
 	}
 
 	function pickXLabels(times, period) {
-		if (!times.length) {
+		const list = (times || []).filter(Boolean)
+		if (!list.length) {
 			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
 			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
 		}
+		if (period === 'day' && list.length > 7) {
+			const out = []
+			for (let i = 0; i < list.length; i += 4) out.push(list[i])
+			if (out[out.length - 1] !== list[list.length - 1]) out.push(list[list.length - 1])
+			return out
+		}
 		const count = period === 'month' ? 6 : 7
-		if (times.length <= count) return times
+		if (list.length <= count) return list
 		const out = []
 		for (let i = 0; i < count; i++) {
-			out.push(times[Math.round(i * (times.length - 1) / (count - 1))])
+			out.push(list[Math.round(i * (list.length - 1) / (count - 1))])
 		}
 		return out
 	}
 
 	function toPoints(values, chartW, chartH) {
-		const stepX = values.length === 1 ? 0 : chartW / (values.length - 1)
-		return values.map((v, i) => ({
-			x: i * stepX,
-			y: valueToY(v, chartH)
-		}))
+		const stepX = values.length <= 1 ? 0 : chartW / (values.length - 1)
+		return values.map((v, i) => {
+			if (v == null || isNaN(Number(v))) return { x: i * stepX, y: null, empty: true }
+			return { x: i * stepX, y: valueToY(Number(v), chartH) }
+		})
 	}
 
-	/** Catmull-Rom → 三次贝塞尔，折线带圆角过渡 */
+	/** Catmull-Rom → 三次贝塞尔，null 处断开 */
 	function buildSmoothLinePath(points) {
-		if (!points.length) return ''
-		if (points.length === 1) return `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-
-		let d = `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-		for (let i = 0; i < points.length - 1; i++) {
-			const p0 = points[i - 1] || points[i]
-			const p1 = points[i]
-			const p2 = points[i + 1]
-			const p3 = points[i + 2] || p2
-			const cp1x = p1.x + (p2.x - p0.x) / 6
-			const cp1y = p1.y + (p2.y - p0.y) / 6
-			const cp2x = p2.x - (p3.x - p1.x) / 6
-			const cp2y = p2.y - (p3.y - p1.y) / 6
-			d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+		const segs = []
+		let cur = []
+		const flush = () => {
+			if (!cur.length) return
+			if (cur.length === 1) {
+				segs.push(`M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`)
+			} else {
+				let d = `M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`
+				for (let i = 0; i < cur.length - 1; i++) {
+					const p0 = cur[i - 1] || cur[i]
+					const p1 = cur[i]
+					const p2 = cur[i + 1]
+					const p3 = cur[i + 2] || p2
+					const cp1x = p1.x + (p2.x - p0.x) / 6
+					const cp1y = p1.y + (p2.y - p0.y) / 6
+					const cp2x = p2.x - (p3.x - p1.x) / 6
+					const cp2y = p2.y - (p3.y - p1.y) / 6
+					d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+				}
+				segs.push(d)
+			}
+			cur = []
 		}
-		return d
+		points.forEach((p) => {
+			if (!p || p.empty || p.y == null) { flush(); return }
+			cur.push(p)
+		})
+		flush()
+		return segs.join(' ')
 	}
 
 	function buildAreaPath(lineD, points, chartH) {
 		if (!lineD || !points.length) return ''
-		const last = points[points.length - 1]
-		const first = points[0]
+		const valid = points.filter((p) => p && !p.empty && p.y != null)
+		if (!valid.length) return ''
+		if (valid.length !== points.length) return ''
+		const last = valid[valid.length - 1]
+		const first = valid[0]
 		const bottom = chartH
 		return `${lineD} L${last.x.toFixed(2)} ${bottom} L${first.x.toFixed(2)} ${bottom} Z`
 	}
@@ -522,7 +544,9 @@
 			},
 			touchPoint() {
 				if (this.touchIndex < 0 || this.touchIndex >= this.chartPoints.length) return null
-				return this.chartPoints[this.touchIndex]
+				const p = this.chartPoints[this.touchIndex]
+				if (!p || p.empty || p.y == null) return null
+				return p
 			},
 			touchValue() {
 				if (this.touchIndex < 0) return 0
@@ -673,10 +697,10 @@
 					return
 				}
 				const series = Array.isArray(data.series) ? data.series : []
-				const points = series.filter((p) => Number(p.value) > 0)
-				this.chartValues = points.map((p) => Number(p.value))
-				this.chartTimes = points.map((p) => p.time || '')
-				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
+				const allTimes = series.map((p) => p.time || '')
+				this.chartValues = series.map((p) => (p.value == null ? 0 : Number(p.value)))
+				this.chartTimes = allTimes
+				this.xLabels = pickXLabels(allTimes, this.period)
 				const stats = data.stats || {}
 				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
 				this.statsMin = Number(stats.minValue) > 0 ? Math.round(Number(stats.minValue)) : '--'
@@ -970,7 +994,7 @@
 				}
 				const ble = BleService.getState()
 				const device = (ble && ble.device) || {}
-				await uploadDeviceData({
+				const params = {
 					deviceMac: device.mac || device.id || '',
 					deviceVersion: (ble && ble.firmware) || '',
 					batteryLevel: ble && ble.batteryLevel != null ? ble.batteryLevel : undefined,
@@ -981,7 +1005,11 @@
 						source: '2',
 						measureId
 					}]
-				})
+				}
+				console.log('[hrv] uploadDeviceData params=', JSON.stringify(params))
+				const resp = await uploadDeviceData(params)
+				console.log('[hrv] uploadDeviceData resp=', JSON.stringify(resp))
+				return resp
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
@@ -1027,6 +1055,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
 	}
 

@@ -135,6 +135,7 @@
 <script>
 	import { getSportTrend } from '@/common/api/deviceData.js'
 	import { saveDeviceConfig } from '@/common/api/device.js'
+	import BleService from '@/common/ble-service.js'
 
 	const GOAL_STORAGE_KEY = 'todayStepGoals'
 
@@ -232,7 +233,10 @@
 		created() {
 			this.initWeekList()
 			this.loadGoals()
-			this.loadTrend()
+			this.refreshByDate()
+			this._unsubBle = BleService.subscribe((st) => {
+				if (st && st.sport) this.applyBleSport(st.sport)
+			})
 		},
 		mounted() {
 			this.$nextTick(() => {
@@ -243,8 +247,14 @@
 			this.measureRings(0)
 		},
 		onShow() {
-			this.loadTrend()
+			this.refreshByDate()
 			this.$nextTick(() => this.drawRings())
+		},
+		onHide() {
+			if (this._unsubBle) { this._unsubBle(); this._unsubBle = null }
+		},
+		onUnload() {
+			if (this._unsubBle) { this._unsubBle(); this._unsubBle = null }
 		},
 		methods: {
 			measureRings(retry = 0) {
@@ -389,19 +399,50 @@
 				const active = (this.weekList || []).find((item) => item.active)
 				return (active && active.fullDate) || ''
 			},
-			async loadTrend() {
+			isTodayDate(dateStr) {
+				const d = new Date()
+				const p = (n) => String(n).padStart(2, '0')
+				return dateStr === `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+			},
+			isActiveToday() {
+				return this.isTodayDate(this.getActiveDate())
+			},
+			refreshByDate() {
+				if (this.isActiveToday()) {
+					// 今日：目标仍可走接口，但步数/距离/消耗走蓝牙实时
+					this.loadTrend(true)
+					const s = BleService.getSport && BleService.getSport()
+					if (s) this.applyBleSport(s)
+					BleService.syncSport && BleService.syncSport().catch(() => {})
+				} else {
+					this.loadTrend()
+				}
+			},
+			applyBleSport(s) {
+				if (!s || !this.isActiveToday()) return
+				if (Number(s.steps) >= 0) this.stepCurrent = Number(s.steps)
+				if (Number(s.calories) >= 0) this.calorieCurrent = Number(s.calories)
+				if (s.distanceKm != null) this.distanceCurrent = Number(s.distanceKm)
+				else if (s.distanceM != null) this.distanceCurrent = Math.round((Number(s.distanceM) / 1000) * 10) / 10
+				this.statsMax = this.stepCurrent
+				this.statsMin = this.stepCurrent
+				this.statsAvg = this.stepCurrent
+			},
+			async loadTrend(targetOnly = false) {
 				const date = this.getActiveDate()
 				try {
 					const data = await getSportTrend(date)
-					this.applyTrend(data)
+					this.applyTrend(data, targetOnly)
 				} catch (e) {}
 			},
-			applyTrend(data) {
+			applyTrend(data, targetOnly = false) {
 				if (!data) return
+				if (!targetOnly) {
 				this.stepCurrent = Number(data.totalSteps) || 0
 				this.calorieCurrent = Math.round(Number(data.totalCalories) || 0)
 				const meters = Number(data.totalDistance) || 0
 				this.distanceCurrent = Math.round((meters / 1000) * 10) / 10
+				}
 				if (Number(data.target) > 0) {
 					this.stepTarget = Number(data.target)
 					const g = this.goalList.find((i) => i.key === 'step')
@@ -419,9 +460,19 @@
 					const g = this.goalList.find((i) => i.key === 'duration')
 					if (g) g.value = Number(data.sportTimeTarget)
 				}
+				if (targetOnly) {
+					const s = BleService.getSport && BleService.getSport()
+					if (s) this.applyBleSport(s)
+					else {
+						this.statsMax = this.stepCurrent
+						this.statsMin = this.stepCurrent
+						this.statsAvg = this.stepCurrent
+					}
+				} else {
 				this.statsMax = this.stepCurrent
 				this.statsMin = this.stepCurrent
 				this.statsAvg = this.stepCurrent
+				}
 				const desc = data.description || data.desc || data.status
 				if (desc) this.tipText = desc
 			},
@@ -456,7 +507,7 @@
 					item.active = i === index
 					item.label = item.active ? monthDay : String(item.dateNum)
 				})
-				this.loadTrend()
+				this.refreshByDate()
 			},
 			onGoalTap(item) {
 				this.editingGoal = {

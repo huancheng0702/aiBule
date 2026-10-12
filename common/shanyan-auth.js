@@ -11,8 +11,33 @@ import { oneKeyLogin } from '@/common/api/auth.js'
 import { ShanYanSDKModule } from '@/uni_modules/cl-shanyan'
 // #endif
 
-// TODO: 替换为创蓝控制台申请的 appId
-export const SHANYAN_APP_ID = 'your_appId'
+// 创蓝控制台申请的 appId（iOS / Android 各自独立）
+// 注意：appKey 只配在服务端（置换手机号时用），不要写进 App 端
+export const SHANYAN_APP_IDS = {
+	ios: 'a3dqMjNX',
+	android: 'nDHG1A3T'
+}
+
+// 兼容旧引用：默认取 Android
+export const SHANYAN_APP_ID = SHANYAN_APP_IDS.android
+
+export function getShanYanAppId() {
+	// #ifdef APP-PLUS
+	try {
+		if (typeof plus !== 'undefined' && plus.os && plus.os.name) {
+			return String(plus.os.name).toLowerCase() === 'ios' ? SHANYAN_APP_IDS.ios : SHANYAN_APP_IDS.android
+		}
+	} catch (e) {}
+	// #endif
+	try {
+		const sys = uni.getSystemInfoSync() || {}
+		const osName = String(sys.osName || sys.platform || '').toLowerCase()
+		if (osName.indexOf('ios') !== -1 || osName.indexOf('iphone') !== -1) {
+			return SHANYAN_APP_IDS.ios
+		}
+	} catch (e) {}
+	return SHANYAN_APP_IDS.android
+}
 
 // TODO: 替换为你们真实的用户协议 / 数据处理说明地址
 export const PRIVACY_LINKS = {
@@ -27,6 +52,13 @@ export const PRIVACY_LINKS = {
 }
 
 const STORAGE_PRIVACY = 'privacyAgreed'
+
+// Android 自定义控件（微信登录按钮）点击回调：提为模块级具名函数，
+// 避免内联闭包在 UTS 反射调用时报 IllegalArgumentException: method... not found
+let wxWidgetHandler = null
+function handleWxWidgetClick() {
+	if (typeof wxWidgetHandler === 'function') wxWidgetHandler()
+}
 
 let sdk = null
 let inited = false
@@ -54,10 +86,28 @@ export function setPrivacyAgreed(val = true) {
 
 /**
  * 置换业务登录态：闪验 token -> 服务端 oneKeyLogin
+ * 后端新版要求同时传 platform（ios/android），用于匹配对应 appId/appKey
  */
 export function exchangeLoginByShanYanToken(shanyanToken) {
+	let platform = 'android'
+	try {
+		const sys = uni.getSystemInfoSync() || {}
+		const osName = String(sys.osName || sys.platform || '').toLowerCase()
+		const ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '').toLowerCase() : ''
+		if (osName.indexOf('ios') !== -1 || osName.indexOf('iphone') !== -1 || ua.indexOf('iphone') !== -1 || ua.indexOf('ipad') !== -1) {
+			platform = 'ios'
+		}
+	} catch (e) {}
+	// #ifdef APP-PLUS
+	try {
+		if (typeof plus !== 'undefined' && plus.os && plus.os.name) {
+			platform = String(plus.os.name).toLowerCase() === 'ios' ? 'ios' : 'android'
+		}
+	} catch (e) {}
+	// #endif
 	return oneKeyLogin({
-		token: shanyanToken
+		token: shanyanToken,
+		platform
 	})
 }
 
@@ -68,10 +118,16 @@ function rpx2dp(rpx) {
 
 /**
  * 授权页 UI：对齐 pages/login.vue 底部登录区
- * 背景 / 按钮图需放在 nativeResources（Android drawable / iOS）
+ * 原生资源（SDK 读不到 /static，必须放 nativeResources）：
+ * - Android: nativeResources/android/res/drawable-nodpi/{login_bg,btn_ban,check_circle_fil,check_circle}.png
+ * - iOS: nativeResources/ios/ 同名 .png（引用时带 .png 后缀）
+ * 来源映射：login_bg=static/loginBanner.png，btn_ban=static/btnBan.png，
+ * check_circle_fil=static/celiangSuccess.png（选中），check_circle=static/checkCircle.png（未选中）
+ * 注意：资源名必须全小写字母/数字/下划线，缺失或带连字符都会导致 Android IllegalArgumentException 闪退
  */
 export function buildShanYanUIConfig(options = {}) {
 	const { onWxLogin } = options
+	wxWidgetHandler = (typeof onWxLogin === 'function') ? onWxLogin : null
 	const sys = uni.getSystemInfoSync()
 	const screenWidth = sys.screenWidth
 	const btnWidth = Math.floor(screenWidth - rpx2dp(60))
@@ -84,13 +140,20 @@ export function buildShanYanUIConfig(options = {}) {
 	const loginBottom = rpx2dp(40 + 80 + 30 + 96 + 30)
 	const numberBottom = rpx2dp(40 + 80 + 30 + 96 + 30 + 96 + 40)
 
-	const androidWidgets = [
+	// Android 自定义微信按钮已下掉：实测 uni-app JS 侧传 callback 进 UTS WidgetItem
+	// 在 Android 会被装箱成 Integer（argument 17 Function0 mismatch），反复闪退。
+	// 授权页只保留「本机号码一键登录」；要走微信时点返回键关闭授权页，
+	// onCancel 会切到登录页兜底 UI，那里有点“微信登录”入口。
+	const androidWidgets = []
+
+	// iOS 自定义控件：iOS 不走 callback（走 setCallEventUIBlock），只保留 iOS 专属边框字段
+	const iosWidgets = [
 		{
 			type: 'Button',
 			width: btnWidth,
 			height: btnHeight,
 			leftOffsetX: sidePad,
-			bottomOffsetY: wxBottom,
+			bottomOffsetY: -wxBottom,
 			textContent: '微信登录',
 			textColor: '#2C89FF',
 			textFont: 15,
@@ -98,10 +161,7 @@ export function buildShanYanUIConfig(options = {}) {
 			cornerRadius: 16,
 			borderColor: '#2C89FF',
 			borderWidth: 1,
-			isFinish: true,
-			callback: () => {
-				if (typeof onWxLogin === 'function') onWxLogin()
-			}
+			isFinish: true
 		}
 	]
 
@@ -260,23 +320,7 @@ export function buildShanYanUIConfig(options = {}) {
 				top: 0
 			}
 		},
-		widgetsConfig: [
-			{
-				type: 'Button',
-				width: btnWidth,
-				height: btnHeight,
-				leftOffsetX: sidePad,
-				bottomOffsetY: -wxBottom,
-				textContent: '微信登录',
-				textColor: '#2C89FF',
-				textFont: 15,
-				backgroundColor: '#00000000',
-				cornerRadius: 16,
-				borderColor: '#2C89FF',
-				borderWidth: 1,
-				isFinish: true
-			}
-		]
+		widgetsConfig: iosWidgets
 	}
 
 	return {
@@ -302,7 +346,7 @@ function initSdk() {
 		} catch (e) {
 			console.log('[shanyan] setDebug/timeout', e)
 		}
-		module.initWithAppId(SHANYAN_APP_ID, (response) => {
+		module.initWithAppId(getShanYanAppId(), (response) => {
 			const code = response && response.code
 			if (code === 1000) {
 				inited = true
@@ -361,6 +405,14 @@ export function openOneKeyLogin(hooks = {}) {
 						return
 					}
 					opening = false
+					try {
+						console.error('[shanyan] openAuthPage fail full:', JSON.stringify(openRes))
+					} catch (e) {
+						console.error('[shanyan] openAuthPage fail:', openRes)
+					}
+					try {
+						uni.setStorageSync('shanyanLastError', JSON.stringify(openRes || {}))
+					} catch (e) {}
 					onFail && onFail(openRes || { code: -1, message: '拉起授权页失败' })
 				},
 				(loginRes) => {
@@ -375,6 +427,14 @@ export function openOneKeyLogin(hooks = {}) {
 						onCancel && onCancel(loginRes)
 						return
 					}
+					try {
+						console.error('[shanyan] oneKeyLogin fail full:', JSON.stringify(loginRes))
+					} catch (e) {
+						console.error('[shanyan] oneKeyLogin fail:', loginRes)
+					}
+					try {
+						uni.setStorageSync('shanyanLastError', JSON.stringify(loginRes || {}))
+					} catch (e) {}
 					onFail && onFail(loginRes || { code: -1, message: '一键登录失败' })
 				}
 			)

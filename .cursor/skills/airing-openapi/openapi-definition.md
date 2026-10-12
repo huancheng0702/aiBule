@@ -850,6 +850,17 @@ _无请求参数_
 | 字段名 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `token` | string | 是 | SDK返回的运营商token（一次性有效） |
+| `platform` | string | 是 | 平台：ios/android，用于匹配对应应用的appId/appKey |
+
+## 响应结构（WxLoginVO）
+
+| 字段名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `token` | string | 否 | APP端Token（与管理后台独立） |
+| `userId` | integer/int64 | 否 | 用户ID |
+| `nickName` | string | 否 | 昵称 |
+| `avatar` | string | 否 | 头像URL |
+| `phoneBound` | boolean | 否 | 是否已绑定手机号（true-已绑定 false-未绑定） |
 
 ## 响应结构
 

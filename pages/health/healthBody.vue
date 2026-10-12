@@ -48,7 +48,7 @@
 								animationDelay: item.delay
 							}"
 						>
-							<text class="status-bubble-text">{{ item.text }}</text>
+							{{ item.text }}
 						</view>
 					</view>
 				</view>
@@ -1041,9 +1041,9 @@ export default {
 		pointer-events: none;
 		background: linear-gradient(
 			180deg,
-			rgba(90, 170, 255, 0) 0%,
-			rgba(90, 170, 255, 0.06) 45%,
-			rgba(160, 210, 255, 0.22) 100%
+			rgba(5, 48, 146, 0) 0%,
+			rgba(5, 48, 146, 0.12) 45%,
+			rgba(5, 48, 146, 0.35) 100%
 		);
 		animation: scanDown 2s ease-in-out forwards;
 	}
@@ -1057,16 +1057,16 @@ export default {
 		border-radius: 3rpx;
 		background: linear-gradient(
 			90deg,
-			rgba(255, 255, 255, 0) 0%,
-			rgba(200, 230, 255, 0.55) 18%,
-			#ffffff 50%,
-			rgba(200, 230, 255, 0.55) 82%,
-			rgba(255, 255, 255, 0) 100%
+			rgba(5, 48, 146, 0) 0%,
+			rgba(5, 48, 146, 0.55) 18%,
+			#053092 50%,
+			rgba(5, 48, 146, 0.55) 82%,
+			rgba(5, 48, 146, 0) 100%
 		);
 		box-shadow:
-			0 0 6rpx rgba(255, 255, 255, 0.85),
-			0 0 14rpx rgba(120, 190, 255, 0.65),
-			0 0 28rpx rgba(70, 150, 255, 0.35);
+			0 0 6rpx rgba(5, 48, 146, 0.85),
+			0 0 14rpx rgba(5, 48, 146, 0.65),
+			0 0 28rpx rgba(5, 48, 146, 0.35);
 	}
 
 	@keyframes scanDown {
@@ -1098,20 +1098,15 @@ export default {
 
 	.status-bubble {
 		position: absolute;
+		font-size: 22rpx;
+		color: #ffffff;
 		z-index: 9;
-		padding: 10rpx 22rpx;
+		padding: 12rpx 22rpx;
 		border-radius: 28rpx;
 		background: linear-gradient(90deg, #1a6dff 0%, #3d9bff 100%);
 		box-shadow: 0 6rpx 18rpx rgba(40, 120, 255, 0.35);
 		opacity: 0;
 		animation: bubbleIn 0.55s ease-out forwards, bubbleFloat 2.8s ease-in-out 0.55s infinite;
-	}
-
-	.status-bubble-text {
-		font-size: 22rpx;
-		line-height: 32rpx;
-		color: #ffffff;
-		white-space: nowrap;
 	}
 
 	@keyframes bubbleIn {

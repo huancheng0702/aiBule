@@ -265,6 +265,15 @@
 			}
 		},
 		{
+			"path": "pages/health/pdfWebview",
+			"style": {
+				"navigationBarTitleText": "上传PDF",
+				"backgroundColor": "#0b0f1a",
+				"navigationBarBackgroundColor": "#0b0f1a",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
 			"path": "pages/mine/deviceManage",
 			"style": {
 				"navigationBarTitleText": "设备管理",

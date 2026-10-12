@@ -3,7 +3,7 @@
 		<!-- 最近一次摘要 -->
 		<view class="hero-card">
 			<!-- 顶部卡片背景图，自行补充 src -->
-			<image class="hero-bg" src="/static/xueyangBg.png" mode=""></image>
+			<image class="hero-bg" src="/static/tiwenBg.png" mode=""></image>
 			<view class="hero-body">
 				<view class="hero-left">
 					<text class="hero-label">最近一次 · {{ latestTime }}</text>
@@ -90,7 +90,7 @@
 					<view
 						class="trend-plot"
 						@touchstart="onChartTouch"
-						@touchmove.stop.prevent="onChartTouch"
+						@touchmove.stop="onChartTouch"
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
@@ -347,11 +347,11 @@
 		const times = (labels || []).filter(Boolean)
 		if (!times.length) return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
 		if (times.length <= 7) return times
+		// day 24 点：按服务端 labels 等距取 00/04/08/12/16/20/最后一个
 		const out = []
-		for (let i = 0; i < 7; i++) {
-			out.push(times[Math.round(i * (times.length - 1) / 6)])
-		}
-		return out
+		for (let i = 0; i < times.length; i += 4) out.push(times[i])
+		if (out[out.length - 1] !== times[times.length - 1]) out.push(times[times.length - 1])
+		return out.slice(0, 7)
 	}
 
 	export default {
@@ -577,13 +577,10 @@
 				this.trendTime = (data.trend && data.trend.title) || ''
 
 				const labels = (data.trend && data.trend.labels) || []
-				const values = ((data.trend && data.trend.values) || []).map((v) => Number(v))
-				const points = []
-				values.forEach((v, i) => {
-					if (v > 0) points.push({ value: v, time: labels[i] || '' })
-				})
-				this.chartValues = points.map((p) => p.value)
-				this.chartTimes = points.map((p) => p.time)
+				const values = ((data.trend && data.trend.values) || []).map((v) => Number(v) || 0)
+				// 保留服务端完整长度，0 不过滤，X 轴按 labels 等距展开
+				this.chartValues = values
+				this.chartTimes = labels
 				this.xLabels = pickXLabels(labels.length ? labels : this.chartTimes)
 
 				const stats = data.stats || {}

@@ -13,9 +13,8 @@
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
 				<!-- 波形装饰图，自行补充 src -->
-				<image class="hero-wave" mode="aspectFit"></image>
 				<view class="measure-btn" @click="onStartMeasure">
-					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
+					<image src="/static/kaishiceliang.png" style="width:201rpx;height: 104rpx;" mode=""></image>
 				</view>
 			</view>
 		</view>
@@ -68,7 +67,7 @@
 				<view
 					class="trend-plot"
 					@touchstart="onChartTouch"
-					@touchmove.stop.prevent="onChartTouch"
+					@touchmove.stop="onChartTouch"
 					@touchend="onChartTouchEnd"
 					@touchcancel="onChartTouchEnd"
 				>
@@ -238,7 +237,7 @@
 		<view v-if="showMeasuring" class="measuring-mask" @click="onTryCloseMeasuring">
 			<view class="measuring-popup" @click.stop>
 				<!-- 弹窗背景图，自行补充 src -->
-				<image class="measuring-bg" mode="aspectFill"></image>
+				<image v-if="false" class="measuring-bg" mode="aspectFill"></image>
 				<view class="measuring-body">
 					<view class="ripple">
 						<view class="ripple-disc d3"></view>
@@ -256,10 +255,10 @@
 		<view v-if="showCancelConfirm" class="cancel-mask">
 			<view class="cancel-popup" @click.stop>
 				<!-- 弹窗背景图，自行补充 src -->
-				<image class="cancel-bg" mode="aspectFill"></image>
+				<image v-if="false" class="cancel-bg" mode="aspectFill"></image>
 				<view class="cancel-body">
 					<!-- 警告图标，自行补充 src -->
-					<image class="cancel-icon" mode="aspectFit"></image>
+					<image v-if="false" class="cancel-icon" mode="aspectFit"></image>
 					<text class="cancel-title">取消检测?</text>
 					<text class="cancel-desc">取消后将会终止正在进行的测量任务。确认取消?</text>
 					<view class="cancel-btns">
@@ -403,52 +402,77 @@
 	}
 
 	function pickXLabels(times, period) {
-		if (!times.length) {
+		const list = (times || []).filter(Boolean)
+		if (!list.length) {
 			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
 			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
 		}
+		// 日视图：series 是 24 点，按 time 等距展示，只取 00/04/08/12/16/20/最后一个
+		if (period === 'day' && list.length > 7) {
+			const out = []
+			for (let i = 0; i < list.length; i += 4) out.push(list[i])
+			if (out[out.length - 1] !== list[list.length - 1]) out.push(list[list.length - 1])
+			return out
+		}
 		const count = period === 'month' ? 6 : 7
-		if (times.length <= count) return times
+		if (list.length <= count) return list
 		const out = []
 		for (let i = 0; i < count; i++) {
-			out.push(times[Math.round(i * (times.length - 1) / (count - 1))])
+			out.push(list[Math.round(i * (list.length - 1) / (count - 1))])
 		}
 		return out
 	}
 
 	function toPoints(values, chartW, chartH) {
-		const stepX = values.length === 1 ? 0 : chartW / (values.length - 1)
-		return values.map((v, i) => ({
-			x: i * stepX,
-			y: valueToY(v, chartH)
-		}))
+		const stepX = values.length <= 1 ? 0 : chartW / (values.length - 1)
+		return values.map((v, i) => {
+			if (v == null || isNaN(Number(v))) return { x: i * stepX, y: null, empty: true }
+			return { x: i * stepX, y: valueToY(Number(v), chartH) }
+		})
 	}
 
-	/** Catmull-Rom → 三次贝塞尔，折线带圆角过渡 */
+	/** Catmull-Rom → 三次贝塞尔，null 处断开，不断线 */
 	function buildSmoothLinePath(points) {
-		if (!points.length) return ''
-		if (points.length === 1) return `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-
-		let d = `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-		for (let i = 0; i < points.length - 1; i++) {
-			const p0 = points[i - 1] || points[i]
-			const p1 = points[i]
-			const p2 = points[i + 1]
-			const p3 = points[i + 2] || p2
-			const cp1x = p1.x + (p2.x - p0.x) / 6
-			const cp1y = p1.y + (p2.y - p0.y) / 6
-			const cp2x = p2.x - (p3.x - p1.x) / 6
-			const cp2y = p2.y - (p3.y - p1.y) / 6
-			d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+		const segs = []
+		let cur = []
+		const flush = () => {
+			if (!cur.length) return
+			if (cur.length === 1) {
+				segs.push(`M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`)
+			} else {
+				let d = `M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`
+				for (let i = 0; i < cur.length - 1; i++) {
+					const p0 = cur[i - 1] || cur[i]
+					const p1 = cur[i]
+					const p2 = cur[i + 1]
+					const p3 = cur[i + 2] || p2
+					const cp1x = p1.x + (p2.x - p0.x) / 6
+					const cp1y = p1.y + (p2.y - p0.y) / 6
+					const cp2x = p2.x - (p3.x - p1.x) / 6
+					const cp2y = p2.y - (p3.y - p1.y) / 6
+					d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+				}
+				segs.push(d)
+			}
+			cur = []
 		}
-		return d
+		points.forEach((p) => {
+			if (!p || p.empty || p.y == null) { flush(); return }
+			cur.push(p)
+		})
+		flush()
+		return segs.join(' ')
 	}
 
 	function buildAreaPath(lineD, points, chartH) {
 		if (!lineD || !points.length) return ''
-		const last = points[points.length - 1]
-		const first = points[0]
+		const valid = points.filter((p) => p && !p.empty && p.y != null)
+		if (!valid.length) return ''
+		// 有断点时不铺面积，避免横跨空洞
+		if (valid.length !== points.length) return ''
+		const last = valid[valid.length - 1]
+		const first = valid[0]
 		const bottom = chartH
 		return `${lineD} L${last.x.toFixed(2)} ${bottom} L${first.x.toFixed(2)} ${bottom} Z`
 	}
@@ -566,7 +590,9 @@
 			},
 			touchPoint() {
 				if (this.touchIndex < 0 || this.touchIndex >= this.chartPoints.length) return null
-				return this.chartPoints[this.touchIndex]
+				const p = this.chartPoints[this.touchIndex]
+				if (!p || p.empty || p.y == null) return null
+				return p
 			},
 			touchValue() {
 				if (this.touchIndex < 0) return 0
@@ -636,10 +662,9 @@
 			})
 		},
 		onReady() {
-			this.measureChart(0)
+			this.$nextTick(() => this.measureChart(0))
 		},
 		onShow() {
-			this.measureChart(0)
 			this.loadPageData()
 		},
 		onBackPress() {
@@ -669,11 +694,30 @@
 					.exec()
 			},
 			async loadPageData() {
-				await Promise.all([
-					this.loadLatest(),
-					this.loadTrend(),
-					this.loadRecent()
+				console.log('[heartRate] enter page, date=', dateToYmd(this.currentDate), 'period=', this.period)
+				const [latest, trend, recent] = await Promise.all([
+					getDeviceLatest('heart_rate'),
+					getHeartRateTrend(dateToYmd(this.currentDate), this.period),
+					(async () => {
+						const end = new Date()
+						const start = new Date()
+						start.setDate(end.getDate() - 30)
+						const params = {
+							dataType: 'heart_rate',
+							startDate: dateToYmd(start),
+							endDate: dateToYmd(end)
+						}
+						console.log('[heartRate] getDeviceDataList params=', JSON.stringify(params))
+						const res = await getDeviceDataList(params)
+						console.log('[heartRate] getDeviceDataList resp=', JSON.stringify(res))
+						return res
+					})()
 				])
+				console.log('[heartRate] getDeviceLatest resp=', JSON.stringify(latest))
+				console.log('[heartRate] getHeartRateTrend resp=', JSON.stringify(trend))
+				this.applyLatest(latest)
+				this.applyTrend(trend)
+				this.applyRecent(unwrapList(recent))
 			},
 			async loadLatest() {
 				try {
@@ -715,10 +759,13 @@
 					return
 				}
 				const series = Array.isArray(data.series) ? data.series : []
+				// X 轴按服务端返回的 time 等距展开，空值保留不断轴
+				const allTimes = series.map((p) => p.time || '')
+				this.chartValues = series.map((p) => (p.value == null ? 0 : Number(p.value)))
+				this.chartTimes = allTimes
+				this.xLabels = pickXLabels(allTimes, this.period)
+
 				const points = series.filter((p) => Number(p.value) > 0)
-				this.chartValues = points.map((p) => Number(p.value))
-				this.chartTimes = points.map((p) => p.time || '')
-				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
 
 				const last = points.length ? points[points.length - 1] : (data.latest || null)
 				const lastVal = last ? pickHeartBpm(last) : 0
@@ -994,18 +1041,12 @@
 				this.latestBpm = value
 				this.latestStatus = bpmStatusText(value)
 				this.latestTime = formatLatestTime()
-				const samples = (this.measureSamples || []).map((n) => Number(n)).filter((n) => n > 0)
-				const heartrate = Number(value)
-				const maxHr = samples.length ? Math.max.apply(null, samples.concat([heartrate])) : heartrate
-				const averHr = samples.length
-					? Math.round(samples.reduce((sum, n) => sum + n, 0) / samples.length)
-					: heartrate
 				await this.stopRealMeasure(true)
 
 				let measureId = createMeasureId()
 				uni.showLoading({ title: '保存中', mask: true })
 				try {
-					await this.uploadHeartOnce({ heartrate, maxHr, averHr }, measureId)
+					await this.uploadHeartOnce({ heartNum: Number(value) || 0 }, measureId)
 				} catch (e) {
 					measureId = ''
 					console.log('[heartRate] upload failed', e && (e.msg || e.message))
@@ -1023,20 +1064,22 @@
 				}
 				const ble = BleService.getState()
 				const device = (ble && ble.device) || {}
-				await uploadDeviceData({
+				const params = {
 					deviceMac: device.mac || device.id || '',
 					deviceVersion: (ble && ble.firmware) || '',
 					batteryLevel: ble && ble.batteryLevel != null ? ble.batteryLevel : undefined,
 					dataList: [{
 						dataType: 'heart_rate',
-						heartrate: Number(payload.heartrate) || 0,
-						maxHr: Number(payload.maxHr) || 0,
-						averHr: Number(payload.averHr) || 0,
+						heartNum: Number(payload.heartNum) || 0,
 						measureTime: formatMeasureTime(new Date()),
 						source: '2',
 						measureId
 					}]
-				})
+				}
+				console.log('[heartRate] uploadDeviceData params=', JSON.stringify(params))
+				const resp = await uploadDeviceData(params)
+				console.log('[heartRate] uploadDeviceData resp=', JSON.stringify(resp))
+				return resp
 			},
 			onTryCloseMeasuring() {
 				this.showCancelConfirm = true
@@ -1082,6 +1125,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
 	}
 
@@ -1131,22 +1175,6 @@
 		margin: 0 16rpx;
 		min-width: 80rpx;
 	}
-
-	.measure-btn {
-		flex-shrink: 0;
-		padding: 16rpx 28rpx;
-		border-radius: 40rpx;
-		background: linear-gradient(90deg, #1a53ec 0%, #2f7bff 50%, #4da3ff 100%);
-		box-shadow: 0 0 20rpx rgba(47, 123, 255, 0.45);
-	}
-
-	.measure-btn-text {
-		font-size: 26rpx;
-		font-weight: 500;
-		color: #ffffff;
-		line-height: 36rpx;
-	}
-
 	.period-bar {
 		display: flex;
 		align-items: center;

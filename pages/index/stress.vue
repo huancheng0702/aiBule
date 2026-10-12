@@ -13,11 +13,8 @@
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
 				<!-- 压力装饰图，自行补充 src -->
-				<image class="hero-deco" mode="aspectFit"></image>
 				<view class="measure-btn" @click="onStartMeasure">
-					<!-- 开始测量按钮背景图，自行补充 src -->
-					<image class="measure-btn-bg" mode="scaleToFill"></image>
-					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
+					<image src="/static/kaishiceliang.png" style="width:201rpx;height: 104rpx;" mode=""></image>
 				</view>
 			</view>
 		</view>
@@ -440,6 +437,7 @@
 				chartH: CHART_H,
 				chartValues: [],
 				chartTimes: [],
+				chartHasReal: [],
 				yLabels: [120, 90, 60, 30],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				legendList: [
@@ -494,6 +492,16 @@
 				const slot = this.chartW / count
 				const barW = Math.max(8, slot * 0.42)
 				return values.map((value, index) => {
+					const hasReal = this.chartHasReal[index] !== false
+					if (!hasReal) {
+						return {
+							x: index * slot + (slot - barW) / 2,
+							y: this.chartH,
+							w: barW,
+							h: 0,
+							color: 'transparent'
+						}
+					}
 					const y = valueToY(value, this.chartH)
 					const h = Math.max(2, this.chartH - y)
 					return {
@@ -510,7 +518,7 @@
 				const grids = (this.gridYs || []).map((y) =>
 					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
 				).join('')
-				const bars = this.chartBars.map((bar) =>
+				const bars = this.chartBars.filter((bar) => bar.h > 0).map((bar) =>
 					`<rect x="${bar.x}" y="${bar.y}" width="${bar.w}" height="${bar.h}" fill="${bar.color}" rx="2"/>`
 				).join('')
 				let touch = ''
@@ -661,6 +669,7 @@
 				if (!data) {
 					this.chartValues = []
 					this.chartTimes = []
+					this.chartHasReal = []
 					this.xLabels = pickXLabels([], this.period)
 					this.statsMax = '--'
 					this.statsMin = '--'
@@ -668,9 +677,10 @@
 					return
 				}
 				const series = Array.isArray(data.series) ? data.series : []
-				const points = series.filter((p) => Number(p.value) > 0)
-				this.chartValues = points.map((p) => Number(p.value))
-				this.chartTimes = points.map((p) => p.time || p.label || '')
+				// x轴以后台返回的完整series为准；null按0显示
+				this.chartValues = series.map((p) => (p.value == null ? 0 : Number(p.value) || 0))
+				this.chartHasReal = series.map((p) => p.value != null && Number(p.value) > 0)
+				this.chartTimes = series.map((p) => p.time || p.label || '')
 				this.xLabels = pickXLabels(this.chartTimes.length ? this.chartTimes : series.map((p) => p.time || '').filter(Boolean), this.period)
 				const stats = data.stats || {}
 				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
@@ -1024,6 +1034,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
 	}
 
@@ -1074,19 +1085,7 @@
 		margin: 0 12rpx;
 	}
 
-	.measure-btn {
-		position: relative;
-		flex-shrink: 0;
-		min-width: 160rpx;
-		height: 64rpx;
-		padding: 0 28rpx;
-		border-radius: 40rpx;
-		overflow: hidden;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: #1a53ec;
-	}
+	.measure-btn {}
 
 	.measure-btn-bg {
 		position: absolute;

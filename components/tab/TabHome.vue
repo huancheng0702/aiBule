@@ -642,7 +642,10 @@
 			this.unsubBle = BleService.subscribe((s) => {
 				this.batteryLevel = s.batteryLevel
 				this.batteryCharging = !!s.batteryCharging
+				if (s && s.sport) this.applyBleSport(s.sport)
 			})
+			const cached = BleService.getSport && BleService.getSport()
+			if (cached) this.applyBleSport(cached)
 		},
 		beforeDestroy() {
 			if (this.unsubBle) {
@@ -713,8 +716,18 @@
 			}
 		},
 		methods: {
+			applyBleSport(s) {
+				if (!s) return
+				if (Number(s.steps) >= 0) this.stepCurrent = Number(s.steps)
+				if (Number(s.calories) >= 0) this.calorieCurrent = Number(s.calories)
+				if (s.distanceKm != null) this.distanceCurrent = Number(s.distanceKm)
+				else if (s.distanceM != null) this.distanceCurrent = Math.round((Number(s.distanceM) / 1000) * 10) / 10
+			},
 			onTabShow() {
 				this.loadHome()
+				const cached = BleService.getSport && BleService.getSport()
+				if (cached) this.applyBleSport(cached)
+				BleService.syncSport && BleService.syncSport().catch(() => {})
 			},
 			async loadHome() {
 				await Promise.all([
@@ -734,11 +747,11 @@
 				const items = (data && data.items) || []
 				const steps = pickDashItem(items, 'steps')
 				if (steps) {
-					this.stepCurrent = Number(steps.value) || 0
-					this.distanceCurrent = Number(steps.distance) || 0
-					this.calorieCurrent = Number(steps.calories) || 0
+					// 今日步数/距离/消耗走蓝牙实时，不用接口覆盖；接口只提供目标值
 					if (Number(steps.target) > 0) this.stepTarget = Number(steps.target)
 					else this.stepTarget = 10000
+					const cached = BleService.getSport && BleService.getSport()
+					if (cached) this.applyBleSport(cached)
 				}
 				const sleep = pickDashItem(items, 'sleep')
 				if (sleep) {
@@ -1277,7 +1290,7 @@
 	}
 
 	.record-card {
-		width: calc(50% - 10rpx);
+		width: 48%;
 		margin-bottom: 20rpx;
 		padding: 28rpx 24rpx;
 		border-radius: 24rpx;
@@ -1353,8 +1366,7 @@
 	.popup-content {
 		position: relative;
 		z-index: 1;
-		padding: 40rpx 32rpx calc(32rpx + constant(safe-area-inset-bottom));
-		padding: 40rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+		padding: 40rpx 32rpx 64rpx;
 		box-sizing: border-box;
 	}
 

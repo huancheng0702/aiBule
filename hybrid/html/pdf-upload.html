@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PDF上传</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0b0f1a;
+      color: #fff;
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #12131a;
+      border-radius: 20px;
+      padding: 32px 24px;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .sub {
+      margin-top: 8px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, .5);
+    }
+
+    .btn {
+      margin-top: 24px;
+      display: block;
+      width: 100%;
+      height: 52px;
+      line-height: 52px;
+      border-radius: 14px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, #2C89FF, #4EA1FF);
+    }
+
+    .btn:active {
+      opacity: .85;
+    }
+
+    .tip {
+      margin-top: 16px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, .45);
+      line-height: 1.7;
+      word-break: break-all;
+    }
+
+    .bar {
+      margin-top: 20px;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, .1);
+      overflow: hidden;
+      display: none;
+    }
+
+    .bar>i {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: #4EA1FF;
+      border-radius: 4px;
+      transition: width .2s;
+    }
+
+    #file {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="title">上传PDF报告</div>
+    <div class="sub" id="sub">正在打开文件选择…</div>
+    <button class="btn" id="pickBtn">选择PDF文件</button>
+    <div class="bar" id="bar"><i id="fill"></i></div>
+    <div class="tip" id="tip">仅支持 .pdf，最大20MB。上传成功后自动返回App开始解析。</div>
+    <input id="file" type="file" accept=".pdf,application/pdf" />
+  </div>
+  <script src="https://js.cdn.aliyun.dcloud.net.cn/dev/uni-app/uni.webview.1.5.2.js"></script>
+  <script>
+    (function () {
+      var q = {};
+      location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
+        if (!kv) return;
+        var i = kv.indexOf('=');
+        var k = decodeURIComponent(i > -1 ? kv.slice(0, i) : kv);
+        var v = i > -1 ? decodeURIComponent(kv.slice(i + 1)) : '';
+        q[k] = v;
+      });
+      var uploadUrl = q.uploadUrl || '';
+      var token = q.token || '';
+      var auto = q.auto !== '0';
+
+      var fileEl = document.getElementById('file');
+      var pickBtn = document.getElementById('pickBtn');
+      var tip = document.getElementById('tip');
+      var sub = document.getElementById('sub');
+      var bar = document.getElementById('bar');
+      var fill = document.getElementById('fill');
+      var done = false;
+
+      function msg(s) { tip.textContent = s; }
+      function finish(url, name) {
+        if (done) return; done = true;
+        var data = { fileUrl: url, name: name || 'PDF报告' };
+        var payload = JSON.stringify(data);
+        try {
+          if (window.uni && uni.postMessage) uni.postMessage({ data: data });
+        } catch (e) { }
+        try {
+          if (window.plus && plus.webview && plus.webview.currentWebview) {
+            var opener = plus.webview.currentWebview().opener();
+            if (opener && opener.evalJS) {
+              opener.evalJS("window.__onPdfUploaded&&window.__onPdfUploaded('" + url.replace(/'/g, "\\'") + "','" + (name || 'PDF报告').replace(/'/g, "\\'") + "')");
+            }
+          }
+        } catch (e) { }
+        sub.textContent = '上传成功，正在返回…';
+        msg('上传成功，正在返回App…');
+        setTimeout(function () {
+          // 宿主若拦截了 hash 则由宿主关闭，否则尝试 history.back
+          try { history.back(); } catch (e) { }
+        }, 600);
+      }
+      function fail(s) { sub.textContent = '上传失败'; msg(s || '上传失败，请重试'); }
+
+      pickBtn.onclick = function () { fileEl.click(); };
+      fileEl.onchange = function () {
+        var f = fileEl.files && fileEl.files[0];
+        if (!f) return;
+        if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { fail('请选择PDF文件'); return; }
+        if (f.size > 20 * 1024 * 1024) { fail('文件超过20MB，请压缩后重试'); return; }
+        if (!uploadUrl) { fail('缺少上传地址参数 uploadUrl'); return; }
+        sub.textContent = '正在上传 ' + f.name;
+        bar.style.display = 'block';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl);
+        if (token) xhr.setRequestHeader('token', token);
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable) fill.style.width = Math.round(e.loaded / e.total * 100) + '%';
+        };
+        xhr.onload = function () {
+          try {
+            var body = JSON.parse(xhr.responseText);
+            var code = body && body.code;
+            if (code !== undefined && code !== null && code !== '' && [0, 1, 200].indexOf(Number(code)) === -1) {
+              if (Number(code) === 301) { fail('登录失效，请回App重新登录'); return; }
+              fail((body && (body.msg || body.message)) || '上传失败');
+              return;
+            }
+            var data = body && body.data !== undefined ? body.data : body;
+            var url = typeof data === 'string' ? data : (data && (data.url || data.fileUrl || data.path)) || '';
+            if (!url) { fail('服务端未返回文件地址'); return; }
+            fill.style.width = '100%';
+            finish(url, f.name.replace(/\.pdf$/i, ''));
+          } catch (e) { fail('上传响应解析失败'); }
+        };
+        xhr.onerror = function () { fail('网络异常，请检查网络后重试'); };
+        var fd = new FormData();
+        fd.append('file', f, f.name);
+        xhr.send(fd);
+      };
+
+      // 进入页面直接触发一次（iOS 无用户手势会拦截，拦截则显示按钮手动点）
+      if (auto) {
+        setTimeout(function () {
+          try { fileEl.click(); } catch (e) { }
+          sub.textContent = '请选择PDF文件';
+        }, 400);
+      } else {
+        sub.textContent = '请选择PDF文件';
+      }
+    })();
+  </script>
+</body>
+
+</html>

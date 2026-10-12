@@ -3,7 +3,7 @@
 		<!-- 最近一次摘要 -->
 		<view class="hero-card">
 			<!-- 顶部卡片背景图，自行补充 src -->
-			<image class="hero-bg" src="/static/xueyangBg.png" mode=""></image>
+			<image class="hero-bg" src="/static/xueyaBg.png" mode=""></image>
 			<view class="hero-body">
 				<view class="hero-left">
 					<text class="hero-label">最近一次 · {{ latestTime }}</text>
@@ -90,7 +90,7 @@
 					<view
 						class="trend-plot"
 						@touchstart="onChartTouch"
-						@touchmove.stop.prevent="onChartTouch"
+						@touchmove.stop="onChartTouch"
 						@touchend="onChartTouchEnd"
 						@touchcancel="onChartTouchEnd"
 					>
@@ -376,11 +376,11 @@
 		const times = (labels || []).filter(Boolean)
 		if (!times.length) return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
 		if (times.length <= 7) return times
+		// day 24 点：按服务端 labels 等距取 00/04/08/12/16/20/最后一个
 		const out = []
-		for (let i = 0; i < 7; i++) {
-			out.push(times[Math.round(i * (times.length - 1) / 6)])
-		}
-		return out
+		for (let i = 0; i < times.length; i += 4) out.push(times[i])
+		if (out[out.length - 1] !== times[times.length - 1]) out.push(times[times.length - 1])
+		return out.slice(0, 7)
 	}
 
 	export default {
@@ -627,24 +627,27 @@
 				const labels = (data.trend && data.trend.labels) || []
 				const rawValues = (data.trend && data.trend.values) || []
 				const rawDia = (data.trend && (data.trend.diastolicValues || data.trend.diastoleValues)) || []
-				const points = []
-				rawValues.forEach((v, i) => {
-					const parsed = parseBpValue(v)
-					if (!parsed) return
+				// 保留服务端完整长度，缺失按 0 占位，X 轴按 labels 等距展开
+				const sysArr = []
+				const diaArr = []
+				const timeArr = []
+				const textArr = []
+				const n = Math.max(labels.length, rawValues.length, rawDia.length)
+				for (let i = 0; i < n; i++) {
+					const parsed = parseBpValue(rawValues[i])
 					const diaParsed = parseBpValue(rawDia[i])
-					points.push({
-						value: parsed.sys,
-						dia: parsed.dia != null ? parsed.dia : (diaParsed ? diaParsed.sys : null),
-						time: labels[i] || '',
-						text: parsed.dia != null
-							? parsed.text
-							: (diaParsed ? parsed.sys + '/' + diaParsed.sys : parsed.text)
-					})
-				})
-				this.chartValues = points.map((p) => p.value)
-				this.chartDiaValues = points.every((p) => p.dia != null) ? points.map((p) => p.dia) : []
-				this.chartTimes = points.map((p) => p.time)
-				this.chartTexts = points.map((p) => p.text)
+					const sys = parsed ? parsed.sys : 0
+					const dia = parsed && parsed.dia != null ? parsed.dia : (diaParsed ? diaParsed.sys : 0)
+					const text = parsed ? (parsed.dia != null ? parsed.text : (diaParsed ? sys + '/' + diaParsed.sys : parsed.text)) : (sys + '/' + dia)
+					sysArr.push(sys)
+					diaArr.push(dia)
+					timeArr.push(labels[i] || '')
+					textArr.push(text)
+				}
+				this.chartValues = sysArr
+				this.chartDiaValues = diaArr
+				this.chartTimes = timeArr
+				this.chartTexts = textArr
 				this.xLabels = pickXLabels(labels.length ? labels : this.chartTimes)
 
 				const stats = data.stats || {}

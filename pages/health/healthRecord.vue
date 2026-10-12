@@ -35,16 +35,7 @@
 						</view>
 					</view>
 					<view class="score-wrap">
-						<svg class="score-svg" viewBox="0 0 100 100">
-							<!-- 圆环底色 -->
-							<circle class="score-track" cx="50" cy="50" :r="scoreRing.r"
-								:stroke-width="scoreRing.stroke" stroke="#25133B" />
-							<!-- 沿圆弧分段渐变：#FF2C30 → 58%@22% → 100%@5% -->
-							<circle v-for="(seg, index) in scoreRing.segs" :key="index" class="score-progress" cx="50"
-								cy="50" :r="scoreRing.r" :stroke-width="scoreRing.stroke" stroke="#FF2C30"
-								:stroke-opacity="seg.opacity" :stroke-dasharray="seg.dash"
-								:stroke-dashoffset="seg.offset" :stroke-linecap="seg.cap" />
-						</svg>
+						<canvas canvas-id="scoreCanvas" id="scoreCanvas" class="score-canvas"></canvas>
 						<view class="score-center">
 							<text class="score-num">{{ score }}</text>
 
@@ -167,21 +158,7 @@
 						</view>
 
 						<view class="week-score-wrap">
-							<svg class="week-score-svg" viewBox="0 0 100 100">
-								<circle class="score-edge" cx="50" cy="50"
-									:r="weekScoreRing.r + weekScoreRing.stroke / 2" stroke-width="1.2"
-									stroke="rgba(120,180,255,0.35)" />
-								<circle class="score-edge" cx="50" cy="50"
-									:r="weekScoreRing.r - weekScoreRing.stroke / 2" stroke-width="1.2"
-									stroke="rgba(120,180,255,0.2)" />
-								<circle class="score-track" cx="50" cy="50" :r="weekScoreRing.r"
-									:stroke-width="weekScoreRing.stroke" stroke="#25133B" />
-								<circle v-for="(seg, index) in weekScoreRing.segs" :key="'w' + index"
-									class="score-progress" cx="50" cy="50" :r="weekScoreRing.r"
-									:stroke-width="weekScoreRing.stroke" :stroke="seg.color"
-									:stroke-opacity="seg.opacity" :stroke-dasharray="seg.dash"
-									:stroke-dashoffset="seg.offset" :stroke-linecap="seg.cap" />
-							</svg>
+							<canvas canvas-id="weekScoreCanvas" id="weekScoreCanvas" class="week-score-canvas"></canvas>
 							<view class="week-score-center">
 								<text class="week-score-num">{{ weekPopup.score }}</text>
 								<text class="week-score-label">综合分</text>
@@ -323,6 +300,8 @@
 	import { getAbnormalList, getAbnormalDetail } from '@/common/api/healthAbnormal.js'
 	import { getHealthArchiveDetail, getHealthArchiveOptions, saveHealthArchive } from '@/common/api/healthArchive.js'
 	import { getUserInfo } from '@/common/api/user.js'
+	import { buildApiUrl } from '@/common/http.js'
+	import { LOGIN_TOKEN_KEY } from '@/common/auth.js'
 
 	const ARCHIVE_TYPE_MAP = ['既往病史', '家族病史', '手术史', '过敏史', '用药史', '个人史', '婚育史', '月经史', '运动史']
 	function progressOpacity(t) {
@@ -628,6 +607,11 @@
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
 		},
+		mounted() {
+			this.$nextTick(() => {
+				this.drawScoreRing()
+			})
+		},
 		onLoad(options) {
 			const t = Number(options.type)
 			this.activeTab = Number.isNaN(t) ? 0 : t
@@ -637,9 +621,65 @@
 			this.loadTabData(this.activeTab)
 		},
 		watch: {
-			activeTab(v) { this.loadTabData(v) }
+			activeTab(v) { this.loadTabData(v) },
+			score() {
+				this.$nextTick(() => this.drawScoreRing())
+			},
+			showWeekPopup(v) {
+				if (v) this.$nextTick(() => this.drawWeekScoreRing())
+			},
+			'weekPopup.score'() {
+				if (this.showWeekPopup) this.$nextTick(() => this.drawWeekScoreRing())
+			}
 		},
 		methods: {
+			drawRing(canvasId, score, color, size) {
+				const ctx = uni.createCanvasContext(canvasId, this)
+				const dpr = uni.getSystemInfoSync().pixelRatio || 1
+				const s = size || 120
+				const lineWidth = Math.round(s * 0.084)
+				const r = (s - lineWidth) / 2 - 2
+				const cx = s / 2
+				const cy = s / 2
+				const percent = Math.max(0, Math.min(1, score / 100))
+				ctx.clearRect(0, 0, s, s)
+				ctx.setLineWidth(lineWidth)
+				ctx.setLineCap('round')
+				// 底环
+				ctx.beginPath()
+				ctx.setStrokeStyle('#25133B')
+				ctx.arc(cx, cy, r, 0, Math.PI * 2)
+				ctx.stroke()
+				if (percent <= 0) {
+					ctx.draw()
+					return
+				}
+				// 进度分段绘制，模拟沿圆弧透明度渐变
+				const count = Math.max(24, Math.round(120 * percent))
+				const totalAngle = Math.PI * 2 * percent
+				const segAngle = totalAngle / count
+				const startAngle = -Math.PI / 2
+				for (let i = 0; i < count; i++) {
+					const t = (i + 0.5) / count
+					const a0 = startAngle + i * segAngle
+					const a1 = startAngle + (i + 1) * segAngle
+					ctx.beginPath()
+					ctx.setStrokeStyle(color)
+					ctx.setGlobalAlpha(progressOpacity(t))
+					ctx.setLineCap(i === 0 || i === count - 1 ? 'round' : 'butt')
+					ctx.arc(cx, cy, r, a0, Math.max(a0 + 0.02, a1))
+					ctx.stroke()
+				}
+				ctx.setGlobalAlpha(1)
+				ctx.draw()
+				void dpr
+			},
+			drawScoreRing() {
+				this.drawRing('scoreCanvas', this.score, '#FF2C30', 120)
+			},
+			drawWeekScoreRing() {
+				this.drawRing('weekScoreCanvas', this.weekPopup.score || 0, '#3D9BFF', 110)
+			},
 			unwrapList(res) {
 				if (Array.isArray(res)) return res
 				if (res && Array.isArray(res.list)) return res.list
@@ -666,8 +706,7 @@
 					this.dailyDesc = daily.summary || daily.desc || daily.advice || this.dailyDesc
 				}
 				const list = this.unwrapList(weekly)
-				if (list.length) {
-					this.weekList = list.map((w, i) => {
+				if (list.length) {					this.weekList = list.map((w, i) => {
 						const range = w.dateRangeText || w.dateRange || w.weekRange || w.dateText || ''
 						const d = w.date || w.endDate || w.endTime || ''
 						return {
@@ -682,6 +721,7 @@
 						}
 					})
 				}
+				this.$nextTick(() => this.drawScoreRing())
 			},
 			onDailyDetail() {
 				uni.navigateTo({ url: '/pages/health/aiReport?type=daily' })
@@ -710,42 +750,66 @@
 					this.weekPopup = toPopup((d && typeof d === 'object') ? { ...item.raw, ...item, ...d } : item)
 				} catch (e) { this.weekPopup = toPopup(item) }
 				this.showWeekPopup = true
+				this.$nextTick(() => this.drawWeekScoreRing())
 			},
 			closeWeekPopup() {
 				this.showWeekPopup = false
 			},
 			onWeekShare() {
-				uni.showLoading({ title: '导出中' })
-				const token = uni.getStorageSync('loginToken') || uni.getStorageSync('token') || ''
-				let base = ''
-				try { base = this.$http && this.$http.baseUrl ? this.$http.baseUrl : '' } catch (e) {}
-				if (!base) base = 'https://fx.tailunkaluo.com'
-				const url = `${base}/appApi/ai/report/export`
+				const token = uni.getStorageSync(LOGIN_TOKEN_KEY) || uni.getStorageSync('loginToken') || uni.getStorageSync('token') || ''
+				const url = buildApiUrl('/appApi/ai/report/export')
+				const fileName = `健康周报-${this.weekPopup.dateText || Date.now()}.xlsx`
 				// #ifdef H5
 				try {
 					const a = document.createElement('a')
-					a.href = url
-					a.download = '体检报告解析记录.xlsx'
+					a.href = token ? `${url}?token=${encodeURIComponent(token)}` : url
+					a.download = fileName
 					document.body.appendChild(a)
 					a.click()
 					document.body.removeChild(a)
 				} catch (e) { window.open(url, '_blank') }
-				uni.hideLoading()
-				uni.showToast({ title: '已开始下载', icon: 'none' })
 				return
 				// #endif
+				uni.showLoading({ title: '导出中', mask: true })
 				uni.downloadFile({
 					url,
 					header: token ? { token } : {},
 					success: (res) => {
-						uni.hideLoading()
 						if (res.statusCode !== 200 || !res.tempFilePath) {
+							uni.hideLoading()
 							uni.showToast({ title: '导出失败', icon: 'none' })
 							return
 						}
-						uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+						// 二进制先存为本地持久文件，再用系统菜单分享/保存到手机
+						uni.saveFile({
+							tempFilePath: res.tempFilePath,
+							success: (saved) => {
+								const filePath = saved.savedFilePath || res.tempFilePath
+								uni.hideLoading()
+								uni.showToast({ title: '已下载到手机', icon: 'none' })
+								// 调起系统分享菜单，可保存到文件、微信、相册等
+								// #ifdef APP-PLUS
+								try {
+									plus.share.sendWithSystem({
+										type: 'file',
+										filepath: filePath,
+										filename: fileName
+									}, () => {}, () => {
+										uni.openDocument({ filePath, showMenu: true })
+									})
+									return
+								} catch (e) {}
+								// #endif
+								uni.openDocument({ filePath, showMenu: true })
+							},
+							fail: () => {
+								uni.hideLoading()
+								// saveFile 失败时直接预览临时文件兜底
+								uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+							}
+						})
 					},
-					fail: () => { uni.hideLoading(); uni.showToast({ title: '导出失败', icon: 'none' }) }
+					fail: () => { uni.hideLoading(); uni.showToast({ title: '导出失败，请检查网络', icon: 'none' }) }
 				})
 			},
 			onWeekAskAi() {
@@ -1073,6 +1137,11 @@
 		width: 119.26px;
 		height: 119.26px;
 		transform: rotate(-90deg);
+	}
+
+	.score-canvas {
+		width: 119.26px;
+		height: 119.26px;
 	}
 
 	.score-edge,
@@ -1502,6 +1571,11 @@
 		width: 220rpx;
 		height: 220rpx;
 		transform: rotate(-90deg);
+	}
+
+	.week-score-canvas {
+		width: 220rpx;
+		height: 220rpx;
 	}
 
 	.week-score-center {

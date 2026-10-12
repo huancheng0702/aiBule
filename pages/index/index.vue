@@ -106,8 +106,7 @@
 		height: 100vh;
 		background: #000000;
 		box-sizing: border-box;
-		padding-bottom: calc(128rpx + constant(safe-area-inset-bottom));
-		padding-bottom: calc(128rpx + env(safe-area-inset-bottom));
+		padding-bottom: 160rpx;
 	}
 
 	.page-body {

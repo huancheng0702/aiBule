@@ -1,65 +1,41 @@
 <template>
 	<view class="content">
-		<image
-			v-for="(src, index) in banners"
-			:key="src"
-			:src="src"
-			class="banner"
-			:class="{ active: currentBanner === index }"
-			mode="aspectFill"
-		></image>
-		<!-- 授权页失败 / 非 App / 用户返回时，展示与授权页一致的兜底 UI -->
-		<view v-if="showFallback" class="container">
-		<!-- 	<view class="conPhone">
-				{{ maskPhone || '本机号码' }}
-			</view> -->
+		<view class="container">
 			<view class="oneBtn" @click="onOpenSmsLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					验证码登录
 				</view>
 			</view>
-		<!-- 	<view class="oneBtn" @click="onPhoneLogin">
-				<image src="/static/btnBan.png" class="benBan" mode=""></image>
-				<view class="btntext">
-					本机号码一键登录
-				</view>
-			</view> -->
 			<view class="wxLogin" @click="onWxLogin">
 				微信登录
 			</view>
-		<!-- 	<view class="smsEntry" @click="onOpenSmsLogin">
-				验证码登录
-			</view> -->
-			<view class="agreement" @click="agreed = !agreed">
-				<image :src="agreed ? '/static/check-circle-fil.png' : '/static/checkCircle.png'" class="agreImg" mode=""></image>
+			<view class="agreement">
+				<image @click.stop="agreed = !agreed"
+					:src="agreed ? '/static/check-circle-fil.png' : '/static/checkCircle.png'" class="agreImg" mode="">
+				</image>
 				<view class="agreText">
-					我已阅读并同意 <text>《用户协议与隐私政策》</text>及健康 <text>《数据处理说明》</text>
+					我已阅读并同意 <text class="agreLink" @click="openContent(5)">《隐私政策》</text>及健康 <text class="agreLink"
+						@click="openContent(1)">《用户协议》</text>
 				</view>
 			</view>
 		</view>
+		<image v-for="(src, index) in banners" :key="src" :src="src" class="banner"
+			:class="{ active: currentBanner === index }" mode="aspectFill"></image>
+		<!-- 授权页失败 / 非 App / 用户返回时，展示与授权页一致的兜底 UI -->
+
 
 		<u-popup :show="showSmsLogin" mode="bottom" round="24" :safeAreaInsetBottom="true" @close="closeSmsLogin">
 			<view class="sms-sheet">
 				<view class="sms-title">手机验证码登录</view>
 				<view class="sms-sub">未注册手机号验证后将自动创建账号</view>
 				<view class="sms-field">
-					<input
-						v-model="smsPhone"
-						type="number"
-						maxlength="11"
-						placeholder="请输入手机号"
-						placeholder-class="sms-placeholder"
-					/>
+					<input v-model="smsPhone" type="number" maxlength="11" placeholder="请输入手机号"
+						placeholder-class="sms-placeholder" />
 				</view>
 				<view class="sms-field sms-code-row">
-					<input
-						v-model="smsCode"
-						type="number"
-						maxlength="6"
-						placeholder="请输入验证码"
-						placeholder-class="sms-placeholder"
-					/>
+					<input v-model="smsCode" type="number" maxlength="6" placeholder="请输入验证码"
+						placeholder-class="sms-placeholder" />
 					<view class="sms-send" :class="{ disabled: smsCountdown > 0 || smsSending }" @click="onSendSms">
 						{{ smsCountdown > 0 ? smsCountdown + 's' : '获取验证码' }}
 					</view>
@@ -81,9 +57,17 @@
 		isPrivacyAgreed,
 		setPrivacyAgreed
 	} from '@/common/shanyan-auth.js'
-	import { sendSmsCode, phoneLogin } from '@/common/api/auth.js'
-	import { getUserInfo } from '@/common/api/user.js'
-	import { saveLoginSession } from '@/common/auth.js'
+	import {
+		sendSmsCode,
+		phoneLogin,
+		wxLogin
+	} from '@/common/api/auth.js'
+	import {
+		getUserInfo
+	} from '@/common/api/user.js'
+	import {
+		saveLoginSession
+	} from '@/common/auth.js'
 
 	const PHONE_REG = /^1\d{10}$/
 
@@ -156,15 +140,10 @@
 				})
 				return false
 			},
-			onPhoneLogin() {
-				if (!this.ensureAgree()) return
-				setPrivacyAgreed(true)
-				// #ifdef APP-PLUS
-				this.openShanYanAuth()
-				// #endif
-				// #ifndef APP-PLUS
-				this.showSmsLogin = true
-				// #endif
+			openContent(contentId) {
+				uni.navigateTo({
+					url: '/pages/webAgreement?contentId=' + contentId
+				})
 			},
 			onOpenSmsLogin() {
 				if (!this.ensureAgree()) return
@@ -266,9 +245,14 @@
 				try {
 					const info = await getUserInfo()
 					const infoData = (info && info.data) || info || {}
-					// 用户信息接口一般不带 phoneBound，避免覆盖一键登录返回的绑定态
-					if (infoData && loginData && loginData.phoneBound !== undefined && infoData.phoneBound === undefined) {
+					// 用户信息接口一般不带 phoneBound / needCompleteInfo，避免覆盖登录返回的状态
+					if (infoData && loginData && loginData.phoneBound !== undefined && infoData.phoneBound ===
+						undefined) {
 						infoData.phoneBound = loginData.phoneBound
+					}
+					if (infoData && loginData && loginData.needCompleteInfo !== undefined && infoData.needCompleteInfo ===
+						undefined) {
+						infoData.needCompleteInfo = loginData.needCompleteInfo
 					}
 					saveLoginSession(infoData || {}, loginType)
 				} catch (e) {}
@@ -282,11 +266,7 @@
 			openShanYanAuth() {
 				if (this.launching) return
 				this.launching = true
-				this.showFallback = false
-				uni.showLoading({
-					title: '正在唤起...',
-					mask: true
-				})
+				this.showFallback = true
 				openOneKeyLogin({
 					onWxLogin: () => {
 						finishAuthPage()
@@ -295,51 +275,30 @@
 						this.doWxLogin()
 					},
 					onOpen: () => {
-						uni.hideLoading()
 						this.launching = false
 					},
 					onSuccess: (shanyanToken) => {
-						uni.hideLoading()
 						this.launching = false
 						this.handleShanYanSuccess(shanyanToken)
 					},
 					onCancel: () => {
-						uni.hideLoading()
 						this.launching = false
 						this.showFallback = true
 					},
 					onFail: (err) => {
-						uni.hideLoading()
 						this.launching = false
 						this.showFallback = true
-						// 调试：完整打印原生错误（屏幕 toast 只能看半截）
 						try {
-							console.error('[shanyan] onFail full:', JSON.stringify(err))
+							console.log('[shanyan] onFail silent:', JSON.stringify(err))
 						} catch (e) {
-							console.error('[shanyan] onFail:', err)
+							console.log('[shanyan] onFail silent')
 						}
-						try {
-							uni.setStorageSync('shanyanLastError', JSON.stringify(err || {}))
-						} catch (e) {}
-						const code = (err && (err.code ?? err.innerCode)) || '-'
-						const msg = (err && (err.message || err.innerDesc)) || '一键登录暂不可用'
-						const inner = (err && (err.innerDesc || err.innerCode)) || ''
-						uni.showModal({
-							title: '一键登录失败 ' + code,
-							content: String(msg) + (inner ? '\n' + String(inner) : '') + '\n\n完整信息已存，可在控制台看 [shanyan] onFail full',
-							showCancel: false,
-							confirmText: '知道了'
-						})
 					}
 				})
 			},
 			async handleShanYanSuccess(shanyanToken) {
 				if (!shanyanToken) {
 					this.showFallback = true
-					uni.showToast({
-						title: '未获取到登录凭证',
-						icon: 'none'
-					})
 					return
 				}
 				uni.showLoading({
@@ -356,11 +315,7 @@
 				} catch (e) {
 					finishAuthPage()
 					this.showFallback = true
-					const msg = (e && (e.msg || e.message)) || '登录失败'
-					uni.showToast({
-						title: String(msg).slice(0, 40),
-						icon: 'none'
-					})
+					console.log('[shanyan] exchange fail silent:', (e && (e.msg || e.message)) || e)
 				} finally {
 					uni.hideLoading()
 				}
@@ -370,37 +325,89 @@
 					title: '登录中...',
 					mask: true
 				})
+				uni.login({
+					provider: 'weixin',
+					success: async (loginRes) => {
+						try {
+							const code = loginRes && loginRes.code
+							if (!code) throw new Error('未获取到微信code')
+							let nickName = ''
+							let avatar = ''
+							try {
+								const prof = await new Promise((resolve) => {
+									const timer = setTimeout(() => resolve(null), 1500)
+									uni.getUserProfile({
+										desc: '用于完善账号昵称头像',
+										success: (r) => {
+											clearTimeout(timer)
+											resolve(r)
+										},
+										fail: () => {
+											clearTimeout(timer)
+											resolve(null)
+										}
+									})
+								})
+								const u = (prof && prof.userInfo) || {}
+								nickName = u.nickName || ''
+								avatar = u.avatarUrl || ''
+							} catch (e) {}
+							const res = await wxLogin({ code, nickName, avatar })
+							const loginData = await this.applyLoginResult(res, 'wechat')
+							uni.hideLoading()
+							this.afterLogin(loginData)
+						} catch (e) {
+							uni.hideLoading()
+							const msg = (e && (e.msg || e.message)) || '微信登录失败'
+							uni.showToast({ title: String(msg).slice(0, 40), icon: 'none' })
+						}
+					},
+					fail: () => {
+						uni.hideLoading()
+						uni.showToast({ title: '微信授权失败', icon: 'none' })
+					}
+				})
+			},
+			goBindPhone(loginData) {
+				const uid = (loginData && (loginData.userId || loginData.id)) || uni.getStorageSync('userId') || ''
+				const need = loginData && loginData.needCompleteInfo !== undefined ? !!loginData.needCompleteInfo : !!uni.getStorageSync('needCompleteInfo')
+				uni.showToast({ title: '请绑定手机号', icon: 'none' })
 				setTimeout(() => {
-					uni.hideLoading()
-					const isFirstLogin = !uni.getStorageSync('onboardingDone')
-					uni.setStorageSync('token', 'mock-token-wechat')
-					uni.setStorageSync('loginType', 'wechat')
-					uni.setStorageSync('isFirstLogin', isFirstLogin)
-					this.afterLogin()
-				}, 600)
+					uni.navigateTo({ url: '/pages/mine/bindPhone?from=login' + (uid ? '&userId=' + uid : '') + (need ? '&needCompleteInfo=1' : '') })
+				}, 400)
+			},
+			goProfile() {
+				uni.reLaunch({ url: '/pages/mine/myInfo' })
 			},
 			afterLogin(loginData) {
 				let data = (loginData && loginData.data) || loginData || {}
 				if (data.phoneBound === undefined) {
 					const stored = uni.getStorageSync('phoneBound')
 					if (stored !== '' && stored !== undefined && stored !== null) {
-						data = Object.assign({}, data, { phoneBound: !!stored })
+						data = Object.assign({}, data, {
+							phoneBound: !!stored
+						})
 					}
 				}
-				// phoneBound=false（未绑定手机号）：停在登录页引导走验证码绑定/登录
+				if (data.needCompleteInfo === undefined) {
+					const storedNeed = uni.getStorageSync('needCompleteInfo')
+					if (storedNeed !== '' && storedNeed !== undefined && storedNeed !== null) {
+						data = Object.assign({}, data, {
+							needCompleteInfo: !!storedNeed
+						})
+					}
+				}
 				if (data.phoneBound === false) {
 					this.showFallback = true
-					this.showSmsLogin = true
-					uni.showToast({
-						title: '请绑定手机号',
-						icon: 'none'
-					})
+					this.goBindPhone(data)
+					return
+				}
+				if (data.needCompleteInfo === true) {
+					this.goProfile()
 					return
 				}
 				if (!uni.getStorageSync('onboardingDone')) {
-					uni.reLaunch({
-						url: '/pages/mine/myInfo'
-					})
+					this.goProfile()
 					return
 				}
 				uni.reLaunch({
@@ -412,11 +419,12 @@
 </script>
 
 <style lang="scss" scoped>
-	.content{
+	.content {
 		position: relative;
 		width: 100%;
 		height: 100vh;
-		.banner{
+
+		.banner {
 			position: absolute;
 			top: 0;
 			left: 0;
@@ -424,11 +432,14 @@
 			height: 100%;
 			opacity: 0;
 			transition: opacity 0.8s ease;
-			&.active{
+			z-index: 1;
+
+			&.active {
 				opacity: 1;
 			}
 		}
-		.container{
+
+		.container {
 			width: 100%;
 			position: absolute;
 			text-align: center;
@@ -436,22 +447,27 @@
 			left: 0;
 			padding: 0 30rpx;
 			box-sizing: border-box;
-			.conPhone{
-				font-size:56rpx;
+			z-index: 999;
+
+			.conPhone {
+				font-size: 56rpx;
 				font-weight: bold;
 				color: #09090D;
 			}
-			.oneBtn{
+
+			.oneBtn {
 				width: 100%;
 				height: 96rpx;
 				text-align: center;
 				position: relative;
 				margin-top: 40rpx;
-				image{
+
+				image {
 					width: 100%;
 					height: 100%;
 				}
-				.btntext{
+
+				.btntext {
 					width: 100%;
 					height: 100%;
 					text-align: center;
@@ -463,7 +479,8 @@
 					font-size: 30rpx;
 				}
 			}
-			.wxLogin{
+
+			.wxLogin {
 				width: 100%;
 				height: 96rpx;
 				border: 1px solid #2C89FF;
@@ -474,7 +491,8 @@
 				margin: 30rpx 0 20rpx;
 				box-sizing: border-box;
 			}
-			.smsEntry{
+
+			.smsEntry {
 				width: 100%;
 				height: 80rpx;
 				color: #2C89FF;
@@ -485,40 +503,52 @@
 			}
 		}
 	}
-	.agreement{
+
+	.agreement {
 		display: flex;
 		justify-content: flex-start;
 		align-items: flex-start;
-		image{
+
+		image {
 			width: 36rpx;
 			height: 36rpx;
 			margin-right: 15rpx;
 		}
-		.agreText{
+
+		.agreText {
 			font-size: 24rpx;
 			color: #666;
 			flex: 1;
 			text-align: left;
-			text{
-				color:#2C89FF;
+
+			text {
+				color: #2C89FF;
+			}
+
+			.agreLink {
+				padding: 10rpx 6rpx;
 			}
 		}
 	}
-	.sms-sheet{
+
+	.sms-sheet {
 		padding: 40rpx 32rpx 48rpx;
-		.sms-title{
+
+		.sms-title {
 			font-size: 36rpx;
 			font-weight: bold;
 			color: #09090D;
 			text-align: center;
 		}
-		.sms-sub{
+
+		.sms-sub {
 			margin-top: 12rpx;
 			font-size: 24rpx;
 			color: #999;
 			text-align: center;
 		}
-		.sms-field{
+
+		.sms-field {
 			margin-top: 28rpx;
 			height: 96rpx;
 			background: #F5F6F8;
@@ -526,34 +556,40 @@
 			padding: 0 28rpx;
 			display: flex;
 			align-items: center;
-			input{
+
+			input {
 				flex: 1;
 				height: 96rpx;
 				font-size: 30rpx;
 				color: #09090D;
 			}
 		}
-		.sms-code-row{
-			.sms-send{
+
+		.sms-code-row {
+			.sms-send {
 				flex-shrink: 0;
 				padding-left: 20rpx;
 				font-size: 26rpx;
 				color: #2C89FF;
-				&.disabled{
+
+				&.disabled {
 					color: #999;
 				}
 			}
 		}
-		.sms-submit{
+
+		.sms-submit {
 			margin-top: 40rpx;
 			width: 100%;
 			height: 96rpx;
 			position: relative;
-			.sms-submit-bg{
+
+			.sms-submit-bg {
 				width: 100%;
 				height: 100%;
 			}
-			.sms-submit-text{
+
+			.sms-submit-text {
 				position: absolute;
 				left: 0;
 				top: 0;
@@ -566,7 +602,8 @@
 			}
 		}
 	}
-	.sms-placeholder{
+
+	.sms-placeholder {
 		color: #B8B8B8;
 	}
 </style>

@@ -346,6 +346,18 @@
 			}
 		},
 		{
+			"path": "pages/mine/bindPhone",
+			"style": {
+				"navigationBarTitleText": "绑定手机号",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
 			"path": "pages/mine/contentView",
 			"style": {
 				"navigationBarTitleText": "内容详情",
@@ -382,7 +394,19 @@
 			}
 		},
 		{
-			"path": "pages/mine/webview",
+			"path": "pages/mine/minewebview",
+			"style": {
+				"navigationBarTitleText": "",
+				"backgroundColor": "#000000",
+				"navigationBarBackgroundColor": "#000000",
+				"navigationBarTextStyle": "white",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/webAgreement",
 			"style": {
 				"navigationBarTitleText": "",
 				"backgroundColor": "#000000",

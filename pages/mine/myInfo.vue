@@ -11,6 +11,16 @@
 			</view>
 		</view>
 
+		<!-- 头像 -->
+		<view class="avatar-row" @click="onChooseAvatar">
+			<image class="avatar-img" :src="avatar || '/static/defaultAvatar.png'" mode="aspectFill"></image>
+			<view class="avatar-tip">
+				<text class="avatar-title">设置头像</text>
+				<text class="avatar-sub">{{ uploading ? '上传中...' : '点击更换头像' }}</text>
+			</view>
+			<text class="avatar-arrow">›</text>
+		</view>
+
 		<!-- 表单 -->
 		<view class="form">
 			<!-- 昵称 -->
@@ -100,6 +110,7 @@
 
 <script>
 	import { getUserInfo, editUserInfo } from '@/common/api/user.js'
+	import { uploadFile } from '@/common/api/file.js'
 	import { saveLoginSession, USER_ID_KEY, USER_INFO_KEY } from '@/common/auth.js'
 
 	function pad(n) {
@@ -128,7 +139,9 @@
 			return {
 				fromMine: false,
 				saving: false,
+				uploading: false,
 				userId: null,
+				avatar: '',
 				nickname: '',
 				gender: '',
 				birthday: '',
@@ -148,6 +161,7 @@
 				const userInfo = uni.getStorageSync(USER_INFO_KEY) || {}
 				const src = Object.keys(cached).length ? cached : userInfo
 				this.userId = uni.getStorageSync(USER_ID_KEY) || userInfo.userId || null
+				this.avatar = src.avatar || uni.getStorageSync('avatar') || this.avatar
 				this.nickname = src.nickName || src.nickname || this.nickname
 				this.gender = mapGenderToUi(src.gender) || this.gender
 				this.birthday = src.birthday || this.birthday
@@ -164,6 +178,7 @@
 					if (!info) return
 					saveLoginSession(info)
 					this.userId = info.userId != null ? info.userId : this.userId
+					this.avatar = info.avatar || this.avatar
 					this.nickname = info.nickName || info.nickname || this.nickname
 					this.gender = mapGenderToUi(info.gender) || this.gender
 					this.birthday = info.birthday || this.birthday
@@ -177,6 +192,38 @@
 			},
 			onBirthdayChange(e) {
 				this.birthday = e.detail.value
+			},
+			onChooseAvatar() {
+				if (this.uploading) return
+				uni.chooseImage({
+					count: 1,
+					sizeType: ['compressed'],
+					sourceType: ['album', 'camera'],
+					success: (res) => {
+						const filePath = res.tempFilePaths && res.tempFilePaths[0]
+						if (!filePath) return
+						this.uploadAvatar(filePath)
+					}
+				})
+			},
+			async uploadAvatar(filePath) {
+				this.uploading = true
+				uni.showLoading({ title: '上传中...', mask: true })
+				try {
+					const data = await uploadFile(filePath)
+					const url = typeof data === 'string' ? data : (data && (data.url || data.fileUrl || data.path))
+					if (!url) {
+						uni.showToast({ title: '上传失败，请重试', icon: 'none' })
+						return
+					}
+					this.avatar = String(url)
+					uni.setStorageSync('avatar', this.avatar)
+				} catch (e) {
+					// uploadFile 内部已 toast
+				} finally {
+					this.uploading = false
+					uni.hideLoading()
+				}
 			},
 			validate() {
 				if (!this.nickname || !String(this.nickname).trim()) {
@@ -210,6 +257,7 @@
 				return {
 					userId: this.userId || uni.getStorageSync(USER_ID_KEY),
 					nickName,
+					avatar: this.avatar || undefined,
 					gender: mapGenderToApi(this.gender),
 					birthday: this.birthday,
 					height,
@@ -220,6 +268,7 @@
 				uni.setStorageSync('userBasicInfo', {
 					nickname: payload.nickName,
 					nickName: payload.nickName,
+					avatar: this.avatar,
 					gender: this.gender,
 					birthday: payload.birthday,
 					height: payload.height,
@@ -228,6 +277,7 @@
 				saveLoginSession({
 					userId: payload.userId,
 					nickName: payload.nickName,
+					avatar: this.avatar,
 					gender: payload.gender,
 					birthday: payload.birthday,
 					height: payload.height,
@@ -320,6 +370,51 @@
 		font-size: 22rpx;
 		line-height: 30rpx;
 		color: rgba(255, 255, 255, 0.55);
+	}
+
+	.avatar-row {
+		margin-top: 48rpx;
+		padding: 24rpx 28rpx;
+		border-radius: 20rpx;
+		background: #1a1b25;
+		display: flex;
+		align-items: center;
+	}
+
+	.avatar-img {
+		width: 120rpx;
+		height: 120rpx;
+		border-radius: 60rpx;
+		background: #2a2b38;
+		flex-shrink: 0;
+	}
+
+	.avatar-tip {
+		flex: 1;
+		min-width: 0;
+		margin-left: 24rpx;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.avatar-title {
+		font-size: 30rpx;
+		line-height: 42rpx;
+		color: #ffffff;
+	}
+
+	.avatar-sub {
+		margin-top: 6rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.4);
+	}
+
+	.avatar-arrow {
+		font-size: 36rpx;
+		line-height: 36rpx;
+		color: rgba(255, 255, 255, 0.3);
+		flex-shrink: 0;
 	}
 
 	.form {

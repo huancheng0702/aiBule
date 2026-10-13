@@ -177,7 +177,7 @@
 </template>
 
 <script>
-	import { getReportHistory, getReportDetail, analyzeReportStreamByUrl } from '@/common/api/ai.js'
+	import { getReportHistory, getReportDetail, analyzeReportStreamByUrl, exportAndDownloadReport } from '@/common/api/ai.js'
 	import { uploadFile } from '@/common/api/file.js'
 
 	function pad2(n) {
@@ -278,6 +278,7 @@
 				],
 				reportList: [],
 				reportLoading: false,
+				exporting: false,
 				streaming: false,
 				streamItems: [],
 				streamAdvice: '',
@@ -620,11 +621,19 @@
 					}
 				})
 			},
-			onParseShare() {
-				uni.showToast({
-					title: '分享/导出',
-					icon: 'none'
-				})
+			async onParseShare() {
+				if (this.exporting) return
+				const reportId = this.parseResult && this.parseResult.reportId
+				if (this.streaming || reportId == null || reportId === '') {
+					uni.showToast({ title: '报告尚未生成，请稍后重试', icon: 'none' })
+					return
+				}
+				this.exporting = true
+				try {
+					await exportAndDownloadReport([reportId])
+				} finally {
+					this.exporting = false
+				}
 			},
 			onParseAsk() {
 				uni.showToast({

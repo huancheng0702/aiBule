@@ -1,7 +1,7 @@
 <template>
 	<view class="page">
 		<view class="hero">
-			<image class="logo" :src="logo || '/static/hic.png'" mode="aspectFit"></image>
+			<image class="logo" src="/static/logo.png" mode=""></image>
 			<text class="app-name">{{ appName || 'AI智能戒指' }}</text>
 			<text class="app-version">V版本{{ version }}</text>
 		</view>
@@ -91,7 +91,6 @@
 		width: 140rpx;
 		height: 140rpx;
 		border-radius: 32rpx;
-		background: #2c89ff;
 	}
 
 	.app-name {

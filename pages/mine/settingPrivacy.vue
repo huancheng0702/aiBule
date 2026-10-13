@@ -51,7 +51,7 @@
 					<text class="popup-sub">手机号、登录与账号状态</text>
 
 					<view class="info-grid">
-						<view v-for="item in securityCards" :key="item.key" class="info-card">
+						<view v-for="item in securityCards" :key="item.key" class="info-card" @click="onSecurityCard(item)">
 							<!-- 图标，自行补充 src -->
 							<image class="info-icon" :src="item.icon" mode=""></image>
 							<text class="info-label">{{ item.label }}</text>
@@ -266,7 +266,7 @@
 				}
 				if (item.key === 'policy') {
 					uni.navigateTo({
-						url: '/pages/mine/webview?contentId=5'
+						url: '/pages/mine/minewebview?contentId=5'
 					})
 					return
 				}
@@ -281,6 +281,12 @@
 				this.applyCachedUser()
 				this.showSecurityPopup = true
 				this.loadAccountInfo()
+			},
+			onSecurityCard(item) {
+				if (item && item.key === 'phone') {
+					this.showSecurityPopup = false
+					uni.navigateTo({ url: '/pages/mine/bindPhone' })
+				}
 			},
 			closeSecurityPopup() {
 				this.showSecurityPopup = false

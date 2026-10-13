@@ -61,7 +61,11 @@
 				]
 			}
 		},
-		onLoad() {
+		onLoad(options) {
+			const t = Number(options && options.tab)
+			if (!Number.isNaN(t) && t >= 0 && t <= 3) {
+				this.current = t
+			}
 			this.checkEntry()
 		},
 		onShow() {

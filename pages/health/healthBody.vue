@@ -28,8 +28,8 @@
 				</scroll-view>
 
 				<view class="body-visual">
-					<image class="body-img" :src="bodyImgSrc" mode=""></image>
 					<image class="body-base" src="/static/bodyBg.png" mode=""></image>
+					<image v-if="bodyImgSrc" class="body-img" :src="bodyImgSrc" mode="aspectFit"></image>
 
 					<!-- 从上到下检测线 -->
 					<view v-if="scanning" class="scan-band">
@@ -85,22 +85,9 @@
 						<text class="summary-desc">{{ summaryDesc }}</text>
 					</view>
 					<view class="score-wrap">
-						<svg class="score-svg" viewBox="0 0 100 100">
-							<defs>
-								<linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-									<stop offset="0%" stop-color="#1A5CFF" />
-									<stop offset="45%" stop-color="#3D9BFF" />
-									<stop offset="100%" stop-color="#7AD0FF" />
-								</linearGradient>
-							</defs>
-							<circle class="score-track" cx="50" cy="50" :r="scoreRing.r"
-								:stroke-width="scoreRing.stroke" stroke="rgba(255,255,255,0.12)" />
-							<circle class="score-progress" cx="50" cy="50" :r="scoreRing.r"
-								:stroke-width="scoreRing.stroke" stroke="url(#scoreGrad)"
-								:stroke-dasharray="scoreRing.dash" stroke-linecap="round" />
-						</svg>
+						<canvas canvas-id="bodyScoreCanvas" id="bodyScoreCanvas" class="score-canvas"></canvas>
 						<view class="score-center">
-							<text class="score-num">{{ score }}</text>
+							<text class="score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${scoreAccentColor} 100%)` }">{{ score }}</text>
 							<text class="score-label">综合分</text>
 						</view>
 					</view>
@@ -250,6 +237,20 @@ function ringDash(r, percent) {
 	return `${circ * p} ${circ}`
 }
 
+// 与 healthRecord.vue 同一套三段配色：80-100 蓝，50-79 黄，0-49 红
+function scoreStops(score) {
+	const s = Number(score) || 0
+	if (s >= 80) return ['#2C89FF', '#1D4FA0', '#12255E']
+	if (s >= 50) return ['#FF9D2C', '#825434', '#39293A']
+	return ['#E92A31', '#B52634', '#3B173A']
+}
+function scoreAccent(score) {
+	const s = Number(score) || 0
+	if (s >= 80) return '#3D9BFF'
+	if (s >= 50) return '#FFDA20'
+	return '#FF2C30'
+}
+
 function pad2(n) {
 	return String(n).padStart(2, '0')
 }
@@ -380,16 +381,13 @@ export default {
 		bodyImgSrc() {
 			const part = this.partList[this.activePart]
 			if (part && part.icon) return part.icon
-			return '/static/bodyImg.png'
+			return ''
 		},
 		scoreRing() {
-			const r = 40
-			const stroke = 8
-			return {
-				r,
-				stroke,
-				dash: ringDash(r, this.score / 100)
-			}
+			return { r: 40, stroke: 8, dash: '' }
+		},
+		scoreAccentColor() {
+			return scoreAccent(this.score)
 		},
 		dateRangeText() {
 			if (!this.rangeStart) return ''
@@ -432,6 +430,15 @@ export default {
 		this.rangeStart = startOfWeekMonday(new Date())
 		this.startBodyScan()
 		this.bootstrap()
+		this.$nextTick(() => this.drawBodyRing())
+	},
+	mounted() {
+		this.$nextTick(() => this.drawBodyRing())
+	},
+	watch: {
+		score() {
+			this.$nextTick(() => this.drawBodyRing())
+		}
 	},
 	onUnload() {
 		this.clearScanTimer()
@@ -452,6 +459,44 @@ export default {
 				this.showBubbles = true
 				this.scanTimer = null
 			}, 2000)
+		},
+		drawBodyRing() {
+			const canvasId = 'bodyScoreCanvas'
+			const score = this.score
+			const size = 80
+			const ctx = uni.createCanvasContext(canvasId, this)
+			if (!ctx) return
+			const s = size
+			const cx = s / 2
+			const cy = s / 2
+			const lineWidth = Math.round(s * 0.1)
+			const r = (s - lineWidth) / 2 - 2
+			const percent = Math.max(0, Math.min(1, score / 100))
+			const startAngle = -Math.PI / 2
+			const strokeArc = (from, to, style, width, cap) => {
+				ctx.beginPath()
+				ctx.setLineWidth(width)
+				ctx.setStrokeStyle(style)
+				ctx.setLineCap(cap)
+				ctx.arc(cx, cy, r, from, to, false)
+				ctx.stroke()
+			}
+			ctx.clearRect(0, 0, s, s)
+			const sNum = Number(score) || 0
+			const trackPair = sNum >= 80 ? ['#1B2E50', '#14213B'] : sNum >= 50 ? ['#3A341C', '#2A2515'] : ['#3A1E2A', '#2B1620']
+			strokeArc(0, Math.PI * 2, trackPair[0], lineWidth + 1.5, 'butt')
+			strokeArc(0, Math.PI * 2, trackPair[1], lineWidth, 'butt')
+			if (percent > 0) {
+				const full = percent >= 0.999
+				const endAngle = startAngle + Math.PI * 2 * (full ? 1 : percent)
+				const stops = scoreStops(score)
+				const gradient = ctx.createLinearGradient(cx, cy - r, cx, cy + r)
+				gradient.addColorStop(0, stops[0])
+				gradient.addColorStop(0.52, stops[1])
+				gradient.addColorStop(1, stops[2])
+				strokeArc(startAngle, endAngle, gradient, lineWidth, full ? 'butt' : 'round')
+			}
+			ctx.draw()
 		},
 		async bootstrap() {
 			await Promise.all([
@@ -557,11 +602,13 @@ export default {
 										? item.organId
 										: null,
 						icon: pickText(item.icon, item.iconUrl, item.img, item.imageUrl),
-						items: asArray(item.items)
+						items: asArray(item.items),
+						sort: Number(item.sort != null ? item.sort : 999)
 					}))
 					.filter((item) => item.name)
-				const whole = { name: '全身', categoryId: null, icon: '' }
-				this.partList = [whole].concat(organs)
+					.sort((a, b) => a.sort - b.sort)
+				const hasWhole = organs.some((o) => o.name === '全身')
+				this.partList = hasWhole ? organs : [{ name: '全身', categoryId: null, icon: '', sort: 0 }].concat(organs)
 				if (this.activePart >= this.partList.length) {
 					this.activePart = 0
 				}
@@ -1256,6 +1303,11 @@ export default {
 		transform: rotate(-90deg);
 	}
 
+	.score-canvas {
+		width: 160rpx;
+		height: 160rpx;
+	}
+
 	.score-track,
 	.score-progress {
 		fill: none;
@@ -1277,7 +1329,11 @@ export default {
 		font-size: 44rpx;
 		font-weight: 700;
 		line-height: 52rpx;
-		color: #ffffff;
+		background-image: linear-gradient(to right, #FFFFFF 28%, #3D9BFF 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
 	}
 
 	.score-label {

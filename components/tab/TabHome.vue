@@ -642,10 +642,8 @@
 			this.unsubBle = BleService.subscribe((s) => {
 				this.batteryLevel = s.batteryLevel
 				this.batteryCharging = !!s.batteryCharging
-				if (s && s.sport) this.applyBleSport(s.sport)
+				this.onBleSportUploaded(s && s.sport)
 			})
-			const cached = BleService.getSport && BleService.getSport()
-			if (cached) this.applyBleSport(cached)
 		},
 		beforeDestroy() {
 			if (this.unsubBle) {
@@ -716,17 +714,16 @@
 			}
 		},
 		methods: {
-			applyBleSport(s) {
+			onBleSportUploaded(s) {
 				if (!s) return
-				if (Number(s.steps) >= 0) this.stepCurrent = Number(s.steps)
-				if (Number(s.calories) >= 0) this.calorieCurrent = Number(s.calories)
-				if (s.distanceKm != null) this.distanceCurrent = Number(s.distanceKm)
-				else if (s.distanceM != null) this.distanceCurrent = Math.round((Number(s.distanceM) / 1000) * 10) / 10
+				const key = [s.steps, s.distanceM, s.calories, s.updatedAt].join('|')
+				if (key === this._lastBleSportKey) return
+				this._lastBleSportKey = key
+				clearTimeout(this._bleReloadTimer)
+				this._bleReloadTimer = setTimeout(() => { this.loadDashboard() }, 1500)
 			},
 			onTabShow() {
 				this.loadHome()
-				const cached = BleService.getSport && BleService.getSport()
-				if (cached) this.applyBleSport(cached)
 				BleService.syncSport && BleService.syncSport().catch(() => {})
 			},
 			async loadHome() {
@@ -747,11 +744,9 @@
 				const items = (data && data.items) || []
 				const steps = pickDashItem(items, 'steps')
 				if (steps) {
-					// 今日步数/距离/消耗走蓝牙实时，不用接口覆盖；接口只提供目标值
+					if (Number(steps.value) >= 0) this.stepCurrent = Number(steps.value)
 					if (Number(steps.target) > 0) this.stepTarget = Number(steps.target)
 					else this.stepTarget = 10000
-					const cached = BleService.getSport && BleService.getSport()
-					if (cached) this.applyBleSport(cached)
 				}
 				const sleep = pickDashItem(items, 'sleep')
 				if (sleep) {

@@ -139,25 +139,10 @@
 
 	const GOAL_STORAGE_KEY = 'todayStepGoals'
 
-	function progressOpacity(t) {
-		const p = Math.max(0, Math.min(1, t))
-		// 暗尾(起点)→亮头(终点)：起点隐入底色，终点最亮领跑
-		return 0.12 + (1 - 0.12) * Math.pow(p, 1.6)
-	}
-
 	function safeRatio(current, target) {
 		const t = Number(target)
 		if (!t || t <= 0) return 0
 		return Math.max(0, Math.min(1, Number(current) / t))
-	}
-
-	function hexToRgba(hex, opacity) {
-		const h = String(hex || '').replace('#', '')
-		if (h.length !== 6) return `rgba(255,255,255,${opacity})`
-		const r = parseInt(h.slice(0, 2), 16)
-		const g = parseInt(h.slice(2, 4), 16)
-		const b = parseInt(h.slice(4, 6), 16)
-		return `rgba(${r},${g},${b},${opacity})`
 	}
 
 	export default {
@@ -235,7 +220,7 @@
 			this.loadGoals()
 			this.refreshByDate()
 			this._unsubBle = BleService.subscribe((st) => {
-				if (st && st.sport) this.applyBleSport(st.sport)
+				this.onBleSportUploaded(st && st.sport)
 			})
 		},
 		mounted() {
@@ -282,83 +267,73 @@
 				const scale = size / 100
 				const cx = size / 2
 				const cy = size / 2
-				// 6 点钟起笔，顺时针推进
+				// 设计稿从 6 点钟方向起笔，沿顺时针方向推进。
 				const startAngle = Math.PI / 2
-
 				const rings = [{
-						r: 42 * scale,
-						stroke: 8 * scale,
-						color: '#FFC53D',
-						track: '#2E2410',
-						ratio: this.stepRatio
-					},
-					{
-						r: 32 * scale,
-						stroke: 8 * scale,
-						color: '#FF2C30',
-						track: '#2E1418',
-						ratio: this.calorieRatio
-					},
-					{
-						r: 22 * scale,
-						stroke: 8 * scale,
-						color: '#3D9BFF',
-						track: '#12233A',
-						ratio: this.distanceRatio
-					}
-				]
+					radius: 40.5,
+					width: 9,
+					track: '#292725',
+					edge: '#36363E',
+					gradient: ['#8D6A1F', '#604A20', '#BD8919'],
+					ratio: this.stepRatio
+				}, {
+					radius: 27.5,
+					width: 7,
+					track: '#291E24',
+					edge: '#3A2931',
+					gradient: ['#A74436', '#ED503F', '#FF454A'],
+					ratio: this.calorieRatio
+				}, {
+					radius: 16,
+					width: 5.5,
+					track: '#14213B',
+					edge: '#1B2E50',
+					gradient: ['#173665', '#2375D6', '#318FFF'],
+					ratio: this.distanceRatio
+				}]
 
+				const strokeArc = (radius, width, color, from, to, cap = 'butt') => {
+					ctx.beginPath()
+					ctx.setLineWidth(width * scale)
+					ctx.setStrokeStyle(color)
+					ctx.setLineCap(cap)
+					ctx.arc(cx, cy, radius * scale, from, to, false)
+					ctx.stroke()
+				}
 				ctx.clearRect(0, 0, size, size)
 
-				for (let ri = 0; ri < rings.length; ri++) {
-					const ring = rings[ri]
-					ctx.beginPath()
-					ctx.setLineWidth(ring.stroke)
-					ctx.setStrokeStyle(ring.track)
-					ctx.setLineCap('butt')
-					ctx.arc(cx, cy, ring.r, 0, Math.PI * 2, false)
-					ctx.stroke()
-
-					const percent = Math.max(0, Math.min(1, ring.ratio))
-					if (percent <= 0) continue
-
-					const totalAngle = Math.PI * 2 * percent
-					const count = Math.max(24, Math.round(120 * percent))
-					const segAngle = totalAngle / count
-					const overlap = 0.01
-
-					for (let i = 0; i < count; i++) {
-						// 亮头(起点)→暗尾(终点)，与原先视觉一致
-						const t = 1 - (i + 0.5) / count
-						const opacity = progressOpacity(t)
-						const a0 = startAngle + i * segAngle
-						const a1 = startAngle + (i + 1) * segAngle + overlap
-						const isEnd = i === 0 || i === count - 1
-						ctx.beginPath()
-						ctx.setLineWidth(ring.stroke)
-						ctx.setStrokeStyle(hexToRgba(ring.color, opacity))
-						ctx.setLineCap(isEnd ? 'round' : 'butt')
-						ctx.arc(cx, cy, ring.r, a0, a1, false)
-						ctx.stroke()
-					}
-
-					// 亮头轻微发光，增强起笔辨识
-					const headStart = startAngle
-					const headEnd = startAngle + segAngle
-					ctx.beginPath()
-					ctx.setLineWidth(ring.stroke)
-					ctx.setStrokeStyle(hexToRgba(ring.color, 1))
-					ctx.setLineCap('round')
-					try {
-						if (ctx.setShadow) ctx.setShadow(0, 0, 3 * scale, ring.color)
-					} catch (e) {}
-					ctx.arc(cx, cy, ring.r, headStart, headEnd, false)
-					ctx.stroke()
-					try {
-						if (ctx.setShadow) ctx.setShadow(0, 0, 0, 'rgba(0,0,0,0)')
-					} catch (e) {}
+				// 先画三条完整暗色轨道。外缘细线是 UI 图里环与背景之间的层次。
+				for (let i = 0; i < rings.length; i++) {
+					const ring = rings[i]
+					strokeArc(ring.radius, ring.width + 1.2, ring.edge, 0, Math.PI * 2)
+					strokeArc(ring.radius, ring.width, ring.track, 0, Math.PI * 2)
 				}
 
+				// 再画进度。不同粗细、统一起点与由暗到亮的纵向渐变均按设计稿处理。
+				for (let i = 0; i < rings.length; i++) {
+					const ring = rings[i]
+					const percent = Math.max(0, Math.min(1, Number(ring.ratio) || 0))
+					if (percent <= 0) continue
+
+					const full = percent >= 0.999
+					const endAngle = startAngle + Math.PI * 2 * (full ? 1 : percent)
+					const gradient = ctx.createLinearGradient(cx, cy - ring.radius * scale, cx, cy + ring.radius * scale)
+					gradient.addColorStop(0, ring.gradient[0])
+					gradient.addColorStop(0.52, ring.gradient[1])
+					gradient.addColorStop(1, ring.gradient[2])
+
+					// 辉光层使用平头，避免在弧线两端形成额外的圆点。
+					strokeArc(ring.radius, ring.width + 3.2, ring.shadow, startAngle, endAngle, 'butt')
+					strokeArc(ring.radius, ring.width, gradient, startAngle, endAngle, full ? 'butt' : 'round')
+				}
+
+				ctx.beginPath()
+				ctx.setFillStyle('#17213A')
+				ctx.setStrokeStyle('#1D2A48')
+				ctx.setLineWidth(0.8 * scale)
+				ctx.arc(cx, cy, 8.2 * scale, 0, Math.PI * 2, false)
+				ctx.fill()
+				ctx.stroke()
 				ctx.draw()
 			},
 			loadGoals() {
@@ -409,40 +384,36 @@
 			},
 			refreshByDate() {
 				if (this.isActiveToday()) {
-					// 今日：目标仍可走接口，但步数/距离/消耗走蓝牙实时
-					this.loadTrend(true)
-					const s = BleService.getSport && BleService.getSport()
-					if (s) this.applyBleSport(s)
+					this.loadTrend()
 					BleService.syncSport && BleService.syncSport().catch(() => {})
 				} else {
 					this.loadTrend()
 				}
 			},
-			applyBleSport(s) {
+			onBleSportUploaded(s) {
 				if (!s || !this.isActiveToday()) return
-				if (Number(s.steps) >= 0) this.stepCurrent = Number(s.steps)
-				if (Number(s.calories) >= 0) this.calorieCurrent = Number(s.calories)
-				if (s.distanceKm != null) this.distanceCurrent = Number(s.distanceKm)
-				else if (s.distanceM != null) this.distanceCurrent = Math.round((Number(s.distanceM) / 1000) * 10) / 10
-				this.statsMax = this.stepCurrent
-				this.statsMin = this.stepCurrent
-				this.statsAvg = this.stepCurrent
+				const key = [s.steps, s.distanceM, s.calories, s.updatedAt].join('|')
+				if (key === this._lastBleKey) return
+				this._lastBleKey = key
+				clearTimeout(this._bleReloadTimer)
+				this._bleReloadTimer = setTimeout(() => {
+					this.loadTrend()
+				}, 1500)
 			},
-			async loadTrend(targetOnly = false) {
+			async loadTrend() {
 				const date = this.getActiveDate()
 				try {
 					const data = await getSportTrend(date)
-					this.applyTrend(data, targetOnly)
+					this.applyTrend(data)
 				} catch (e) {}
 			},
-			applyTrend(data, targetOnly = false) {
+			applyTrend(data) {
 				if (!data) return
-				if (!targetOnly) {
+				
 				this.stepCurrent = Number(data.totalSteps) || 0
 				this.calorieCurrent = Math.round(Number(data.totalCalories) || 0)
 				const meters = Number(data.totalDistance) || 0
 				this.distanceCurrent = Math.round((meters / 1000) * 10) / 10
-				}
 				if (Number(data.target) > 0) {
 					this.stepTarget = Number(data.target)
 					const g = this.goalList.find((i) => i.key === 'step')
@@ -460,19 +431,9 @@
 					const g = this.goalList.find((i) => i.key === 'duration')
 					if (g) g.value = Number(data.sportTimeTarget)
 				}
-				if (targetOnly) {
-					const s = BleService.getSport && BleService.getSport()
-					if (s) this.applyBleSport(s)
-					else {
-						this.statsMax = this.stepCurrent
-						this.statsMin = this.stepCurrent
-						this.statsAvg = this.stepCurrent
-					}
-				} else {
 				this.statsMax = this.stepCurrent
 				this.statsMin = this.stepCurrent
 				this.statsAvg = this.stepCurrent
-				}
 				const desc = data.description || data.desc || data.status
 				if (desc) this.tipText = desc
 			},

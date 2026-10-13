@@ -220,6 +220,11 @@
 		return ''
 	}
 
+	function barGroup(type) {
+		if (type === 'period' || type === 'predict') return 'menstrual'
+		return type
+	}
+
 	function buildWeek(row) {
 		const bars = []
 		let i = 0
@@ -229,13 +234,14 @@
 				i += 1
 				continue
 			}
+			const group = barGroup(type)
 			let j = i
-			while (j + 1 < 7 && visibleBg(row[j + 1]) === type) {
+			while (j + 1 < 7 && barGroup(visibleBg(row[j + 1])) === group) {
 				j += 1
 			}
 			const count = j - i + 1
 			bars.push({
-				type,
+				type: group,
 				left: ((i / 7) * 100).toFixed(4) + '%',
 				width: ((count / 7) * 100).toFixed(4) + '%'
 			})
@@ -698,12 +704,10 @@
 		border-radius: 16rpx;
 	}
 
-	.cal-run.period {
-		background: rgba(240, 68, 136, 0.10);
-	}
-
-	.cal-run.predict {
-		background: rgba(255, 77, 141, 0.14);
+	.cal-run.period,
+	.cal-run.predict,
+	.cal-run.menstrual {
+		background: rgba(240, 68, 136, 0.18);
 	}
 
 	.cal-run.fertile {
@@ -754,12 +758,13 @@
 
 	.today-badge,
 	.selected-badge {
-		width: 74rpx;
-		height: 84rpx;
+		width: 64rpx;
+		height:84rpx;
 		border-radius: 16rpx;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		
 	}
 
 	.today-badge {
@@ -767,7 +772,8 @@
 	}
 
 	.selected-badge {
-		background: rgba(255, 255, 255, 0.16);
+		background: #F04488;
+		box-sizing: border-box;
 	}
 
 	.today-badge .cal-day,

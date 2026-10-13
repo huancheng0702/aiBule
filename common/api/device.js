@@ -24,8 +24,6 @@ export function saveDeviceConfig(data) {
 
 export function getDeviceConfig(configType) {
 	return uni.$get('/appApi/device/config/' + configType)
-}
-
-export function getDeviceConfigList() {
+}export function getDeviceConfigList() {
 	return uni.$get('/appApi/device/config/list')
 }

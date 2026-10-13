@@ -37,7 +37,7 @@
 					<view class="score-wrap">
 						<canvas canvas-id="scoreCanvas" id="scoreCanvas" class="score-canvas"></canvas>
 						<view class="score-center">
-							<text class="score-num">{{ score }}</text>
+							<text class="score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${scoreAccentColor} 100%)` }">{{ score }}</text>
 
 							<text class="score-label">综合分</text>
 						</view>
@@ -160,7 +160,7 @@
 						<view class="week-score-wrap">
 							<canvas canvas-id="weekScoreCanvas" id="weekScoreCanvas" class="week-score-canvas"></canvas>
 							<view class="week-score-center">
-								<text class="week-score-num">{{ weekPopup.score }}</text>
+								<text class="week-score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${weekAccentColor} 100%)` }">{{ weekPopup.score }}</text>
 								<text class="week-score-label">综合分</text>
 							</view>
 						</view>
@@ -300,10 +300,21 @@
 	import { getAbnormalList, getAbnormalDetail } from '@/common/api/healthAbnormal.js'
 	import { getHealthArchiveDetail, getHealthArchiveOptions, saveHealthArchive } from '@/common/api/healthArchive.js'
 	import { getUserInfo } from '@/common/api/user.js'
-	import { buildApiUrl } from '@/common/http.js'
-	import { LOGIN_TOKEN_KEY } from '@/common/auth.js'
+	import { exportAndDownloadReport } from '@/common/api/ai.js'
 
 	const ARCHIVE_TYPE_MAP = ['既往病史', '家族病史', '手术史', '过敏史', '用药史', '个人史', '婚育史', '月经史', '运动史']
+	function scoreStops(score) {
+		const s = Number(score) || 0
+		if (s >= 80) return ['#2C89FF', '#1D4FA0', '#12255E']
+		if (s >= 50) return ['#FF9D2C', '#825434', '#39293A']
+		return ['#E92A31', '#B52634', '#3B173A']
+	}
+	function scoreAccent(score) {
+		const s = Number(score) || 0
+		if (s >= 80) return '#3D9BFF'
+		if (s >= 50) return '#FFDA20'
+		return '#FF2C30'
+	}
 	function progressOpacity(t) {
 		const p = Math.max(0, Math.min(1, t))
 		if (p <= 0.58) {
@@ -328,7 +339,7 @@
 				dash: `${segLen + 0.35} ${c}`,
 				offset: -i * segLen,
 				opacity: progressOpacity(t),
-				cap: isEnd ? 'round' : 'butt',
+				cap: 'butt',
 				color
 			})
 		}
@@ -431,6 +442,7 @@
 					}
 				],
 				showWeekPopup: false,
+				exporting: false,
 				weekPopup: {
 					dateText: '',
 					score: 83,
@@ -564,6 +576,12 @@
 			}
 		},
 		computed: {
+			scoreAccentColor() {
+				return scoreAccent(this.score)
+			},
+			weekAccentColor() {
+				return scoreAccent(this.weekPopup.score)
+			},
 			scoreRing() {
 				return buildRingSegs(this.score, '#FF2C30')
 			},
@@ -635,44 +653,41 @@
 		methods: {
 			drawRing(canvasId, score, color, size) {
 				const ctx = uni.createCanvasContext(canvasId, this)
-				const dpr = uni.getSystemInfoSync().pixelRatio || 1
 				const s = size || 120
-				const lineWidth = Math.round(s * 0.084)
-				const r = (s - lineWidth) / 2 - 2
 				const cx = s / 2
 				const cy = s / 2
+				const lineWidth = Math.round(s * 0.1)
+				const r = (s - lineWidth) / 2 - 2
 				const percent = Math.max(0, Math.min(1, score / 100))
+				const startAngle = -Math.PI / 2
+				const strokeArc = (from, to, style, width, cap) => {
+					ctx.beginPath()
+					ctx.setLineWidth(width)
+					ctx.setStrokeStyle(style)
+					ctx.setLineCap(cap)
+					ctx.arc(cx, cy, r, from, to, false)
+					ctx.stroke()
+				}
 				ctx.clearRect(0, 0, s, s)
-				ctx.setLineWidth(lineWidth)
-				ctx.setLineCap('round')
-				// 底环
-				ctx.beginPath()
-				ctx.setStrokeStyle('#25133B')
-				ctx.arc(cx, cy, r, 0, Math.PI * 2)
-				ctx.stroke()
+				const sNum = Number(score) || 0
+				const trackPair = sNum >= 80 ? ['#1B2E50', '#14213B'] : sNum >= 50 ? ['#3A341C', '#2A2515'] : ['#3A1E2A', '#2B1620']
+				// 轨道：参考 todayStep，先画稍粗的外缘再画暗色底环，颜色跟随分数段取同色系深色
+				strokeArc(0, Math.PI * 2, trackPair[0], lineWidth + 1.5, 'butt')
+				strokeArc(0, Math.PI * 2, trackPair[1], lineWidth, 'butt')
 				if (percent <= 0) {
 					ctx.draw()
 					return
 				}
-				// 进度分段绘制，模拟沿圆弧透明度渐变
-				const count = Math.max(24, Math.round(120 * percent))
-				const totalAngle = Math.PI * 2 * percent
-				const segAngle = totalAngle / count
-				const startAngle = -Math.PI / 2
-				for (let i = 0; i < count; i++) {
-					const t = (i + 0.5) / count
-					const a0 = startAngle + i * segAngle
-					const a1 = startAngle + (i + 1) * segAngle
-					ctx.beginPath()
-					ctx.setStrokeStyle(color)
-					ctx.setGlobalAlpha(progressOpacity(t))
-					ctx.setLineCap(i === 0 || i === count - 1 ? 'round' : 'butt')
-					ctx.arc(cx, cy, r, a0, Math.max(a0 + 0.02, a1))
-					ctx.stroke()
-				}
-				ctx.setGlobalAlpha(1)
+				const full = percent >= 0.999
+				const endAngle = startAngle + Math.PI * 2 * (full ? 1 : percent)
+				const stops = scoreStops(score)
+				const gradient = ctx.createLinearGradient(cx, cy - r, cx, cy + r)
+				gradient.addColorStop(0, stops[0])
+				gradient.addColorStop(0.52, stops[1])
+				gradient.addColorStop(1, stops[2])
+				// 整段一次画出：起点圆弧由 round 帽自然形成，终点非满环时也是同一个圆头，不会出现分段的首尾两个孤立圆点；满环用 butt 首尾闭合
+				strokeArc(startAngle, endAngle, gradient, lineWidth, full ? 'butt' : 'round')
 				ctx.draw()
-				void dpr
 			},
 			drawScoreRing() {
 				this.drawRing('scoreCanvas', this.score, '#FF2C30', 120)
@@ -755,65 +770,18 @@
 			closeWeekPopup() {
 				this.showWeekPopup = false
 			},
-			onWeekShare() {
-				const token = uni.getStorageSync(LOGIN_TOKEN_KEY) || uni.getStorageSync('loginToken') || uni.getStorageSync('token') || ''
-				const url = buildApiUrl('/appApi/ai/report/export')
-				const fileName = `健康周报-${this.weekPopup.dateText || Date.now()}.xlsx`
-				// #ifdef H5
+			async onWeekShare() {
+				if (this.exporting) return
+				this.exporting = true
 				try {
-					const a = document.createElement('a')
-					a.href = token ? `${url}?token=${encodeURIComponent(token)}` : url
-					a.download = fileName
-					document.body.appendChild(a)
-					a.click()
-					document.body.removeChild(a)
-				} catch (e) { window.open(url, '_blank') }
-				return
-				// #endif
-				uni.showLoading({ title: '导出中', mask: true })
-				uni.downloadFile({
-					url,
-					header: token ? { token } : {},
-					success: (res) => {
-						if (res.statusCode !== 200 || !res.tempFilePath) {
-							uni.hideLoading()
-							uni.showToast({ title: '导出失败', icon: 'none' })
-							return
-						}
-						// 二进制先存为本地持久文件，再用系统菜单分享/保存到手机
-						uni.saveFile({
-							tempFilePath: res.tempFilePath,
-							success: (saved) => {
-								const filePath = saved.savedFilePath || res.tempFilePath
-								uni.hideLoading()
-								uni.showToast({ title: '已下载到手机', icon: 'none' })
-								// 调起系统分享菜单，可保存到文件、微信、相册等
-								// #ifdef APP-PLUS
-								try {
-									plus.share.sendWithSystem({
-										type: 'file',
-										filepath: filePath,
-										filename: fileName
-									}, () => {}, () => {
-										uni.openDocument({ filePath, showMenu: true })
-									})
-									return
-								} catch (e) {}
-								// #endif
-								uni.openDocument({ filePath, showMenu: true })
-							},
-							fail: () => {
-								uni.hideLoading()
-								// saveFile 失败时直接预览临时文件兜底
-								uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-							}
-						})
-					},
-					fail: () => { uni.hideLoading(); uni.showToast({ title: '导出失败，请检查网络', icon: 'none' }) }
-				})
+					await exportAndDownloadReport()
+				} finally {
+					this.exporting = false
+				}
 			},
 			onWeekAskAi() {
-				// 继续问AI
+				this.showWeekPopup = false
+				uni.reLaunch({ url: '/pages/index/index?tab=2' })
 			},
 			onAbDateMode(mode) {
 				this.abDateMode = mode
@@ -885,7 +853,8 @@
 				this.showAbPopup = false
 			},
 			onAbAskAi() {
-				// 咨询AI助手
+				this.showAbPopup = false
+				uni.reLaunch({ url: '/pages/index/index?tab=2' })
 			},
 			onArchiveBaseTap() {
 				uni.navigateTo({ url: '/pages/mine/myInfo?from=mine' })
@@ -1478,11 +1447,11 @@
 	}
 
 	.defsBg {
-		position: absolute;
-		top: 12rpx;
-		right: 0;
-		width: 119.26px;
-		height: 119.26px;
+		    position: absolute;
+		    top: -3px;
+		    right: -4px;
+		    width: 126px;
+		    height: 126px;
 	}
 
 	.week-mask {

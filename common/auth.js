@@ -5,7 +5,7 @@ export const LOGIN_PATH = '/pages/login'
 export const HOME_PATH = '/pages/index/index'
 export const ONBOARDING_PATH = '/pages/mine/myInfo'
 
-const WHITE_LIST = [LOGIN_PATH]
+const WHITE_LIST = [LOGIN_PATH, '/pages/webAgreement', '/pages/mine/minewebview', '/pages/mine/contentView']
 
 let bypassAuth = false
 
@@ -34,6 +34,9 @@ export function saveLoginSession(data = {}, loginType = '') {
 	if (data.phoneBound !== undefined) {
 		uni.setStorageSync('phoneBound', !!data.phoneBound)
 	}
+	if (data.needCompleteInfo !== undefined) {
+		uni.setStorageSync('needCompleteInfo', !!data.needCompleteInfo)
+	}
 	if (loginType) {
 		uni.setStorageSync('loginType', loginType)
 	}
@@ -42,7 +45,7 @@ export function saveLoginSession(data = {}, loginType = '') {
 }
 
 export function clearLoginSession() {
-	;[LOGIN_TOKEN_KEY, USER_ID_KEY, USER_INFO_KEY, 'phone', 'nickName', 'avatar', 'loginType', 'phoneBound'].forEach((key) => {
+	;[LOGIN_TOKEN_KEY, USER_ID_KEY, USER_INFO_KEY, 'phone', 'nickName', 'avatar', 'loginType', 'phoneBound', 'needCompleteInfo'].forEach((key) => {
 		uni.removeStorageSync(key)
 	})
 }
@@ -52,6 +55,9 @@ export function getEntryPath() {
 		return LOGIN_PATH
 	}
 	if (!uni.getStorageSync('onboardingDone')) {
+		return ONBOARDING_PATH
+	}
+	if (uni.getStorageSync('needCompleteInfo')) {
 		return ONBOARDING_PATH
 	}
 	return HOME_PATH

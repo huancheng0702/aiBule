@@ -2,7 +2,7 @@
 	<view class="tab-page">
 		<!-- 用户信息 -->
 		<view class="profile" :style="{ paddingTop: statusBarHeight + 'px' }" @click="onProfile">
-			<image class="avatar" :src="avatar || '/static/hic.png'" mode="aspectFill"></image>
+			<image class="avatar" :src="avatar || '/static/morentouxiang.png'" mode="aspectFill"></image>
 			<view class="profile-info">
 				<text class="nickname">{{ nickName || '未设置昵称' }}</text>
 				<text class="profile-tip">{{ profileTip }}</text>
@@ -72,7 +72,7 @@
 
 					<view v-if="contacts.length" class="contact-list">
 						<view v-for="(item, index) in contacts" :key="item.id || index" class="contact-card">
-							<image class="contact-avatar" :src="item.avatar || '/static/hic.png'" mode="aspectFill"></image>
+							<image class="contact-avatar" :src="item.avatar || '/static/morentouxiang.png'" mode="aspectFill"></image>
 							<view class="contact-info">
 								<text class="contact-name">{{ item.name }}</text>
 								<text class="contact-meta">{{ item.relation }} · {{ maskPhone(item.phone) }}</text>
@@ -223,7 +223,7 @@
 			name,
 			relation: raw.relation || '',
 			phone: String(phone || ''),
-			avatar: raw.avatar || '/static/hic.png',
+			avatar: raw.avatar || '/static/morentouxiang.png',
 			remark: raw.remark || ''
 		}
 	}
@@ -263,7 +263,7 @@
 					name: '',
 					relation: '',
 					phone: '',
-					avatar: '/static/hic.png'
+					avatar: '/static/morentouxiang.png'
 				},
 				featureList: [{
 						title: '紧急联系人',
@@ -540,7 +540,7 @@
 						name: item.name || '',
 						relation: item.relation || '',
 						phone: item.phone || '',
-						avatar: item.avatar || '/static/hic.png'
+						avatar: item.avatar || '/static/morentouxiang.png'
 					}
 				} else {
 					this.editingIndex = -1
@@ -548,7 +548,7 @@
 						name: '',
 						relation: this.relationOptions[0] || '',
 						phone: '',
-						avatar: '/static/hic.png'
+						avatar: '/static/morentouxiang.png'
 					}
 				}
 				this.showContactForm = true

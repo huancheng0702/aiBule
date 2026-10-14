@@ -2,8 +2,12 @@
  * 全局蓝牙服务：封装 CoolWearBLE，供业务页共用连接态 / 扫描 / 电量
  */
 import CoolWearBLE from '@/common/coolwear-ble.js'
-import { hasLogin } from '@/common/auth.js'
-import { uploadDeviceData } from '@/common/api/deviceData.js'
+import {
+	hasLogin
+} from '@/common/auth.js'
+import {
+	uploadDeviceData
+} from '@/common/api/deviceData.js'
 
 const STORAGE_KEY = 'connectedDevice'
 const STATUS_MAP = {
@@ -42,12 +46,24 @@ function cloneState() {
 		connected: state.connected,
 		scanning: state.scanning,
 		pluginOk: state.pluginOk,
-		device: state.device ? { ...state.device } : null,
-		battery: state.battery ? { ...state.battery } : null,
-		deviceInfo: state.deviceInfo ? { ...state.deviceInfo } : null,
-		sport: state.sport ? { ...state.sport } : null,
-		sleep: state.sleep ? { ...state.sleep } : null,
-		devices: state.devices.map((d) => ({ ...d })),
+		device: state.device ? {
+			...state.device
+		} : null,
+		battery: state.battery ? {
+			...state.battery
+		} : null,
+		deviceInfo: state.deviceInfo ? {
+			...state.deviceInfo
+		} : null,
+		sport: state.sport ? {
+			...state.sport
+		} : null,
+		sleep: state.sleep ? {
+			...state.sleep
+		} : null,
+		devices: state.devices.map((d) => ({
+			...d
+		})),
 		statusText: STATUS_MAP[state.connectStatus] || '未知',
 		batteryLevel: getBatteryLevel(),
 		batteryCharging: getBatteryCharging(),
@@ -57,18 +73,39 @@ function cloneState() {
 
 /** 解析戒指运动数据：步数、距离(米)、卡路里(原始值，通常需 /1000) */
 function normalizeSport(data) {
-	const list = Array.isArray(data) ? data : (data != null ? [data] : [])
+	let list = Array.isArray(data) ? data : (data != null ? [data] : [])
+	// iOS 透传的是 {curItemCount, sportInfos:[{walkSteps,walkDistance,walkCalories...}], remainItemCount} 包裹结构，先拆开
+	const flat = []
+	list.forEach((it) => {
+		if (it && typeof it === 'object' && Array.isArray(it.sportInfos)) {
+			it.sportInfos.forEach((s) => flat.push(s))
+		} else {
+			flat.push(it)
+		}
+	})
+	list = flat
 	if (!list.length) return null
 	const item = list[list.length - 1]
 	if (!item || typeof item !== 'object') return null
 
 	let steps = Number(
-		item.walkSteps != null ? item.walkSteps
-			: (item.steps != null ? item.steps
-				: (item.step != null ? item.step : NaN))
+		item.walkSteps != null ? item.walkSteps :
+		(item.steps != null ? item.steps :
+			(item.step != null ? item.step : NaN))
 	)
-	let distanceM = Number(item.distance)
-	let caloriesRaw = Number(item.calories)
+	let distanceM = Number(
+		item.distance != null ? item.distance :
+		(item.walkDistance != null ? item.walkDistance :
+			(item.distanceM != null ? item.distanceM : NaN))
+	)
+	let caloriesRaw = Number(
+		item.calories != null ? item.calories :
+		(item.walkCalories != null ? item.walkCalories :
+			(item.caloriesRaw != null ? item.caloriesRaw : NaN))
+	)
+	let time = item.time != null ? item.time :
+		(item.startSecs != null ? item.startSecs * 1000 :
+			(item.measureTime != null ? item.measureTime : null))
 
 	const raw = item.raw != null ? String(item.raw) : ''
 	if ((Number.isNaN(steps) || steps < 0) && raw) {
@@ -89,9 +126,9 @@ function normalizeSport(data) {
 	if (Number.isNaN(caloriesRaw) || caloriesRaw < 0) caloriesRaw = 0
 
 	// SDK Demo：calories / 1000 = 千卡
-	const caloriesKcal = caloriesRaw >= 1000
-		? Math.round(caloriesRaw / 1000)
-		: Math.round(caloriesRaw)
+	const caloriesKcal = caloriesRaw >= 1000 ?
+		Math.round(caloriesRaw / 1000) :
+		Math.round(caloriesRaw)
 
 	return {
 		steps: Math.round(steps),
@@ -99,7 +136,7 @@ function normalizeSport(data) {
 		distanceKm: Math.round((distanceM / 1000) * 10) / 10,
 		caloriesRaw,
 		calories: caloriesKcal,
-		time: item.time != null ? item.time : null,
+		time: time,
 		updatedAt: Date.now(),
 		raw: item
 	}
@@ -133,7 +170,10 @@ function parseSleepDetail(detail, typeMap) {
 	return list.map((item) => {
 		if (item == null) return null
 		if (typeof item === 'number') {
-			return { stage: 'light', dur: Math.max(1, item) }
+			return {
+				stage: 'light',
+				dur: Math.max(1, item)
+			}
 		}
 		if (typeof item !== 'object') return null
 		const keys = Object.keys(item)
@@ -145,14 +185,18 @@ function parseSleepDetail(detail, typeMap) {
 		if (!Number.isNaN(deepCode) && n === deepCode) stage = 'deep'
 		else if (!Number.isNaN(lightCode) && n === lightCode) stage = 'light'
 		else if (!Number.isNaN(remCode) && n === remCode) stage = 'rem'
-		else if ((!Number.isNaN(moveCode) && n === moveCode) || (!Number.isNaN(wakeCode) && n === wakeCode)) stage = 'awake'
+		else if ((!Number.isNaN(moveCode) && n === moveCode) || (!Number.isNaN(wakeCode) && n === wakeCode))
+			stage = 'awake'
 		else if (!Number.isNaN(startCode) && n === startCode) stage = 'light'
 		else if (code === 'deep' || code === 'light' || code === 'rem' || code === 'awake') stage = code
 		else if (n === 3) stage = 'deep'
 		else if (n === 2) stage = 'light'
 		else if (n === 5 || n === 4) stage = 'awake'
 		else if (n === 6) stage = 'rem'
-		return { stage, dur }
+		return {
+			stage,
+			dur
+		}
 	}).filter(Boolean)
 }
 
@@ -205,12 +249,19 @@ function normalizeSleep(data) {
 			const prevTime = Number(prev.sleepTime != null ? prev.sleepTime : prev.time) || 0
 			const curTime = Number(cur.sleepTime != null ? cur.sleepTime : cur.time) || 0
 			const keep = Math.max(1, Math.round((curTime - prevTime) / 60))
-			segments.push(...parseSleepDetail([{ [String(prevType)]: keep }], typeMap))
+			segments.push(...parseSleepDetail([{
+				[String(prevType)]: keep
+			}], typeMap))
 		}
 	}
 
 	if (segments.length) {
-		const sum = { deep: 0, light: 0, rem: 0, awake: 0 }
+		const sum = {
+			deep: 0,
+			light: 0,
+			rem: 0,
+			awake: 0
+		}
 		segments.forEach((s) => {
 			if (sum[s.stage] != null) sum[s.stage] += s.dur
 		})
@@ -227,13 +278,27 @@ function normalizeSleep(data) {
 	if (!totalMin) totalMin = deepMin + lightMin + remMin + awakeMin
 
 	if (!segments.length && totalMin > 0) {
-		const parts = [
-			{ stage: 'deep', dur: deepMin },
-			{ stage: 'light', dur: lightMin },
-			{ stage: 'rem', dur: remMin },
-			{ stage: 'awake', dur: awakeMin }
+		const parts = [{
+				stage: 'deep',
+				dur: deepMin
+			},
+			{
+				stage: 'light',
+				dur: lightMin
+			},
+			{
+				stage: 'rem',
+				dur: remMin
+			},
+			{
+				stage: 'awake',
+				dur: awakeMin
+			}
 		].filter((p) => p.dur > 0)
-		segments = parts.length ? parts : [{ stage: 'light', dur: Math.max(1, totalMin) }]
+		segments = parts.length ? parts : [{
+			stage: 'light',
+			dur: Math.max(1, totalMin)
+		}]
 	}
 
 	const hours = Math.floor(totalMin / 60)
@@ -277,9 +342,13 @@ function normalizeSleep(data) {
 		recoverStatus = '恢复不足'
 	}
 
-	const allSessions = Array.isArray(data.sessions)
-		? data.sessions.map((s) => normalizeSleep({ ...s, typeMap, sessions: [] })).filter(Boolean)
-		: []
+	const allSessions = Array.isArray(data.sessions) ?
+		data.sessions.map((s) => normalizeSleep({
+			...s,
+			typeMap,
+			sessions: []
+		})).filter(Boolean) :
+		[]
 
 	return {
 		totalMin,
@@ -311,13 +380,15 @@ function formatMeasureTime(value) {
 	if (!value) {
 		const d = new Date()
 		const p = (n) => (n < 10 ? '0' + n : String(n))
-		return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+		return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d
+			.getMinutes()) + ':' + p(d.getSeconds())
 	}
 	if (typeof value === 'number') {
 		const d = new Date(value < 1e12 ? value * 1000 : value)
 		if (!isNaN(d.getTime())) {
 			const p = (n) => (n < 10 ? '0' + n : String(n))
-			return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+			return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(
+				d.getMinutes()) + ':' + p(d.getSeconds())
 		}
 	}
 	return String(value)
@@ -364,8 +435,8 @@ function buildSleepUploadList(sleep) {
 		endTime: end,
 		source: '1'
 	})
-	let cursor = Number(sleep.startTime) || 0
-	;(sleep.segments || []).forEach((seg) => {
+	let cursor = Number(sleep.startTime) || 0;
+	(sleep.segments || []).forEach((seg) => {
 		const durSec = Math.max(0, Math.round(Number(seg.dur) || 0) * 60)
 		if (!durSec) return
 		const from = cursor
@@ -420,7 +491,11 @@ function toBool(v) {
 function normalizeBattery(data) {
 	if (data == null) return null
 	if (typeof data === 'number') {
-		return { level: data, charging: false, raw: data }
+		return {
+			level: data,
+			charging: false,
+			raw: data
+		}
 	}
 	if (typeof data === 'string') {
 		try {
@@ -429,324 +504,275 @@ function normalizeBattery(data) {
 			return null
 		}
 	}
-	const levelRaw = data.level != null
-		? data.level
-		: (data.battery != null ? data.battery : (data.Battery != null ? data.Battery : null))
-	const chargingRaw = data.charging != null
-		? data.charging
-		: (data.chargerStatus != null
-			? data.chargerStatus
-			: (data.isChargerStatus != null
-				? data.isChargerStatus
-				: (data.isCharging != null ? data.isCharging : data.deviceChargerStatus)))
+	const src = (data && typeof data === 'object' && data.raw && typeof data.raw === 'object') ? Object.assign({}, data.raw, data) : data
+	const levelRaw = pickBatteryField(src, ['level', 'battery', 'Battery', 'battery_capacity', 'batteryCapacity', 'electricity', 'capacity', 'value', 'percent', 'percentage'])
+	const chargingRaw = pickBatteryField(src, ['charging', 'chargerStatus', 'isChargerStatus', 'isCharging', 'deviceChargerStatus', 'chargeStatus', 'isCharge'])
 	return {
-		level: levelRaw != null && levelRaw !== '' ? Number(levelRaw) : null,
+		level: levelRaw !== null && levelRaw !== '' ? Number(levelRaw) : null,
 		charging: toBool(chargingRaw),
 		raw: data
 	}
 }
 
-function getBatteryLevel() {
-	if (state.battery && state.battery.level != null && !Number.isNaN(Number(state.battery.level))) {
-		return Number(state.battery.level)
+function pickBatteryField(o, keys) {
+	if (!o) return null
+	for (let i = 0; i < keys.length; i++) {
+		const v = o[keys[i]]
+		if (v !== undefined && v !== null) return v
 	}
-	if (state.device && state.device.battery != null) return Number(state.device.battery)
 	return null
 }
 
-function getBatteryCharging() {
-	return !!(state.battery && state.battery.charging)
-}
-
-function getFirmware() {
-	if (state.device && state.device.firmware) return String(state.device.firmware)
-	if (state.deviceInfo && state.deviceInfo.firmware) return String(state.deviceInfo.firmware)
-	if (state.deviceInfo && state.deviceInfo.softwareVer) return String(state.deviceInfo.softwareVer)
-	return null
-}
-
-function normalizeDeviceInfo(data) {
-	if (!data) return null
-	if (typeof data === 'string') {
-		try {
-			return normalizeDeviceInfo(JSON.parse(data))
-		} catch (e) {
-			return { raw: data }
+	function getBatteryLevel() {
+		if (state.battery && state.battery.level != null && !Number.isNaN(Number(state.battery.level))) {
+			return Number(state.battery.level)
 		}
+		if (state.device && state.device.battery != null) return Number(state.device.battery)
+		return null
 	}
-	const firmware = data.firmware != null
-		? String(data.firmware)
-		: (data.softwareVer != null
-			? String(data.softwareVer)
-			: (data.softwareVersion != null
-				? String(data.softwareVersion)
-				: (data.SoftwareVer != null ? String(data.SoftwareVer) : (data.version != null ? String(data.version) : null))))
-	return {
-		...data,
-		firmware,
-		softwareVer: data.softwareVer != null ? String(data.softwareVer) : firmware,
-		hardwareVer: data.hardwareVer != null ? String(data.hardwareVer) : (data.hardwareVersion != null ? String(data.hardwareVersion) : null),
-		customerId: data.customerId != null ? data.customerId : data.customer_id,
-		name: data.name || data.devName || null,
-		deviceId: data.deviceId != null ? String(data.deviceId) : null,
-		mac: data.mac || null
+
+	function getBatteryCharging() {
+		return !!(state.battery && state.battery.charging)
 	}
-}
 
-function deviceKey(item) {
-	return item.identifier || item.mac || item.deviceId || item.id || ''
-}
-
-function rssiToSignal(rssi) {
-	if (rssi == null || rssi === '') return '信号未知'
-	const n = Number(rssi)
-	if (Number.isNaN(n)) return '信号未知'
-	if (n >= -55) return '信号良好'
-	if (n >= -70) return '信号一般'
-	return '信号较弱'
-}
-
-function toListItem(raw) {
-	const id = deviceKey(raw)
-	const name = raw.name || '未知设备'
-	const rssi = raw.rssi
-	return {
-		id,
-		name,
-		mac: raw.mac || '',
-		identifier: raw.identifier || '',
-		deviceId: raw.deviceId || '',
-		rssi,
-		meta: `${rssiToSignal(rssi)}${rssi != null ? ` · RSSI ${rssi}` : ''}`,
-		raw
+	function getFirmware() {
+		if (state.device && state.device.firmware) return String(state.device.firmware)
+		if (state.deviceInfo && state.deviceInfo.firmware) return String(state.deviceInfo.firmware)
+		if (state.deviceInfo && state.deviceInfo.softwareVer) return String(state.deviceInfo.softwareVer)
+		return null
 	}
-}
 
-function loadStoredDevice() {
-	try {
-		const saved = uni.getStorageSync(STORAGE_KEY)
-		if (saved && (saved.id || saved.mac || saved.identifier)) {
-			state.device = {
-				id: saved.id || saved.mac || saved.identifier,
-				name: saved.name || '智能戒指',
-				mac: saved.mac || '',
-				identifier: saved.identifier || '',
-				battery: saved.battery != null ? Number(saved.battery) : null,
-				firmware: saved.firmware || null,
-				customerId: saved.customerId != null ? saved.customerId : null
-			}
-		}
-	} catch (e) {
-		// ignore
-	}
-}
-
-function persistDevice() {
-	if (!state.device) return
-	const level = getBatteryLevel()
-	uni.setStorageSync(STORAGE_KEY, {
-		id: state.device.id,
-		name: state.device.name,
-		mac: state.device.mac || '',
-		identifier: state.device.identifier || '',
-		battery: level != null ? level : state.device.battery,
-		firmware: state.device.firmware || getFirmware() || '',
-		customerId: state.device.customerId != null ? state.device.customerId : ''
-	})
-}
-
-function clearStoredDevice() {
-	try {
-		uni.removeStorageSync(STORAGE_KEY)
-	} catch (e) {
-		// ignore
-	}
-	state.device = null
-	state.battery = null
-	state.deviceInfo = null
-	state.sport = null
-	state.sleep = null
-}
-
-function bindEvents() {
-	if (eventsBound) return
-	eventsBound = true
-
-	CoolWearBLE.on('onDeviceFound', (data) => {
-		if (!data) return
-		const item = toListItem(data)
-		if (!item.id) return
-		const idx = state.devices.findIndex((d) => d.id === item.id)
-		if (idx >= 0) {
-			state.devices.splice(idx, 1, item)
-		} else {
-			state.devices.push(item)
-		}
-		emit()
-	})
-
-	CoolWearBLE.on('onConnectStateChange', (data) => {
-		const status = data && data.status != null ? Number(data.status) : 0
-		state.connectStatus = status
-		state.connected = status === 1
-		if (state.connected) {
-			CoolWearBLE.sendSyncInfo().catch(() => {})
-			CoolWearBLE.requestBattery().catch(() => {})
-			CoolWearBLE.requestDeviceInfo().catch(() => {})
-			persistDevice()
-		}
-		emit()
-	})
-
-	CoolWearBLE.on('onBattery', (data) => {
-		const normalized = normalizeBattery(data)
-		console.log('[ble-service] onBattery raw=', data, 'normalized=', normalized)
-		state.battery = normalized
-		if (state.device && normalized && normalized.level != null && !Number.isNaN(normalized.level)) {
-			state.device.battery = normalized.level
-			persistDevice()
-		}
-		emit()
-	})
-
-	CoolWearBLE.on('onDeviceInfo', (data) => {
-		const info = normalizeDeviceInfo(data)
-		console.log('[ble-service] onDeviceInfo raw=', data, 'normalized=', info)
-		state.deviceInfo = info
-		if (!state.device) {
-			emit()
-			return
-		}
-		if (info) {
-			if (info.name) state.device.name = info.name
-			if (info.mac) state.device.mac = info.mac
-			if (info.firmware) state.device.firmware = info.firmware
-			if (info.customerId != null) state.device.customerId = info.customerId
-			if (info.deviceId) state.device.id = info.deviceId
-		}
-		persistDevice()
-		emit()
-	})
-
-	CoolWearBLE.on('onSport', (data) => {
-		const sport = normalizeSport(data)
-		console.log('[ble-service] onSport raw=', data, 'normalized=', sport)
-		if (sport) {
-			state.sport = sport
-			emit()
-			reportSportToCloud(sport)
-		}
-	})
-
-	CoolWearBLE.on('onSleep', (data) => {
-		const sleep = normalizeSleep(data)
-		console.log('[ble-service] onSleep raw=', data, 'normalized=', sleep)
-		if (sleep) {
-			state.sleep = sleep
-			emit()
-			reportSleepToCloud(sleep)
-		}
-	})
-}
-
-function requestAndroidPermissions() {
-	return new Promise((resolve, reject) => {
-		// #ifdef APP-PLUS
-		const permissions = [
-			'android.permission.ACCESS_FINE_LOCATION',
-			'android.permission.ACCESS_COARSE_LOCATION',
-			'android.permission.BLUETOOTH_SCAN',
-			'android.permission.BLUETOOTH_CONNECT'
-		]
-		const timer = setTimeout(() => {
-			reject(new Error('权限请求超时，请到系统设置中手动授予蓝牙和定位权限'))
-		}, 15000)
-		plus.android.requestPermissions(
-			permissions,
-			(e) => {
-				clearTimeout(timer)
-				if (e.deniedAlways && e.deniedAlways.length) {
-					reject(new Error('蓝牙/定位权限被永久拒绝，请到系统设置开启'))
-				} else if (e.deniedPresent && e.deniedPresent.length) {
-					reject(new Error('蓝牙/定位权限被拒绝'))
-				} else {
-					resolve()
+	function normalizeDeviceInfo(data) {
+		if (!data) return null
+		if (typeof data === 'string') {
+			try {
+				return normalizeDeviceInfo(JSON.parse(data))
+			} catch (e) {
+				return {
+					raw: data
 				}
-			},
-			(err) => {
-				clearTimeout(timer)
-				reject(new Error((err && err.message) || '权限请求失败'))
 			}
-		)
-		// #endif
-		// #ifndef APP-PLUS
-		resolve()
-		// #endif
-	})
-}
+		}
+		const firmware = data.firmware != null ?
+			String(data.firmware) :
+			(data.softwareVer != null ?
+				String(data.softwareVer) :
+				(data.softwareVersion != null ?
+					String(data.softwareVersion) :
+					(data.SoftwareVer != null ? String(data.SoftwareVer) : (data.version != null ? String(data
+						.version) : null))))
+		return {
+			...data,
+			firmware,
+			softwareVer: data.softwareVer != null ? String(data.softwareVer) : firmware,
+			hardwareVer: data.hardwareVer != null ? String(data.hardwareVer) : (data.hardwareVersion != null ? String(
+				data.hardwareVersion) : null),
+			customerId: data.customerId != null ? data.customerId : data.customer_id,
+			name: data.name || data.devName || null,
+			deviceId: data.deviceId != null ? String(data.deviceId) : null,
+			mac: data.mac || null
+		}
+	}
 
-async function sleep(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms))
-}
+	function deviceKey(item) {
+		return item.identifier || item.mac || item.deviceId || item.id || ''
+	}
 
-async function pollConnected(timeoutMs = 30000) {
-	const start = Date.now()
-	while (Date.now() - start < timeoutMs) {
+	function rssiToSignal(rssi) {
+		if (rssi == null || rssi === '') return '信号未知'
+		const n = Number(rssi)
+		if (Number.isNaN(n)) return '信号未知'
+		if (n >= -55) return '信号良好'
+		if (n >= -70) return '信号一般'
+		return '信号较弱'
+	}
+
+	function toListItem(raw) {
+		const id = deviceKey(raw)
+		const name = raw.name || '未知设备'
+		const rssi = raw.rssi
+		return {
+			id,
+			name,
+			mac: raw.mac || '',
+			identifier: raw.identifier || '',
+			deviceId: raw.deviceId || '',
+			rssi,
+			meta: `${rssiToSignal(rssi)}${rssi != null ? ` · RSSI ${rssi}` : ''}`,
+			raw
+		}
+	}
+
+	function loadStoredDevice() {
 		try {
-			const res = await CoolWearBLE.isConnected()
-			if (res && res.connected) {
-				state.connected = true
-				state.connectStatus = 1
-				emit()
-				await CoolWearBLE.sendSyncInfo().catch(() => {})
-				await CoolWearBLE.requestBattery().catch(() => {})
-				return true
+			const saved = uni.getStorageSync(STORAGE_KEY)
+			if (saved && (saved.id || saved.mac || saved.identifier)) {
+				state.device = {
+					id: saved.id || saved.mac || saved.identifier,
+					name: saved.name || '智能戒指',
+					mac: saved.mac || '',
+					identifier: saved.identifier || '',
+					battery: saved.battery != null ? Number(saved.battery) : null,
+					firmware: saved.firmware || null,
+					customerId: saved.customerId != null ? saved.customerId : null
+				}
 			}
 		} catch (e) {
 			// ignore
 		}
-		await sleep(1000)
 	}
-	return state.connected
-}
 
-const BleService = {
-	STATUS_MAP,
+	function persistDevice() {
+		if (!state.device) return
+		const level = getBatteryLevel()
+		uni.setStorageSync(STORAGE_KEY, {
+			id: state.device.id,
+			name: state.device.name,
+			mac: state.device.mac || '',
+			identifier: state.device.identifier || '',
+			battery: level != null ? level : state.device.battery,
+			firmware: state.device.firmware || getFirmware() || '',
+			customerId: state.device.customerId != null ? state.device.customerId : ''
+		})
+	}
 
-	bootstrap() {
-		loadStoredDevice()
-		state.pluginOk = CoolWearBLE.isAvailable()
-		bindEvents()
-		emit()
-	},
-
-	/**
-	 * 有本地绑定设备且未解绑时自动重连；解绑会清 STORAGE，不会触发
-	 */
-	async tryAutoReconnect() {
-		// #ifndef APP-PLUS
-		return false
-		// #endif
-		// #ifdef APP-PLUS
-		loadStoredDevice()
-		const device = state.device
-		if (!device || !(device.mac || device.identifier || device.id)) {
-			return false
-		}
-		if (state.connected) return true
-		if (reconnecting || state.connectStatus === 2) return false
-
-		reconnecting = true
-		state.connectStatus = 2
-		state.connected = false
-		emit()
-
+	function clearStoredDevice() {
 		try {
-			if (!CoolWearBLE.isAvailable()) {
-				throw new Error('原生插件未加载')
-			}
-			await BleService.ensureInit()
+			uni.removeStorageSync(STORAGE_KEY)
+		} catch (e) {
+			// ignore
+		}
+		state.device = null
+		state.battery = null
+		state.deviceInfo = null
+		state.sport = null
+		state.sleep = null
+	}
 
+	function bindEvents() {
+		if (eventsBound) return
+		eventsBound = true
+
+		CoolWearBLE.on('onDeviceFound', (data) => {
+			if (!data) return
+			const item = toListItem(data)
+			if (!item.id) return
+			const idx = state.devices.findIndex((d) => d.id === item.id)
+			if (idx >= 0) {
+				state.devices.splice(idx, 1, item)
+			} else {
+				state.devices.push(item)
+			}
+			emit()
+		})
+
+		CoolWearBLE.on('onConnectStateChange', (data) => {
+			const status = data && data.status != null ? Number(data.status) : 0
+			state.connectStatus = status
+			state.connected = status === 1
+			if (state.connected) {
+				CoolWearBLE.sendSyncInfo().catch(() => {})
+				CoolWearBLE.requestBattery().catch(() => {})
+				CoolWearBLE.requestDeviceInfo().catch(() => {})
+				persistDevice()
+			}
+			emit()
+		})
+
+		CoolWearBLE.on('onBattery', (data) => {
+			const normalized = normalizeBattery(data)
+			console.log('[ble-service] onBattery raw=', data, 'normalized=', normalized)
+			state.battery = normalized
+			if (state.device && normalized && normalized.level != null && !Number.isNaN(normalized.level)) {
+				state.device.battery = normalized.level
+				persistDevice()
+			}
+			emit()
+		})
+
+		CoolWearBLE.on('onDeviceInfo', (data) => {
+			const info = normalizeDeviceInfo(data)
+			console.log('[ble-service] onDeviceInfo raw=', data, 'normalized=', info)
+			state.deviceInfo = info
+			if (!state.device) {
+				emit()
+				return
+			}
+			if (info) {
+				if (info.name) state.device.name = info.name
+				if (info.mac) state.device.mac = info.mac
+				if (info.firmware) state.device.firmware = info.firmware
+				if (info.customerId != null) state.device.customerId = info.customerId
+				if (info.deviceId) state.device.id = info.deviceId
+			}
+			persistDevice()
+			emit()
+		})
+
+		CoolWearBLE.on('onSport', (data) => {
+			const sport = normalizeSport(data)
+			console.log('[ble-service] onSport raw=', data, 'normalized=', sport)
+			if (sport) {
+				state.sport = sport
+				emit()
+				reportSportToCloud(sport)
+			}
+		})
+
+		CoolWearBLE.on('onSleep', (data) => {
+			const sleep = normalizeSleep(data)
+			console.log('[ble-service] onSleep raw=', data, 'normalized=', sleep)
+			if (sleep) {
+				state.sleep = sleep
+				emit()
+				reportSleepToCloud(sleep)
+			}
+		})
+	}
+
+	function requestAndroidPermissions() {
+		return new Promise((resolve, reject) => {
+			// #ifdef APP-PLUS
+			const permissions = [
+				'android.permission.ACCESS_FINE_LOCATION',
+				'android.permission.ACCESS_COARSE_LOCATION',
+				'android.permission.BLUETOOTH_SCAN',
+				'android.permission.BLUETOOTH_CONNECT'
+			]
+			const timer = setTimeout(() => {
+				reject(new Error('权限请求超时，请到系统设置中手动授予蓝牙和定位权限'))
+			}, 15000)
+			plus.android.requestPermissions(
+				permissions,
+				(e) => {
+					clearTimeout(timer)
+					if (e.deniedAlways && e.deniedAlways.length) {
+						reject(new Error('蓝牙/定位权限被永久拒绝，请到系统设置开启'))
+					} else if (e.deniedPresent && e.deniedPresent.length) {
+						reject(new Error('蓝牙/定位权限被拒绝'))
+					} else {
+						resolve()
+					}
+				},
+				(err) => {
+					clearTimeout(timer)
+					reject(new Error((err && err.message) || '权限请求失败'))
+				}
+			)
+			// #endif
+			// #ifndef APP-PLUS
+			resolve()
+			// #endif
+		})
+	}
+
+	async function sleep(ms) {
+		return new Promise((resolve) => setTimeout(resolve, ms))
+	}
+
+	async function pollConnected(timeoutMs = 30000) {
+		const start = Date.now()
+		while (Date.now() - start < timeoutMs) {
 			try {
 				const res = await CoolWearBLE.isConnected()
 				if (res && res.connected) {
@@ -755,226 +781,304 @@ const BleService = {
 					emit()
 					await CoolWearBLE.sendSyncInfo().catch(() => {})
 					await CoolWearBLE.requestBattery().catch(() => {})
-					persistDevice()
 					return true
 				}
 			} catch (e) {
-				// ignore, continue reconnect
+				// ignore
 			}
+			await sleep(1000)
+		}
+		return state.connected
+	}
 
-			// 优先走 SDK 自动重连（依赖上次连接记录）
+	const BleService = {
+		STATUS_MAP,
+
+		bootstrap() {
+			loadStoredDevice()
+			state.pluginOk = CoolWearBLE.isAvailable()
+			bindEvents()
+			emit()
+		},
+
+		/**
+		 * 有本地绑定设备且未解绑时自动重连；解绑会清 STORAGE，不会触发
+		 */
+		async tryAutoReconnect() {
+			// #ifndef APP-PLUS
+			return false
+			// #endif
+			// #ifdef APP-PLUS
+			loadStoredDevice()
+			const device = state.device
+			if (!device || !(device.mac || device.identifier || device.id)) {
+				return false
+			}
+			if (state.connected) return true
+			if (reconnecting || state.connectStatus === 2) return false
+
+			reconnecting = true
+			state.connectStatus = 2
+			state.connected = false
+			emit()
+
 			try {
-				await CoolWearBLE.reconnect()
-				const ok = await pollConnected(20000)
-				if (ok) {
-					persistDevice()
-					return true
+				if (!CoolWearBLE.isAvailable()) {
+					throw new Error('原生插件未加载')
 				}
-			} catch (e) {
-				console.log('[ble-service] reconnect() failed, fallback connect', e)
-			}
+				await BleService.ensureInit()
 
-			// 回退：用本地缓存的 mac / identifier 主动连接
+				try {
+					const res = await CoolWearBLE.isConnected()
+					if (res && res.connected) {
+						state.connected = true
+						state.connectStatus = 1
+						emit()
+						await CoolWearBLE.sendSyncInfo().catch(() => {})
+						await CoolWearBLE.requestBattery().catch(() => {})
+						persistDevice()
+						return true
+					}
+				} catch (e) {
+					// ignore, continue reconnect
+				}
+
+				// 优先走 SDK 自动重连（依赖上次连接记录）
+				try {
+					await CoolWearBLE.reconnect()
+					const ok = await pollConnected(20000)
+					if (ok) {
+						persistDevice()
+						return true
+					}
+				} catch (e) {
+					console.log('[ble-service] reconnect() failed, fallback connect', e)
+				}
+
+				// 回退：用本地缓存的 mac / identifier 主动连接
+				await CoolWearBLE.connect({
+					mac: device.mac,
+					identifier: device.identifier,
+					name: device.name,
+					deviceId: device.id
+				})
+				const ok = await pollConnected(30000)
+				if (!ok) {
+					state.connectStatus = 0
+					state.connected = false
+					emit()
+					return false
+				}
+				persistDevice()
+				return true
+			} catch (e) {
+				console.error('[ble-service] tryAutoReconnect', e)
+				state.connectStatus = 0
+				state.connected = false
+				emit()
+				return false
+			} finally {
+				reconnecting = false
+			}
+			// #endif
+		},
+
+		isAvailable() {
+			return CoolWearBLE.isAvailable()
+		},
+
+		getState() {
+			return cloneState()
+		},
+
+		subscribe(fn) {
+			if (typeof fn !== 'function') return () => {}
+			stateListeners.add(fn)
+			fn(cloneState())
+			return () => stateListeners.delete(fn)
+		},
+
+		async requestPermissions() {
+			// #ifdef APP-PLUS
+			const sys = (uni.getSystemInfoSync && uni.getSystemInfoSync().platform) || ''
+			if (sys === 'ios' || sys === 'iOS') {
+				try {
+					await CoolWearBLE.requestBluetoothPermission()
+				} catch (e) {
+					const msg = (e && e.message) || '蓝牙权限被拒绝'
+					uni.showModal({
+						title: '需要蓝牙权限',
+						content: msg + '，请前往“设置”开启后重试。',
+						confirmText: '去设置',
+						success: (r) => {
+							if (r.confirm) CoolWearBLE.openAppSettings().catch(() => {})
+						}
+					})
+					throw e
+				}
+				uni.setStorageSync('blePermissionGranted', true)
+				return
+			}
+			await requestAndroidPermissions()
+			// #endif
+			uni.setStorageSync('blePermissionGranted', true)
+		},
+
+		async ensureInit() {
+			if (state.inited) return
+			if (state.initing) {
+				while (state.initing) {
+					await sleep(100)
+				}
+				if (state.inited) return
+			}
+			state.pluginOk = CoolWearBLE.isAvailable()
+			if (!state.pluginOk) {
+				throw new Error('原生插件未加载，请使用包含 CoolWear-BLE 的自定义基座运行')
+			}
+			state.initing = true
+			emit()
+			try {
+				await BleService.requestPermissions()
+				await CoolWearBLE.init()
+				state.inited = true
+			} finally {
+				state.initing = false
+				emit()
+			}
+		},
+
+		async startScan(options = {}) {
+			const timeoutMs = options.timeoutMs != null ? options.timeoutMs : 10000
+			await BleService.ensureInit()
+			if (scanTimer) {
+				clearTimeout(scanTimer)
+				scanTimer = null
+			}
+			state.devices = []
+			state.scanning = true
+			emit()
+			await CoolWearBLE.startScan()
+			if (timeoutMs > 0) {
+				scanTimer = setTimeout(() => {
+					BleService.stopScan().catch(() => {})
+				}, timeoutMs)
+			}
+		},
+
+		async stopScan() {
+			if (scanTimer) {
+				clearTimeout(scanTimer)
+				scanTimer = null
+			}
+			try {
+				if (state.inited) {
+					await CoolWearBLE.stopScan()
+				}
+			} finally {
+				state.scanning = false
+				emit()
+			}
+		},
+
+		async connect(device) {
+			if (!device) throw new Error('请先选择设备')
+			await BleService.ensureInit()
+			await BleService.stopScan()
+			state.connectStatus = 2
+			state.connected = false
+			state.device = {
+				id: device.id || deviceKey(device),
+				name: device.name || '智能戒指',
+				mac: device.mac || '',
+				identifier: device.identifier || '',
+				battery: device.battery != null ? Number(device.battery) : null
+			}
+			emit()
 			await CoolWearBLE.connect({
 				mac: device.mac,
 				identifier: device.identifier,
 				name: device.name,
-				deviceId: device.id
+				deviceId: device.deviceId
 			})
 			const ok = await pollConnected(30000)
 			if (!ok) {
 				state.connectStatus = 0
 				state.connected = false
 				emit()
-				return false
+				throw new Error('连接超时，请确认戒指在附近且未被其他手机占用')
 			}
 			persistDevice()
-			return true
-		} catch (e) {
-			console.error('[ble-service] tryAutoReconnect', e)
-			state.connectStatus = 0
-			state.connected = false
+			uni.setStorageSync('onboardingDone', true)
+			uni.setStorageSync('isFirstLogin', false)
 			emit()
-			return false
-		} finally {
-			reconnecting = false
-		}
-		// #endif
-	},
+			return cloneState()
+		},
 
-	isAvailable() {
-		return CoolWearBLE.isAvailable()
-	},
-
-	getState() {
-		return cloneState()
-	},
-
-	subscribe(fn) {
-		if (typeof fn !== 'function') return () => {}
-		stateListeners.add(fn)
-		fn(cloneState())
-		return () => stateListeners.delete(fn)
-	},
-
-	async requestPermissions() {
-		// #ifdef APP-PLUS
-		await requestAndroidPermissions()
-		// #endif
-		uni.setStorageSync('blePermissionGranted', true)
-	},
-
-	async ensureInit() {
-		if (state.inited) return
-		if (state.initing) {
-			while (state.initing) {
-				await sleep(100)
+		async disconnect(unbind = false) {
+			try {
+				if (state.inited) {
+					await CoolWearBLE.disconnect()
+				}
+			} finally {
+				state.connected = false
+				state.connectStatus = 0
+				if (unbind) {
+					clearStoredDevice()
+				}
+				emit()
 			}
-			if (state.inited) return
-		}
-		state.pluginOk = CoolWearBLE.isAvailable()
-		if (!state.pluginOk) {
-			throw new Error('原生插件未加载，请使用包含 CoolWear-BLE 的自定义基座运行')
-		}
-		state.initing = true
-		emit()
-		try {
-			await BleService.requestPermissions()
-			await CoolWearBLE.init()
-			state.inited = true
-		} finally {
-			state.initing = false
-			emit()
-		}
-	},
+		},
 
-	async startScan(options = {}) {
-		const timeoutMs = options.timeoutMs != null ? options.timeoutMs : 10000
-		await BleService.ensureInit()
-		if (scanTimer) {
-			clearTimeout(scanTimer)
-			scanTimer = null
-		}
-		state.devices = []
-		state.scanning = true
-		emit()
-		await CoolWearBLE.startScan()
-		if (timeoutMs > 0) {
-			scanTimer = setTimeout(() => {
-				BleService.stopScan().catch(() => {})
-			}, timeoutMs)
-		}
-	},
+		async refreshBattery() {
+			if (!state.connected) return null
+			await CoolWearBLE.requestBattery()
+			return state.battery
+		},
 
-	async stopScan() {
-		if (scanTimer) {
-			clearTimeout(scanTimer)
-			scanTimer = null
-		}
-		try {
-			if (state.inited) {
-				await CoolWearBLE.stopScan()
+		async refreshDeviceInfo() {
+			if (!state.connected) return null
+			try {
+				await CoolWearBLE.requestDeviceInfo()
+			} catch (e) {
+				// 旧基座可能没有 requestDeviceInfo，回退 sendSyncInfo
+				await CoolWearBLE.sendSyncInfo().catch(() => {})
 			}
-		} finally {
-			state.scanning = false
-			emit()
-		}
-	},
+			return state.deviceInfo
+		},
 
-	async connect(device) {
-		if (!device) throw new Error('请先选择设备')
-		await BleService.ensureInit()
-		await BleService.stopScan()
-		state.connectStatus = 2
-		state.connected = false
-		state.device = {
-			id: device.id || deviceKey(device),
-			name: device.name || '智能戒指',
-			mac: device.mac || '',
-			identifier: device.identifier || '',
-			battery: device.battery != null ? Number(device.battery) : null
-		}
-		emit()
-		await CoolWearBLE.connect({
-			mac: device.mac,
-			identifier: device.identifier,
-			name: device.name,
-			deviceId: device.deviceId
-		})
-		const ok = await pollConnected(30000)
-		if (!ok) {
-			state.connectStatus = 0
-			state.connected = false
-			emit()
-			throw new Error('连接超时，请确认戒指在附近且未被其他手机占用')
-		}
-		persistDevice()
-		uni.setStorageSync('onboardingDone', true)
-		uni.setStorageSync('isFirstLogin', false)
-		emit()
-		return cloneState()
-	},
-
-	async disconnect(unbind = false) {
-		try {
-			if (state.inited) {
-				await CoolWearBLE.disconnect()
-			}
-		} finally {
-			state.connected = false
-			state.connectStatus = 0
-			if (unbind) {
-				clearStoredDevice()
-			}
-			emit()
-		}
-	},
-
-	async refreshBattery() {
-		if (!state.connected) return null
-		await CoolWearBLE.requestBattery()
-		return state.battery
-	},
-
-	async refreshDeviceInfo() {
-		if (!state.connected) return null
-		try {
-			await CoolWearBLE.requestDeviceInfo()
-		} catch (e) {
-			// 旧基座可能没有 requestDeviceInfo，回退 sendSyncInfo
+		/** 同步戒指运动数据（步数/距离/卡路里），结果通过 onSport 回传 */
+		async syncSport() {
+			if (!state.connected) return state.sport
 			await CoolWearBLE.sendSyncInfo().catch(() => {})
+			return state.sport
+		},
+
+		getSport() {
+			return state.sport ? {
+				...state.sport
+			} : null
+		},
+
+		/** 同步戒指睡眠数据，结果通过 onSleep 回传 */
+		async syncSleep() {
+			if (!state.connected) return state.sleep
+			await CoolWearBLE.sendSyncInfo().catch(() => {})
+			return state.sleep
+		},
+
+		getSleep() {
+			return state.sleep ? {
+				...state.sleep
+			} : null
+		},
+
+		updateDeviceName(name) {
+			if (!state.device || !name) return
+			state.device.name = name
+			persistDevice()
+			emit()
 		}
-		return state.deviceInfo
-	},
-
-	/** 同步戒指运动数据（步数/距离/卡路里），结果通过 onSport 回传 */
-	async syncSport() {
-		if (!state.connected) return state.sport
-		await CoolWearBLE.sendSyncInfo().catch(() => {})
-		return state.sport
-	},
-
-	getSport() {
-		return state.sport ? { ...state.sport } : null
-	},
-
-	/** 同步戒指睡眠数据，结果通过 onSleep 回传 */
-	async syncSleep() {
-		if (!state.connected) return state.sleep
-		await CoolWearBLE.sendSyncInfo().catch(() => {})
-		return state.sleep
-	},
-
-	getSleep() {
-		return state.sleep ? { ...state.sleep } : null
-	},
-
-	updateDeviceName(name) {
-		if (!state.device || !name) return
-		state.device.name = name
-		persistDevice()
-		emit()
 	}
-}
 
-export default BleService
+	export default BleService

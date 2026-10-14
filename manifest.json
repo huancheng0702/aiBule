@@ -59,7 +59,8 @@
                 "dSYMs" : false,
                 "privacyDescription" : {
                     "NSPhotoLibraryUsageDescription" : "需要调用相机",
-                    "NSBluetoothAlwaysUsageDescription" : "需要使用蓝牙以便于连接设备"
+                    "NSBluetoothAlwaysUsageDescription" : "需要使用蓝牙以搜索、连接智能戒指并同步健康数据",
+                    "NSBluetoothPeripheralUsageDescription" : "需要使用蓝牙以搜索、连接智能戒指并同步健康数据"
                 }
             },
             /* SDK配置 */

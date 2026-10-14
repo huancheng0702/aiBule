@@ -273,21 +273,18 @@
 					radius: 40.5,
 					width: 9,
 					track: '#292725',
-					edge: '#36363E',
 					gradient: ['#8D6A1F', '#604A20', '#BD8919'],
 					ratio: this.stepRatio
 				}, {
 					radius: 27.5,
 					width: 7,
 					track: '#291E24',
-					edge: '#3A2931',
 					gradient: ['#A74436', '#ED503F', '#FF454A'],
 					ratio: this.calorieRatio
 				}, {
 					radius: 16,
 					width: 5.5,
 					track: '#14213B',
-					edge: '#1B2E50',
 					gradient: ['#173665', '#2375D6', '#318FFF'],
 					ratio: this.distanceRatio
 				}]
@@ -302,10 +299,9 @@
 				}
 				ctx.clearRect(0, 0, size, size)
 
-				// 先画三条完整暗色轨道。外缘细线是 UI 图里环与背景之间的层次。
+				// 先画三条完整暗色轨道。
 				for (let i = 0; i < rings.length; i++) {
 					const ring = rings[i]
-					strokeArc(ring.radius, ring.width + 1.2, ring.edge, 0, Math.PI * 2)
 					strokeArc(ring.radius, ring.width, ring.track, 0, Math.PI * 2)
 				}
 
@@ -322,18 +318,13 @@
 					gradient.addColorStop(0.52, ring.gradient[1])
 					gradient.addColorStop(1, ring.gradient[2])
 
-					// 辉光层使用平头，避免在弧线两端形成额外的圆点。
-					strokeArc(ring.radius, ring.width + 3.2, ring.shadow, startAngle, endAngle, 'butt')
 					strokeArc(ring.radius, ring.width, gradient, startAngle, endAngle, full ? 'butt' : 'round')
 				}
 
 				ctx.beginPath()
 				ctx.setFillStyle('#17213A')
-				ctx.setStrokeStyle('#1D2A48')
-				ctx.setLineWidth(0.8 * scale)
 				ctx.arc(cx, cy, 8.2 * scale, 0, Math.PI * 2, false)
 				ctx.fill()
-				ctx.stroke()
 				ctx.draw()
 			},
 			loadGoals() {

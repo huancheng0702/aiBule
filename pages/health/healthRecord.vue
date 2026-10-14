@@ -653,7 +653,7 @@
 		methods: {
 			drawRing(canvasId, score, color, size) {
 				const ctx = uni.createCanvasContext(canvasId, this)
-				const s = size || 120
+				const s = 132
 				const cx = s / 2
 				const cy = s / 2
 				const lineWidth = Math.round(s * 0.1)
@@ -1097,20 +1097,20 @@
 
 	.score-wrap {
 		position: relative;
-		width: 119.26px;
-		height: 119.26px;
+		width: 238.52rpx;
+		height: 238.52rpx;
 		flex-shrink: 0;
 	}
 
 	.score-svg {
-		width: 119.26px;
-		height: 119.26px;
+		width: 238.52rpx;
+		height: 238.52rpx;
 		transform: rotate(-90deg);
 	}
 
 	.score-canvas {
-		width: 119.26px;
-		height: 119.26px;
+		width: 238.52rpx;
+		height: 238.52rpx;
 	}
 
 	.score-edge,
@@ -1448,10 +1448,10 @@
 
 	.defsBg {
 		    position: absolute;
-		    top: -3px;
-		    right: -4px;
-		    width: 126px;
-		    height: 126px;
+		    top: -6rpx;
+		    right: -8rpx;
+		    width: 252rpx;
+		    height: 252rpx;
 	}
 
 	.week-mask {
@@ -1531,20 +1531,20 @@
 
 	.week-score-wrap {
 		position: relative;
-		width: 220rpx;
-		height: 220rpx;
+		width: 250rpx;
+		height: 250rpx;
 		margin: 36rpx auto 0;
 	}
 
 	.week-score-svg {
-		width: 220rpx;
-		height: 220rpx;
+		width: 250rpx;
+		height: 250rpx;
 		transform: rotate(-90deg);
 	}
 
 	.week-score-canvas {
-		width: 220rpx;
-		height: 220rpx;
+		width: 250rpx;
+		height: 250rpx;
 	}
 
 	.week-score-center {

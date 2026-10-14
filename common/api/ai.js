@@ -71,16 +71,28 @@ export async function exportAndDownloadReport(reportIds) {
 	// #endif
 	// #endif
 	// #ifdef APP-PLUS
-	const openFile = () => plus.runtime.openFile(filePath, {}, () => {
-		uni.showToast({ title: '文件已保存，请安装支持该格式的应用', icon: 'none' })
-	})
-	try {
-		plus.share.sendWithSystem({ type: 'file', files: [filePath] }, () => {}, (error) => {
-			if (!/cancel|取消/i.test((error && error.message) || '')) openFile()
-		})
-	} catch (error) {
-		openFile()
+	// downloadFileToLocal 已返回 file:// 绝对路径；iOS 的 UIActivityViewController
+	// 必须等 loading 完全收起再调，否则就是截图里那种空白 NOWA 弹窗。
+	const toAbs = (p) => {
+		try {
+			if (!p) return p
+			if (/^file:\/\//i.test(p)) return p
+			return plus.io.convertLocalFileSystemURL(p)
+		} catch (e) { return p }
 	}
+	const absPath = toAbs(filePath)
+	const openFile = () => plus.runtime.openFile(absPath, {}, () => {
+		uni.showToast({ title: '文件已保存，请安装WPS/Office打开', icon: 'none' })
+	})
+	setTimeout(() => {
+		try {
+			plus.share.sendWithSystem({ type: 'file', files: [absPath] }, () => {}, (error) => {
+				if (!/cancel|取消/i.test((error && error.message) || '')) openFile()
+			})
+		} catch (error) {
+			openFile()
+		}
+	}, 350)
 	// #endif
 	return filePath
 }

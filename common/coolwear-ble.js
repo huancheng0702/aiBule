@@ -32,6 +32,63 @@ function getNativeModule() {
   // #endif
 }
 
+// iOS SDK 包一层 {curItemCount, sportInfos/heartInfos/data:[...], remainItemCount}，安卓是平铺数组，这里统一拆平
+function flattenIOSWrapper(data) {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const inner = data.sportInfos || data.heartInfos || data.data || data.list || data.items
+    if (Array.isArray(inner)) return inner
+    return data
+  }
+  if (Array.isArray(data)) {
+    const out = []
+    data.forEach((it) => {
+      if (it && typeof it === 'object' && !Array.isArray(it)) {
+        const inner = it.sportInfos || it.heartInfos || it.data
+        if (Array.isArray(inner)) {
+          inner.forEach((s) => out.push(s))
+          return
+        }
+      }
+      out.push(it)
+    })
+    return out
+  }
+  return data
+}
+
+function aliasValueItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+  if (item.value != null) return item
+  const v = item.heartNum != null ? item.heartNum
+    : (item.heartNums != null ? item.heartNums
+    : (item.oxygen != null ? item.oxygen
+    : (item.hrv != null ? item.hrv
+    : (item.hrvNums != null ? item.hrvNums
+    : (item.tempValue != null ? item.tempValue
+    : (item.walkSteps != null ? item.walkSteps : null))))))
+  if (v == null) return item
+  const out = { ...item, value: v }
+  // 时间：秒转毫秒
+  if (out.time != null && Number(out.time) < 1e12) {
+    const n = Number(out.time)
+    if (n > 1e9 && n < 1e11) out.time = n * 1000
+  }
+  if (out.oxygen != null) out.o2 = out.oxygen
+  if (out.heartNum != null) { out.heart = out.heartNum; out.hr = out.heartNum }
+  if (out.walkSteps != null) out.steps = out.walkSteps
+  if (out.walkDistance != null) out.distance = out.walkDistance
+  if (out.walkCalories != null) out.calories = out.walkCalories
+  return out
+}
+
+function normalizeStreamData(event, data) {
+  const flat = flattenIOSWrapper(data)
+  if (Array.isArray(flat) && (event === 'onHeartRate' || event === 'onHeartRateDaily' || event === 'onHRV' || event === 'onBloodOxygen' || event === 'onTemperature' || event === 'onSport')) {
+    return flat.map(aliasValueItem)
+  }
+  return flat
+}
+
 function bindGlobalEvent() {
   if (eventBound) return
   // #ifdef APP-PLUS
@@ -47,6 +104,7 @@ function bindGlobalEvent() {
         // keep string
       }
     }
+    data = normalizeStreamData(event, data)
     const handlers = listeners.get(event)
     if (handlers) {
       handlers.forEach((fn) => {
@@ -214,6 +272,60 @@ const CoolWearBLE = {
 
   reconnect() {
     return callNative('reconnect')
+  },
+
+  checkBluetoothPermission() {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (mod && typeof mod.checkBluetoothPermission === 'function') {
+        return callNative('checkBluetoothPermission', {}, 8000)
+      }
+    } catch (e) {}
+    return Promise.resolve({ authorization: 'unknown', state: -1, fallback: true })
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({ authorization: 'unknown', fallback: true })
+    // #endif
+  },
+
+  requestBluetoothPermission() {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      // 老基座没有该原生方法时不抛错：iOS在init/startScan时系统会自动弹框
+      if (!mod || typeof mod.requestBluetoothPermission !== 'function') {
+        console.log('[CoolWear-BLE] requestBluetoothPermission not in native, skip')
+        return Promise.resolve({ granted: true, fallback: true })
+      }
+    } catch (e) {}
+    return callNative('requestBluetoothPermission', {}, 20000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({ granted: true, fallback: true })
+    // #endif
+  },
+
+  openAppSettings() {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (!mod || typeof mod.openAppSettings !== 'function') {
+        // 降级：用系统设置意图
+        const UIApplication = plus.ios.importClass('UIApplication')
+        const NSURL = plus.ios.importClass('NSURL')
+        const app = UIApplication.sharedApplication()
+        const url = NSURL.URLWithString('app-settings:')
+        if (url && app.canOpenURL(url)) app.openURL(url)
+        plus.ios.deleteObject(app)
+        return Promise.resolve({})
+      }
+    } catch (e) {}
+    return callNative('openAppSettings', {}, 8000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({})
+    // #endif
   }
 }
 

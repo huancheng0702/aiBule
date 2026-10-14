@@ -58,13 +58,13 @@
 			<view class="bottom-panel">
 				<view class="tab-bar">
 					<view class="tab-item" :class="{ active: activeTab === 0 }" @click="activeTab = 0">
-						<image v-if="activeTab === 0" class="tab-item-bg" src="/static/confirmBg.png"
-							mode="scaleToFill"></image>
+						<image v-if="activeTab === 0" class="tab-item-bg" src="/static/btnBan.png"
+							mode=""></image>
 						<text class="tab-text">健康解读</text>
 					</view>
 					<view class="tab-item" :class="{ active: activeTab === 1 }" @click="activeTab = 1">
-						<image v-if="activeTab === 1" class="tab-item-bg" src="/static/confirmBg.png"
-							mode="scaleToFill"></image>
+						<image v-if="activeTab === 1" class="tab-item-bg" src="/static/btnBan.png"
+							mode=""></image>
 						<text class="tab-text">异常指标记录</text>
 					</view>
 				</view>
@@ -87,8 +87,8 @@
 					<view class="score-wrap">
 						<canvas canvas-id="bodyScoreCanvas" id="bodyScoreCanvas" class="score-canvas"></canvas>
 						<view class="score-center">
-							<text class="score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${scoreAccentColor} 100%)` }">{{ score }}</text>
-							<text class="score-label">综合分</text>
+							<view class="score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${scoreAccentColor} 100%)` }">{{ score }}</view>
+							<view class="score-label">综合分</view>
 						</view>
 					</view>
 				</view>
@@ -945,17 +945,17 @@ export default {
 		position: absolute;
 		right: 0;
 		top: 0;
-		width: 206.48px;
-		height: 99.37px;
+		width: 412.96rpx;
+		height: 198.74rpx;
 		z-index: 999;
 	}
 
 	.body-base {
 		position: absolute;
 		right: 0px;
-		bottom: -257px;
-		width: 312.48px;
-		height: 736.7px;
+		bottom: -514rpx;
+		width: 624.96rpx;
+		height: 1473.4rpx;
 
 	}
 
@@ -1315,14 +1315,11 @@ export default {
 
 	.score-center {
 		position: absolute;
-		left: 0;
-		top: 0;
-		width: 100%;
+		left: -4px;
+		top:34rpx;
+		width: 160rpx;
 		height: 100%;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
+		text-align: center;
 	}
 
 	.score-num {

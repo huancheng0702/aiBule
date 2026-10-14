@@ -7,7 +7,7 @@
 			<TabMine ref="tabMine" v-show="current === 3" />
 		</view>
 
-		<view class="tabbar-wrap">
+		<view class="tabbar-wrap" :style="{ paddingBottom: tabbarPaddingBottom }">
 			<view class="tabbar">
 				<view v-for="(item, index) in tabList" :key="item.text" class="tabbar-item" @click="switchTab(index)">
 					<view class="icon-wrap" :class="{ active: current === index }">
@@ -17,7 +17,7 @@
 					<text class="tab-text" :class="{ active: current === index }">{{ item.text }}</text>
 				</view>
 			</view>
-			<view class="safe-area"></view>
+
 		</view>
 	</view>
 </template>
@@ -38,6 +38,7 @@
 		data() {
 			return {
 				current: 0,
+				tabbarPaddingBottom: '',
 				tabList: [{
 						text: '首页',
 						iconPath: '/static/tabbar/index.png',
@@ -62,6 +63,7 @@
 			}
 		},
 		onLoad(options) {
+			this.fixTabbarPadding()
 			const t = Number(options && options.tab)
 			if (!Number.isNaN(t) && t >= 0 && t <= 3) {
 				this.current = t
@@ -73,6 +75,28 @@
 			this.$nextTick(() => this.notifyTabShow())
 		},
 		methods: {
+			// App 的 webview 不支持 calc(16rpx + env(...))，用 JS 算出 px 设内联样式
+			// iOS 只留安全区高度（不再额外加 16rpx，避免整条栏被顶得太高）
+			fixTabbarPadding() {
+				try {
+					const info = uni.getSystemInfoSync() || {}
+					const platform = info.platform || ''
+					if (platform !== 'ios') {
+						this.tabbarPaddingBottom = ''
+						return
+					}
+					let inset = 0
+					if (info.safeAreaInsets && info.safeAreaInsets.bottom != null) {
+						inset = Number(info.safeAreaInsets.bottom) || 0
+					} else if (info.safeArea && info.screenHeight && info.safeArea.bottom != null) {
+						inset = Number(info.screenHeight) - Number(info.safeArea.bottom)
+						if (!(inset > 0)) inset = 0
+					}
+					this.tabbarPaddingBottom = inset + 'px'
+				} catch (e) {
+					this.tabbarPaddingBottom = ''
+				}
+			},
 			checkEntry() {
 				const token = uni.getStorageSync('token')
 				if (!token) {
@@ -171,10 +195,5 @@
 
 	.tab-text.active {
 		color: #fff;
-	}
-
-	.safe-area {
-		height: constant(safe-area-inset-bottom);
-		height: env(safe-area-inset-bottom);
 	}
 </style>

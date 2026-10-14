@@ -942,15 +942,10 @@
 				values.forEach((v) => this.measureSamples.push(v))
 				const latest = values[values.length - 1]
 				this.liveSpo2 = latest
+				if (latest > 0) { this.finishMeasure(latest) }
 				console.log('[boold] 实时血氧', latest, 'samples=', this.measureSamples.length)
 
-				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
-					this.measureStableTimer = setTimeout(() => {
-						if (!this.measuring) return
-						const spo2 = this.liveSpo2 || this.measureSamples[this.measureSamples.length - 1]
-						this.finishMeasure(spo2)
-					}, MEASURE_STABLE_MS)
-				}
+				// 首个有效值直接结算
 			},
 			async stopRealMeasure(turnOffSwitch = true) {
 				this.clearMeasureTimer()

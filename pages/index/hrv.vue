@@ -932,15 +932,10 @@
 				values.forEach((v) => this.measureSamples.push(v))
 				const latest = values[values.length - 1]
 				this.liveHrv = latest
+				if (latest > 0) { this.finishMeasure(latest) }
 				console.log('[hrv] 实时 HRV', latest, 'samples=', this.measureSamples.length)
 
-				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
-					this.measureStableTimer = setTimeout(() => {
-						if (!this.measuring) return
-						const hrv = this.liveHrv || this.measureSamples[this.measureSamples.length - 1]
-						this.finishMeasure(hrv)
-					}, MEASURE_STABLE_MS)
-				}
+				// 首个有效值直接结算
 			},
 			async stopRealMeasure(turnOffSwitch = true) {
 				this.clearMeasureTimer()

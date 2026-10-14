@@ -34,8 +34,38 @@ export function downloadFileToLocal(fileUrl, fileName = '下载文件') {
 
 		// #ifdef APP-PLUS
 		// 使用持久目录并保留扩展名，避免临时文件被清理或无法识别文档类型。
-		const safeName = String(fileName).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
-		const task = plus.downloader.createDownload(fileUrl, {
+		// OSS 返回的 fileUrl 常带中文文件名，iOS downloader 不做编码会直接 404/0KB，
+		// 这里对 path/query 中的中文做 encodeURI，保留 ? & = 等分隔符。
+		let safeUrl = String(fileUrl)
+		try {
+			const qIdx = safeUrl.indexOf('?')
+			const hashIdx = safeUrl.indexOf('#')
+			let base = safeUrl
+			let suffix = ''
+			if (qIdx > -1) {
+				base = safeUrl.slice(0, qIdx)
+				suffix = safeUrl.slice(qIdx, hashIdx > -1 ? hashIdx : undefined)
+			} else if (hashIdx > -1) {
+				base = safeUrl.slice(0, hashIdx)
+			}
+			base = encodeURI(decodeURI(base))
+			if (suffix) {
+				suffix = suffix.split('&').map((kv) => {
+					const eq = kv.indexOf('=')
+					if (eq < 0) return encodeURI(decodeURI(kv))
+					return kv.slice(0, eq + 1) + encodeURIComponent(decodeURIComponent(kv.slice(eq + 1)))
+				}).join('&')
+				if (hashIdx > -1) suffix += safeUrl.slice(hashIdx)
+			} else if (hashIdx > -1) {
+				suffix = safeUrl.slice(hashIdx)
+			}
+			safeUrl = base + suffix
+		} catch (e) {
+			try { safeUrl = encodeURI(safeUrl) } catch (err) {}
+		}
+		let safeName = String(fileName).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+		if (!/\.docx?$/i.test(safeName)) safeName += '.docx'
+		const task = plus.downloader.createDownload(safeUrl, {
 			filename: `_doc/exports/${Date.now()}_${safeName}`,
 			timeout: 120
 		}, (download, status) => {
@@ -43,7 +73,25 @@ export function downloadFileToLocal(fileUrl, fileName = '下载文件') {
 				reject(new Error('文件下载失败，请检查网络'))
 				return
 			}
-			resolve(download.filename)
+			// iOS 分享/打开必须用 file:// 绝对路径，相对 _doc 路径分享出去就是空白。
+			let absPath = download.filename
+			try {
+				if (!/^file:\/\//i.test(absPath)) absPath = plus.io.convertLocalFileSystemURL(absPath)
+			} catch (e) {}
+			// 校验文件真实存在且非空，避免分享 0KB 空文件。
+			try {
+				plus.io.resolveLocalFileSystemURL(absPath, (entry) => {
+					try {
+						entry.file((f) => {
+							if (f && f.size > 0) resolve(absPath)
+							else reject(new Error('下载文件为空，请重试'))
+						}, () => resolve(absPath))
+					} catch (e) { resolve(absPath) }
+				}, () => resolve(absPath))
+			} catch (e) { resolve(absPath) }
+		})
+		task.addEventListener('statechanged', (d) => {
+			if (d && d.downloadedSize === 0 && d.totalSize < 0) return
 		})
 		task.start()
 		return

@@ -6,6 +6,10 @@
 		onLaunch: function() {
 			console.log('App Launch')
 			applyLaunchAuth()
+			// 进入App即申请蓝牙权限（iOS会弹系统框，Android申请定位+蓝牙）
+			BleService.requestPermissions().catch((e) => {
+				console.log('[App] bluetooth permission', e && e.message)
+			})
 			BleService.bootstrap()
 			BleService.tryAutoReconnect().catch((e) => {
 				console.log('[App] auto reconnect on launch', e && e.message)

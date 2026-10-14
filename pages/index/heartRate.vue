@@ -1001,16 +1001,15 @@
 				values.forEach((v) => this.measureSamples.push(v))
 				const latest = values[values.length - 1]
 				this.liveBpm = latest
+
+				// 测出有效值即上报结算，不再等稳定/45秒
+				if (latest > 0) {
+					this.finishMeasure(latest)
+				}
 				console.log('[heartRate] 实时心率', latest, 'samples=', this.measureSamples.length)
 
 				// 收到足够样本后，再稳定采集一小段取最新值结束
-				if (this.measureSamples.length >= MEASURE_MIN_SAMPLES && !this.measureStableTimer) {
-					this.measureStableTimer = setTimeout(() => {
-						if (!this.measuring) return
-						const bpm = this.liveBpm || this.measureSamples[this.measureSamples.length - 1]
-						this.finishMeasure(bpm)
-					}, MEASURE_STABLE_MS)
-				}
+				// 首个有效值直接结算
 			},
 			async stopRealMeasure(turnOffSwitch = true) {
 				this.clearMeasureTimer()

@@ -1,5 +1,11 @@
 #import "CoolWearBLEModule.h"
 #import <BluetoothLibrary/BluetoothLibrary.h>
+#import <CoreBluetooth/CoreBluetooth.h>
+
+@interface CoolWearBLEModule () <CBCentralManagerDelegate>
+@property (nonatomic, strong) CBCentralManager *permCentral;
+@property (nonatomic, copy) UniModuleKeepAliveCallback permCallback;
+@end
 
 static NSString * const kEventChannel = @"CoolWearBLE";
 
@@ -123,6 +129,61 @@ static NSString * const kEventChannel = @"CoolWearBLE";
     }];
 }
 
+- (id)pickFirst:(NSDictionary *)dict keys:(NSArray<NSString *> *)keys {
+    for (NSString *k in keys) {
+        id v = dict[k];
+        if (v != nil && v != [NSNull null]) return v;
+    }
+    return nil;
+}
+
+- (NSArray *)normalizedValueArray:(id)data valueKeys:(NSArray<NSString *> *)vKeys extra:(NSDictionary *(^)(NSDictionary *src, NSMutableDictionary *out))extraBlock {
+    // iOS SDK 包一层 {curItemCount, sportInfos/heartInfos/data:[...], remainItemCount}，先拆平
+    if ([data isKindOfClass:[NSDictionary class]]) {
+        id inner = ((NSDictionary *)data)[@"sportInfos"] ?: ((NSDictionary *)data)[@"heartInfos"] ?: ((NSDictionary *)data)[@"data"] ?: ((NSDictionary *)data)[@"list"] ?: ((NSDictionary *)data)[@"items"];
+        if ([inner isKindOfClass:[NSArray class]]) data = inner;
+    }
+    NSArray *list = nil;
+    if ([data isKindOfClass:[NSArray class]]) list = data;
+    else if (data != nil) list = @[data];
+    else list = @[];
+    NSMutableArray *flat = [NSMutableArray array];
+    for (id w in list) {
+        if ([w isKindOfClass:[NSDictionary class]]) {
+            id inner = ((NSDictionary *)w)[@"sportInfos"] ?: ((NSDictionary *)w)[@"heartInfos"] ?: ((NSDictionary *)w)[@"data"];
+            if ([inner isKindOfClass:[NSArray class]]) { [flat addObjectsFromArray:inner]; continue; }
+        }
+        [flat addObject:w ?: @{}];
+    }
+    list = flat;
+    NSMutableArray *out = [NSMutableArray arrayWithCapacity:list.count];
+    for (id item in list) {
+        if ([item isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *d = item;
+            NSMutableDictionary *o = [NSMutableDictionary dictionary];
+            id v = [self pickFirst:d keys:vKeys];
+            if (v == nil) {
+                for (id k in d) { id vv = d[k]; if ([vv isKindOfClass:[NSNumber class]]) { v = vv; break; } }
+            }
+            if (v != nil) o[@"value"] = v;
+            id hn = [self pickFirst:d keys:@[@"heartNum", @"heartNums", @"heart", @"hr"]];
+            if (hn != nil) { o[@"heart"] = hn; o[@"hr"] = hn; if (o[@"value"] == nil) o[@"value"] = hn; }
+            id ox = [self pickFirst:d keys:@[@"oxygen", @"o2", @"spo2"]];
+            if (ox != nil) { o[@"o2"] = ox; o[@"oxygen"] = ox; if (o[@"value"] == nil) o[@"value"] = ox; }
+            id t = [self pickFirst:d keys:@[@"time", @"timestamp", @"measureTime", @"date", @"datetime", @"startSecs", @"startTime"]];
+            if (t != nil) o[@"time"] = t;
+            if (extraBlock) { NSDictionary *ex = extraBlock(d, o); if (ex) [o addEntriesFromDictionary:ex]; }
+            o[@"raw"] = d;
+            [out addObject:o];
+        } else if ([item isKindOfClass:[NSNumber class]]) {
+            [out addObject:@{@"value": item, @"raw": @{@"value": item}}];
+        } else {
+            [out addObject:@{@"value": item ?: @"", @"raw": [NSString stringWithFormat:@"%@", item]}];
+        }
+    }
+    return out;
+}
+
 - (void)onReceiveData:(NSNotification *)notification {
     NSDictionary *userInfo = notification.userInfo;
     if (![userInfo isKindOfClass:[NSDictionary class]]) {
@@ -136,83 +197,180 @@ static NSString * const kEventChannel = @"CoolWearBLE";
     K6_DataFuncType type = (K6_DataFuncType)[dataType integerValue];
     switch (type) {
         case DATA_TYPE_BATTERY_INFO: {
+            NSLog(@"[CoolWearBLE] battery raw class=%@ value=%@", NSStringFromClass([data class]), data);
+            NSMutableDictionary *payload = [NSMutableDictionary dictionary];
             if ([data isKindOfClass:[NSDictionary class]]) {
                 NSDictionary *dict = (NSDictionary *)data;
-                NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-                id level = dict[@"level"] ?: dict[@"battery"] ?: dict[@"Battery"] ?: dict[@"power"];
-                id charging = dict[@"charging"] ?: dict[@"chargerStatus"] ?: dict[@"isChargerStatus"] ?: dict[@"isCharging"] ?: dict[@"deviceChargerStatus"];
-                if (level != nil) {
-                    payload[@"level"] = @([level intValue]);
+                NSArray *levelKeys = @[@"level", @"battery", @"Battery", @"power", @"powerValue", @"battery_capacity", @"batteryCapacity", @"electricity", @"capacity", @"value", @"percent", @"percentage", @"battLevel", @"charge"];
+                id level = nil;
+                for (NSString *k in levelKeys) {
+                    id v = dict[k];
+                    if (v != nil && v != [NSNull null]) { level = v; break; }
                 }
+                // 兜底：字典里第一个 NSNumber 值
+                if (level == nil) {
+                    for (id k in dict) {
+                        id v = dict[k];
+                        if ([v isKindOfClass:[NSNumber class]]) { level = v; break; }
+                    }
+                }
+                NSArray *chargeKeys = @[@"charging", @"chargerStatus", @"isChargerStatus", @"isCharging", @"deviceChargerStatus", @"chargeStatus", @"isCharge", @"charger", @"chargingStatus"];
+                id charging = nil;
+                for (NSString *k in chargeKeys) {
+                    id v = dict[k];
+                    if (v != nil && v != [NSNull null]) { charging = v; break; }
+                }
+                if (level != nil) payload[@"level"] = @([level intValue]);
                 BOOL isCharging = NO;
-                if ([charging respondsToSelector:@selector(boolValue)]) {
-                    isCharging = [charging boolValue];
-                } else if ([charging respondsToSelector:@selector(intValue)]) {
-                    isCharging = [charging intValue] != 0;
-                }
+                if ([charging respondsToSelector:@selector(boolValue)]) isCharging = [charging boolValue];
                 payload[@"charging"] = @(isCharging);
                 payload[@"chargerStatus"] = @(isCharging);
                 payload[@"isChargerStatus"] = @(isCharging);
                 payload[@"raw"] = dict;
-                [self fireEvent:@"onBattery" data:payload];
+            } else if ([data isKindOfClass:[NSNumber class]]) {
+                // iOS SDK 有时直接透传 NSNumber 电量
+                payload[@"level"] = @([(NSNumber *)data intValue]);
+                payload[@"charging"] = @NO;
+                payload[@"chargerStatus"] = @NO;
+                payload[@"isChargerStatus"] = @NO;
+                payload[@"raw"] = @{@"value": data};
+            } else {
+                payload[@"raw"] = data ? [NSString stringWithFormat:@"%@", data] : @"";
             }
+            [self fireEvent:@"onBattery" data:payload];
+            break;
+        }
             break;
         }
         case DATA_TYPE_REAL_HEART:
         case DATA_TYPE_EXERCISE_HEART:
         case DATA_TYPE_REAL_HR: {
-            [self fireEvent:@"onHeartRate" data:data ?: @[]];
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"heart", @"heartNums", @"heartNum", @"hr", @"bpm", @"heartRate"] extra:nil];
+            [self fireEvent:@"onHeartRate" data:arr];
+            break;
+        }
+        case DATA_TYPE_HISTORY_HEART: {
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"heart", @"heartNums", @"heartNum", @"hr", @"bpm", @"heartRate"] extra:nil];
+            [self fireEvent:@"onHeartRateDaily" data:arr];
             break;
         }
         case DATA_TYPE_REAL_HRV:
         case DATA_TYPE_HISTORY_HRV: {
-            [self fireEvent:@"onHRV" data:data ?: @[]];
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"hrv", @"hrvNums", @"hrvValue", @"rmssd", @"sdnn"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
+                id s = [self pickFirst:src keys:@[@"stress", @"pressure", @"stressValue", @"press"]];
+                if (s != nil) return @{@"stress": s, @"pressure": s};
+                return nil;
+            }];
+            [self fireEvent:@"onHRV" data:arr];
             break;
         }
         case DATA_TYPE_HISTORY_TEMP: {
-            [self fireEvent:@"onTemperature" data:data ?: @[]];
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"temp", @"tempValue", @"temperature"] extra:nil];
+            [self fireEvent:@"onTemperature" data:arr];
             break;
         }
         case DATA_TYPE_SLEEP: {
-            [self fireEvent:@"onSleep" data:data ?: @{}];
+            if ([data isKindOfClass:[NSDictionary class]]) {
+                NSMutableDictionary *p = [NSMutableDictionary dictionaryWithDictionary:data];
+                if (!p[@"typeMap"]) p[@"typeMap"] = @{@"start": @0, @"light": @1, @"deep": @2, @"movement": @3, @"wakeup": @4};
+                if (!p[@"sessions"] && !p[@"sleeps"]) p[@"sessions"] = @[data];
+                p[@"raw"] = data;
+                [self fireEvent:@"onSleep" data:p];
+            } else {
+                [self fireEvent:@"onSleep" data:@{@"sessions": data ?: @[], @"raw": data ?: @[]}];
+            }
             break;
         }
         case DATA_TYPE_REAL_O2:
         case DATA_TYPE_HISTORY_O2: {
-            [self fireEvent:@"onBloodOxygen" data:data ?: @[]];
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"o2", @"oxygen", @"spo2", @"bloodOxygen", @"oxygenValue", @"o2Value"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
+                id v = out[@"value"];
+                if (v != nil) return @{@"o2": v};
+                return nil;
+            }];
+            [self fireEvent:@"onBloodOxygen" data:arr];
             break;
         }
         case DATA_TYPE_REAL_SPORT:
         case DATA_TYPE_HISTORY_SPORT: {
-            [self fireEvent:@"onSport" data:data ?: @[]];
+            NSArray *list = [data isKindOfClass:[NSArray class]] ? data : (data ? @[data] : @[]);
+            // iOS SDK 包一层 {sportInfos:[...]}，先拆平成单条
+            NSMutableArray *flat = [NSMutableArray array];
+            for (id w in list) {
+                if ([w isKindOfClass:[NSDictionary class]] && [(NSDictionary *)w objectForKey:@"sportInfos"]) {
+                    id infos = [(NSDictionary *)w objectForKey:@"sportInfos"];
+                    if ([infos isKindOfClass:[NSArray class]]) [flat addObjectsFromArray:infos];
+                    else if (infos) [flat addObject:infos];
+                } else { [flat addObject:w ?: @{}]; }
+            }
+            NSMutableArray *arr = [NSMutableArray array];
+            for (id item in flat) {
+                if ([item isKindOfClass:[NSDictionary class]]) {
+                    NSDictionary *d = item;
+                    NSMutableDictionary *o = [NSMutableDictionary dictionary];
+                    id steps = [self pickFirst:d keys:@[@"walkSteps", @"steps", @"step", @"walk_steps"]];
+                    if (steps != nil) { o[@"walkSteps"] = steps; o[@"steps"] = steps; }
+                    id dist = [self pickFirst:d keys:@[@"distance", @"walkDistance", @"meters"]];
+                    if (dist != nil) o[@"distance"] = dist;
+                    id cal = [self pickFirst:d keys:@[@"calories", @"calorie", @"kcal", @"walkCalories"]];
+                    if (cal != nil) o[@"calories"] = cal;
+                    id t = [self pickFirst:d keys:@[@"time", @"timestamp", @"measureTime", @"date", @"startSecs", @"startTime"]];
+                    if (t != nil) {
+                        // startSecs 是秒，转毫秒与安卓对齐
+                        if ([d objectForKey:@"startSecs"] == t) o[@"time"] = @([t longLongValue] * 1000);
+                        else o[@"time"] = t;
+                    }
+                    o[@"raw"] = d;
+                    [arr addObject:o];
+                } else { [arr addObject:@{@"raw": [NSString stringWithFormat:@"%@", item]}]; }
+            }
+            [self fireEvent:@"onSport" data:arr];
             break;
         }
         case DATA_TYPE_MIX_SPORT: {
-            [self fireEvent:@"onMixSport" data:data ?: @[]];
+            NSArray *list = [data isKindOfClass:[NSArray class]] ? data : (data ? @[data] : @[]);
+            NSMutableArray *arr = [NSMutableArray array];
+            for (id item in list) {
+                if ([item isKindOfClass:[NSDictionary class]]) [arr addObject:item];
+                else [arr addObject:@{@"raw": [NSString stringWithFormat:@"%@", item]}];
+            }
+            [self fireEvent:@"onMixSport" data:arr];
             break;
         }
         case DATA_TYPE_DEVINFO: {
             if ([data isKindOfClass:[NSDictionary class]]) {
                 NSDictionary *dict = (NSDictionary *)data;
                 NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:dict];
-                id ver = dict[@"softwareVer"] ?: dict[@"firmware"] ?: dict[@"SoftwareVer"] ?: dict[@"softwareVersion"] ?: dict[@"version"];
+                id ver = [self pickFirst:dict keys:@[@"softwareVer", @"firmware", @"SoftwareVer", @"softwareVersion", @"version", @"softVersion", @"fwVersion"]];
                 if (ver != nil) {
                     NSString *verStr = [NSString stringWithFormat:@"%@", ver];
                     payload[@"softwareVer"] = verStr;
                     payload[@"firmware"] = verStr;
                 }
-                id hw = dict[@"hardwareVer"] ?: dict[@"HardwareVer"] ?: dict[@"hardwareVersion"];
-                if (hw != nil) {
-                    payload[@"hardwareVer"] = [NSString stringWithFormat:@"%@", hw];
-                }
+                id hw = [self pickFirst:dict keys:@[@"hardwareVer", @"HardwareVer", @"hardwareVersion", @"hardVersion", @"hwVersion"]];
+                if (hw != nil) payload[@"hardwareVer"] = [NSString stringWithFormat:@"%@", hw];
+                id cid = [self pickFirst:dict keys:@[@"customerId", @"customer_id", @"customerID", @"cid"]];
+                if (cid != nil) { payload[@"customerId"] = cid; }
+                id did = [self pickFirst:dict keys:@[@"deviceId", @"deviceID", @"devId"]];
+                if (did != nil) { payload[@"deviceId"] = did; payload[@"deviceID"] = did; }
+                if (!payload[@"raw"]) payload[@"raw"] = dict;
                 [self fireEvent:@"onDeviceInfo" data:payload];
             } else {
-                [self fireEvent:@"onDeviceInfo" data:data ?: @{}];
+                [self fireEvent:@"onDeviceInfo" data:@{@"raw": data ?: @""}];
             }
             break;
         }
         case DATA_TYPE_BLE_PAIR_STATUS: {
-            [self fireEvent:@"onPairFinish" data:data ?: @{}];
+            if ([data isKindOfClass:[NSDictionary class]]) {
+                NSMutableDictionary *p = [NSMutableDictionary dictionaryWithDictionary:data];
+                id r = [self pickFirst:data keys:@[@"result", @"value", @"status", @"code"]];
+                if (r != nil) p[@"result"] = r;
+                [self fireEvent:@"onPairFinish" data:p];
+            } else if ([data isKindOfClass:[NSNumber class]]) {
+                [self fireEvent:@"onPairFinish" data:@{@"result": data}];
+            } else {
+                [self fireEvent:@"onPairFinish" data:@{@"result": data ?: @""}];
+            }
             break;
         }
         default:
@@ -475,6 +633,95 @@ UNI_EXPORT_METHOD(@selector(reconnect:))
             callback([self errResult:exception.reason], NO);
         }
     }
+}
+
+#pragma mark - Bluetooth Permission (iOS)
+
+- (NSString *)btAuthString:(CBManagerAuthorization)auth {
+    if (@available(iOS 13.1, *)) {
+        switch (auth) {
+            case CBManagerAuthorizationNotDetermined: return @"notDetermined";
+            case CBManagerAuthorizationRestricted: return @"restricted";
+            case CBManagerAuthorizationDenied: return @"denied";
+            case CBManagerAuthorizationAllowedAlways: return @"allowedAlways";
+            default: break;
+        }
+    }
+    return @"unknown";
+}
+
+- (void)finishPerm:(NSDictionary *)data {
+    if (!self.permCallback) return;
+    UniModuleKeepAliveCallback cb = self.permCallback;
+    self.permCallback = nil;
+    self.permCentral = nil;
+    cb([self okResult:data], NO);
+}
+
+UNI_EXPORT_METHOD(@selector(checkBluetoothPermission:))
+- (void)checkBluetoothPermission:(UniModuleKeepAliveCallback)callback {
+    NSString *authStr = @"unknown";
+    if (@available(iOS 13.1, *)) {
+        authStr = [self btAuthString:CBCentralManager.authorization];
+    }
+    CBManagerState st = self.permCentral ? self.permCentral.state : CBManagerStateUnknown;
+    if (callback) {
+        callback([self okResult:@{@"authorization": authStr, @"state": @(st)}], NO);
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(requestBluetoothPermission:))
+- (void)requestBluetoothPermission:(UniModuleKeepAliveCallback)callback {
+    if (@available(iOS 13.1, *)) {
+        CBManagerAuthorization auth = CBCentralManager.authorization;
+        if (auth == CBManagerAuthorizationAllowedAlways) {
+            if (callback) callback([self okResult:@{@"authorization": @"allowedAlways", @"granted": @YES}], NO);
+            return;
+        }
+        if (auth == CBManagerAuthorizationDenied || auth == CBManagerAuthorizationRestricted) {
+            if (callback) callback([self errResult:@"蓝牙权限被拒绝，请前往 设置 > 本App 开启蓝牙权限"], NO);
+            return;
+        }
+    }
+    self.permCallback = callback;
+    if (!self.permCentral) {
+        NSDictionary *opts = @{CBCentralManagerOptionShowPowerAlertKey: @YES};
+        self.permCentral = [[CBCentralManager alloc] initWithDelegate:self queue:dispatch_get_main_queue() options:opts];
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (self.permCallback) {
+            [self finishPerm:@{@"granted": @NO, @"timeout": @YES}];
+        }
+    });
+}
+
+- (void)centralManagerDidUpdateState:(CBCentralManager *)central {
+    if (central != self.permCentral || !self.permCallback) return;
+    if (central.state == CBManagerStateUnknown || central.state == CBManagerStateResetting) return;
+    NSString *authStr = @"unknown";
+    if (@available(iOS 13.1, *)) {
+        authStr = [self btAuthString:CBCentralManager.authorization];
+    }
+    BOOL granted = (central.state == CBManagerStatePoweredOn);
+    if (@available(iOS 13.1, *)) {
+        granted = granted && (CBCentralManager.authorization == CBManagerAuthorizationAllowedAlways);
+    }
+    [self finishPerm:@{@"granted": @(granted), @"state": @(central.state), @"authorization": authStr}];
+}
+
+UNI_EXPORT_METHOD(@selector(openAppSettings:))
+- (void)openAppSettings:(UniModuleKeepAliveCallback)callback {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+        if (url && [[UIApplication sharedApplication] canOpenURL:url]) {
+            if (@available(iOS 10.0, *)) {
+                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            } else {
+                [[UIApplication sharedApplication] openURL:url];
+            }
+        }
+        if (callback) callback([self okResult:nil], NO);
+    });
 }
 
 @end

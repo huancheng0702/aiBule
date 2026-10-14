@@ -63,6 +63,7 @@
 #import <BluetoothLibrary/CE_SyncHeartO2Cmd.h>
 #import <BluetoothLibrary/CE_SyncECGCmd.h>
 #import <BluetoothLibrary/CE_SyncBloodPressureCmd.h>
+#import <BluetoothLibrary/CE_SyncRRIHRVCmd.h>
 
 #import <BluetoothLibrary/YD_SyncFaceIndexCmd.h>
 #import <BluetoothLibrary/CE_SyncSystemFaceDataCmd.h>
@@ -108,7 +109,6 @@ extern NSString *const CEProductK6ReceiveDataNoticeKey;
 - (void)cleanCmdQueue;
 
 @end
-
 
 
 

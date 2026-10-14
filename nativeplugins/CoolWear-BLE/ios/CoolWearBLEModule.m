@@ -14,6 +14,9 @@ static NSString * const kEventChannel = @"CoolWearBLE";
 
 @implementation CoolWearBLEModule
 
++ (void)load {
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {

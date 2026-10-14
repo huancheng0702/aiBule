@@ -77,6 +77,8 @@ FOUNDATION_EXPORT const unsigned char BluetoothLibraryVersionString[];
 #import <BluetoothLibrary/CE_SyncWatchFaceCmd.h>
 #import <BluetoothLibrary/CE_SendGPSDataCmd.h>
 #import <BluetoothLibrary/YD_SyncSportCmd.h>
+#import <BluetoothLibrary/CE_SyncHeartRatePPGCmd.h>
+#import <BluetoothLibrary/CE_SyncGsensorRawCmd.h>
 #import <BluetoothLibrary/CE_SyncResetCmd.h>
 #import <BluetoothLibrary/CE_SyncExerciseCmd.h>
 #import <BluetoothLibrary/CE_SyncMenstrualCycleCmd.h>
@@ -94,6 +96,7 @@ FOUNDATION_EXPORT const unsigned char BluetoothLibraryVersionString[];
 #import <BluetoothLibrary/CE_SyncOnoffScreenCmd.h>
 #import <BluetoothLibrary/CE_SyncAlipayData.h>
 #import <BluetoothLibrary/CE_SyncHRVCmd.h>
+#import <BluetoothLibrary/CE_SyncRRIHRVCmd.h>
 #import <BluetoothLibrary/CE_ClearDataCmd.h>
 #import <BluetoothLibrary/CE_CloseCmd.h>
 #import <BluetoothLibrary/AppleHealthCenter.h>

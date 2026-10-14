@@ -32,4 +32,17 @@ typedef struct {
     unsigned char reserved[11];
 } hardware_info_struct;
 
+typedef struct {
+    unsigned char time[4];            // Unix seconds
+    unsigned char mean_rr_ms[2];      // mean NN interval, ms
+    unsigned char sdnn_ms[2];         // SDNN, ms
+    unsigned char rmssd_ms[2];        // RMSSD, ms
+    unsigned char pnn50_pct;          // pNN50, 0~100 %
+    unsigned char mean_hr_bpm;        // 60000 / mean_rr_ms
+    unsigned char valid_count;        // valid NN intervals in current window
+    unsigned char rejected_count;     // rejected RRI intervals in current session
+    unsigned char quality;            // 0 invalid, 1 low, 2 fair, 3 good
+    unsigned char flags;              // CW_HRV_METRICS_FLAG_*
+} hrv_metrics_item_struct;
+
 #endif /* DataStruct_h */

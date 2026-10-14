@@ -49,7 +49,13 @@ typedef NS_ENUM(NSInteger, K6_DataFuncType) {
     DATA_TYPE_REAL_HRV = 45,        // 手动心率异变性
     DATA_TYPE_HISTORY_TEMP = 47,    // 皮肤温度历史数据
     DATA_TYPE_SET_VALUABLE_ASSISTANT = 48,        // 本地左右手状态上传
+    DATA_TYPE_HEART_PPG = 56, //心率测量 PPG 数据开关控制和数据上传
+    DATA_TYPE_GSENSOR_RAW = 57, //Gensor原始数据
 
+    DATA_TYPE_REAL_HRV_METRICS = 60,   // active HRV real-time result (16 bytes)
+    DATA_TYPE_HISTORY_HRV_METRICS = 61,     // 61, automatic RRI-HRv history result(16 bytes) 
+    DATA_TYPE_REAL_RRI_HRV = 62,       // 62, APP command only: start/stop active RRI-HRV
+    
     DEV_TO_APP_END_TYPE = 100,      // 0x64
 
     /* 2.app to device cmdType (101-200) */

@@ -100,20 +100,6 @@
             }
         },
         "nativePlugins" : {
-            "CoolWear-BLE" : {
-                "__plugin_info__" : {
-                    "name" : "CoolWear-BLE",
-                    "description" : "CoolWear AI Ring Bluetooth SDK native plugin for UniApp",
-                    "platforms" : "Android,iOS",
-                    "url" : "",
-                    "android_package_name" : "",
-                    "ios_bundle_id" : "",
-                    "isCloud" : false,
-                    "bought" : -1,
-                    "pid" : "",
-                    "parameters" : {}
-                }
-            },
             "CLSDK-ShanYanSDKModule" : {
                 "__plugin_info__" : {
                     "name" : "创蓝闪验",
@@ -125,6 +111,20 @@
                     "isCloud" : true,
                     "bought" : 1,
                     "pid" : "645",
+                    "parameters" : {}
+                }
+            },
+            "CoolWear-BLE" : {
+                "__plugin_info__" : {
+                    "name" : "CoolWear-BLE",
+                    "description" : "CoolWear AI Ring Bluetooth SDK native plugin for UniApp",
+                    "platforms" : "Android,iOS",
+                    "url" : "",
+                    "android_package_name" : "",
+                    "ios_bundle_id" : "",
+                    "isCloud" : false,
+                    "bought" : -1,
+                    "pid" : "",
                     "parameters" : {}
                 }
             }

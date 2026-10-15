@@ -54,12 +54,6 @@ export function getEntryPath() {
 	if (!hasLogin()) {
 		return LOGIN_PATH
 	}
-	if (!uni.getStorageSync('onboardingDone')) {
-		return ONBOARDING_PATH
-	}
-	if (uni.getStorageSync('needCompleteInfo')) {
-		return ONBOARDING_PATH
-	}
 	return HOME_PATH
 }
 

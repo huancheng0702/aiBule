@@ -8,6 +8,11 @@ import {
 import {
 	uploadDeviceData
 } from '@/common/api/deviceData.js'
+import {
+	bindDevice,
+	unbindDevice,
+	getDeviceList
+} from '@/common/api/device.js'
 
 const STORAGE_KEY = 'connectedDevice'
 const STATUS_MAP = {
@@ -37,6 +42,14 @@ let scanTimer = null
 let reconnecting = false
 let lastUploadedSportKey = ''
 let lastUploadedSleepKey = ''
+let lastSyncInfoAt = 0
+
+function throttledSendSyncInfo(force = false) {
+	const now = Date.now()
+	if (!force && now - lastSyncInfoAt < 5000) return
+	lastSyncInfoAt = now
+	CoolWearBLE.sendSyncInfo().catch(() => {})
+}
 
 function cloneState() {
 	return {
@@ -574,8 +587,12 @@ function pickBatteryField(o, keys) {
 		}
 	}
 
+	function normMac(v) {
+		return String(v || '').trim().toUpperCase()
+	}
+
 	function deviceKey(item) {
-		return item.identifier || item.mac || item.deviceId || item.id || ''
+		return normMac(item.mac) || String(item.identifier || item.deviceId || item.id || '')
 	}
 
 	function rssiToSignal(rssi) {
@@ -588,19 +605,31 @@ function pickBatteryField(o, keys) {
 	}
 
 	function toListItem(raw) {
-		const id = deviceKey(raw)
+		const mac = normMac(raw.mac)
+		const identifier = String(raw.identifier || '')
+		const deviceId = raw.deviceId != null ? String(raw.deviceId) : ''
+		const id = mac || identifier || deviceId || String(raw.id || '')
 		const name = raw.name || '未知设备'
 		const rssi = raw.rssi
 		return {
 			id,
 			name,
-			mac: raw.mac || '',
-			identifier: raw.identifier || '',
-			deviceId: raw.deviceId || '',
+			mac,
+			identifier,
+			deviceId,
 			rssi,
 			meta: `${rssiToSignal(rssi)}${rssi != null ? ` · RSSI ${rssi}` : ''}`,
 			raw
 		}
+	}
+
+	function isSameDevice(a, b) {
+		if (!a || !b) return false
+		if (a.id && b.id && a.id === b.id) return true
+		if (a.mac && b.mac && a.mac === b.mac) return true
+		if (a.identifier && b.identifier && a.identifier === b.identifier) return true
+		if (a.deviceId && b.deviceId && a.deviceId === b.deviceId) return true
+		return false
 	}
 
 	function loadStoredDevice() {
@@ -642,11 +671,63 @@ function pickBatteryField(o, keys) {
 		} catch (e) {
 			// ignore
 		}
+		try {
+			uni.removeStorageSync('deviceBindId')
+		} catch (e) {}
 		state.device = null
 		state.battery = null
 		state.deviceInfo = null
 		state.sport = null
 		state.sleep = null
+	}
+
+	function pickBindId(res) {
+		if (res == null) return ''
+		const d = res.data != null ? res.data : res
+		const v = d.bindId || d.id || d.deviceId || (d.record && (d.record.bindId || d.record.id))
+		return v != null ? String(v) : ''
+	}
+
+	async function notifyBindToCloud() {
+		if (!hasLogin() || !state.device) return ''
+		const mac = state.device.mac || state.device.id || ''
+		if (!mac) return ''
+		try {
+			const res = await bindDevice({
+				deviceMac: mac,
+				deviceName: state.device.name || '智能戒指',
+				deviceModel: state.device.name || '',
+				deviceVersion: getFirmware() || state.device.firmware || '',
+				batteryLevel: getBatteryLevel()
+			})
+			const bindId = pickBindId(res)
+			if (bindId) uni.setStorageSync('deviceBindId', bindId)
+			console.log('[ble-service] bindDevice 上报成功', mac, bindId)
+			return bindId
+		} catch (e) {
+			console.log('[ble-service] bindDevice 上报失败', (e && (e.msg || e.message)) || e)
+			return ''
+		}
+	}
+
+	async function resolveBindId() {
+		let bindId = ''
+		try {
+			bindId = uni.getStorageSync('deviceBindId') || ''
+		} catch (e) {}
+		if (bindId) return String(bindId)
+		const mac = normMac(state.device && (state.device.mac || state.device.id))
+		if (!hasLogin()) return ''
+		try {
+			const res = await getDeviceList()
+			const list = Array.isArray(res) ? res : (res && (res.data || res.list || res.records)) || []
+			if (Array.isArray(list)) {
+				const hit = mac ? list.find((it) => normMac(it.deviceMac || it.mac) === mac) : list[0]
+				const v = hit && (hit.bindId || hit.id)
+				if (v != null) return String(v)
+			}
+		} catch (e) {}
+		return ''
 	}
 
 	function bindEvents() {
@@ -657,9 +738,20 @@ function pickBatteryField(o, keys) {
 			if (!data) return
 			const item = toListItem(data)
 			if (!item.id) return
-			const idx = state.devices.findIndex((d) => d.id === item.id)
+			const idx = state.devices.findIndex((d) => isSameDevice(d, item))
 			if (idx >= 0) {
-				state.devices.splice(idx, 1, item)
+				const prev = state.devices[idx]
+				const merged = { ...item }
+				if (!merged.mac) merged.mac = prev.mac || ''
+				if (!merged.identifier) merged.identifier = prev.identifier || ''
+				if (!merged.deviceId) merged.deviceId = prev.deviceId || ''
+				if (merged.name === '未知设备' && prev.name && prev.name !== '未知设备') merged.name = prev.name
+				if (prev.rssi != null && (merged.rssi == null || Number(prev.rssi) > Number(merged.rssi))) {
+					merged.rssi = prev.rssi
+					merged.meta = `${rssiToSignal(prev.rssi)} · RSSI ${prev.rssi}`
+				}
+				merged.id = merged.mac || merged.identifier || merged.deviceId || prev.id
+				state.devices.splice(idx, 1, merged)
 			} else {
 				state.devices.push(item)
 			}
@@ -671,7 +763,10 @@ function pickBatteryField(o, keys) {
 			state.connectStatus = status
 			state.connected = status === 1
 			if (state.connected) {
-				CoolWearBLE.sendSyncInfo().catch(() => {})
+				throttledSendSyncInfo(true)
+				setTimeout(() => {
+					if (state.connected) throttledSendSyncInfo(true)
+				}, 8000)
 				CoolWearBLE.requestBattery().catch(() => {})
 				CoolWearBLE.requestDeviceInfo().catch(() => {})
 				persistDevice()
@@ -766,8 +861,42 @@ function pickBatteryField(o, keys) {
 		})
 	}
 
-	async function sleep(ms) {
+	function sleep(ms) {
 		return new Promise((resolve) => setTimeout(resolve, ms))
+	}
+
+	function isIos() {
+		// #ifdef APP-PLUS
+		try {
+			const sys = (uni.getSystemInfoSync && uni.getSystemInfoSync().platform) || ''
+			return sys === 'ios' || sys === 'iOS'
+		} catch (e) {
+			return false
+		}
+		// #endif
+		// #ifndef APP-PLUS
+		return false
+		// #endif
+	}
+
+	async function waitForIosBluetoothReady(timeoutMs = 4000) {
+		if (!isIos()) return true
+		const start = Date.now()
+		while (Date.now() - start < timeoutMs) {
+			try {
+				const res = await CoolWearBLE.checkBluetoothPermission()
+				const s = res && (res.state ?? res.status)
+				if (s === 5 || s === '5' || s === 'poweredOn' || s === 'on' || (res && res.poweredOn === true)) {
+					return true
+				}
+				if (res && res.fallback) {
+					await sleep(1200)
+					return true
+				}
+			} catch (e) {}
+			await sleep(400)
+		}
+		return false
 	}
 
 	async function pollConnected(timeoutMs = 30000) {
@@ -779,7 +908,7 @@ function pickBatteryField(o, keys) {
 					state.connected = true
 					state.connectStatus = 1
 					emit()
-					await CoolWearBLE.sendSyncInfo().catch(() => {})
+					throttledSendSyncInfo(true)
 					await CoolWearBLE.requestBattery().catch(() => {})
 					return true
 				}
@@ -869,7 +998,9 @@ function pickBatteryField(o, keys) {
 					emit()
 					return false
 				}
+				await BleService.enableAutoMeasure().catch(() => {})
 				persistDevice()
+				notifyBindToCloud()
 				return true
 			} catch (e) {
 				console.error('[ble-service] tryAutoReconnect', e)
@@ -951,6 +1082,9 @@ function pickBatteryField(o, keys) {
 		async startScan(options = {}) {
 			const timeoutMs = options.timeoutMs != null ? options.timeoutMs : 10000
 			await BleService.ensureInit()
+			if (isIos()) {
+				await waitForIosBluetoothReady(4000)
+			}
 			if (scanTimer) {
 				clearTimeout(scanTimer)
 				scanTimer = null
@@ -959,6 +1093,16 @@ function pickBatteryField(o, keys) {
 			state.scanning = true
 			emit()
 			await CoolWearBLE.startScan()
+			if (isIos()) {
+				setTimeout(async () => {
+					if (!state.scanning) return
+					if (state.devices.length > 0) return
+					try {
+						await CoolWearBLE.stopScan().catch(() => {})
+						await CoolWearBLE.startScan()
+					} catch (e) {}
+				}, 1500)
+			}
 			if (timeoutMs > 0) {
 				scanTimer = setTimeout(() => {
 					BleService.stopScan().catch(() => {})
@@ -1008,14 +1152,39 @@ function pickBatteryField(o, keys) {
 				emit()
 				throw new Error('连接超时，请确认戒指在附近且未被其他手机占用')
 			}
+			await BleService.enableAutoMeasure().catch(() => {})
 			persistDevice()
 			uni.setStorageSync('onboardingDone', true)
 			uni.setStorageSync('isFirstLogin', false)
 			emit()
+			notifyBindToCloud()
 			return cloneState()
 		},
 
+		async enableAutoMeasure() {
+			if (!state.connected) return false
+			try {
+				await CoolWearBLE.setHeartAutoSwitch({ heart: true, o2: true, intervalMin: 30 })
+			} catch (e) {
+				console.log('[ble-service] setHeartAutoSwitch failed', e)
+			}
+			try {
+				await CoolWearBLE.setHeartRateSwitch(true)
+			} catch (e) {
+				console.log('[ble-service] setHeartRateSwitch failed', e)
+			}
+			try {
+				await CoolWearBLE.setHRVSwitch(true)
+			} catch (e) {}
+			try {
+				await CoolWearBLE.setBloodOxygenSwitch(true)
+			} catch (e) {}
+			return true
+		},
+
 		async disconnect(unbind = false) {
+			let bindId = ''
+			if (unbind) bindId = await resolveBindId()
 			try {
 				if (state.inited) {
 					await CoolWearBLE.disconnect()
@@ -1027,6 +1196,14 @@ function pickBatteryField(o, keys) {
 					clearStoredDevice()
 				}
 				emit()
+			}
+			if (unbind && bindId && hasLogin()) {
+				try {
+					await unbindDevice(bindId)
+					console.log('[ble-service] unbindDevice 上报成功', bindId)
+				} catch (e) {
+					console.log('[ble-service] unbindDevice 上报失败', (e && (e.msg || e.message)) || e)
+				}
 			}
 		},
 
@@ -1050,7 +1227,7 @@ function pickBatteryField(o, keys) {
 		/** 同步戒指运动数据（步数/距离/卡路里），结果通过 onSport 回传 */
 		async syncSport() {
 			if (!state.connected) return state.sport
-			await CoolWearBLE.sendSyncInfo().catch(() => {})
+			throttledSendSyncInfo(true)
 			return state.sport
 		},
 

@@ -38,7 +38,7 @@
 
 				</view>
 			</view>
-		</view>
+		</view> 
 	</view>
 </template>
 
@@ -402,7 +402,7 @@
 		height: 497rpx;
 	}
 	.porText{
-		width: 100%;
+		width: 50%;
 		height: 100%;
 		color: #FFFFFF;
 		font-size: 48rpx;

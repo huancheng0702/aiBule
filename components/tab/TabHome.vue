@@ -16,7 +16,7 @@
 		<view class="hero-banner">
 			<swiper v-if="banners.length" class="hero-swiper" circular autoplay interval="4000" indicator-dots>
 				<swiper-item v-for="item in banners" :key="item.bannerId" @click="onBanner(item)">
-					<image class="hero-img" :src="item.imageUrl" mode="aspectFill"></image>
+					<image class="hero-img" :src="item.imageUrl" mode=""></image>
 				</swiper-item>
 			</swiper>
 			<image v-else src="/static/swiper.png" class="hero-img" mode="aspectFill"></image>
@@ -684,7 +684,8 @@
 			stepSubText() {
 				const km = Number(this.distanceCurrent) || 0
 				const kcal = Number(this.calorieCurrent) || 0
-				return `${km}km · ${kcal}kcal`
+				const kmText = km >= 100 ? Math.round(km).toString() : (Math.round(km * 10) / 10).toString()
+				return `${kmText}km · ${Math.round(kcal)}kcal`
 			},
 			stepProgress() {
 				const t = Number(this.stepTarget) || 8000
@@ -725,6 +726,7 @@
 			onTabShow() {
 				this.loadHome()
 				BleService.syncSport && BleService.syncSport().catch(() => {})
+				BleService.syncSleep && BleService.syncSleep().catch(() => {})
 			},
 			async loadHome() {
 				await Promise.all([
@@ -744,9 +746,11 @@
 				const items = (data && data.items) || []
 				const steps = pickDashItem(items, 'steps')
 				if (steps) {
-					if (Number(steps.value) >= 0) this.stepCurrent = Number(steps.value)
+					if (steps.value !== undefined && steps.value !== null && steps.value !== '') this.stepCurrent = Number(steps.value) || 0
 					if (Number(steps.target) > 0) this.stepTarget = Number(steps.target)
 					else this.stepTarget = 10000
+					if (steps.calories !== undefined && steps.calories !== null) this.calorieCurrent = Number(steps.calories) || 0
+					if (steps.distance !== undefined && steps.distance !== null) this.distanceCurrent = Number(steps.distance) || 0
 				}
 				const sleep = pickDashItem(items, 'sleep')
 				if (sleep) {

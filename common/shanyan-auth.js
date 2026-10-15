@@ -56,10 +56,13 @@ const STORAGE_PRIVACY = 'privacyAgreed'
 let inited = false
 let opening = false
 
+let sdkInstance = null
+
 function getSdk() {
 	// #ifdef APP-PLUS
 	try {
-		return uni.requireNativePlugin('CLSDK-ShanYanSDKModule')
+		if (!sdkInstance) sdkInstance = uni.requireNativePlugin('CLSDK-ShanYanSDKModule')
+		return sdkInstance
 	} catch (e) {
 		return null
 	}
@@ -168,20 +171,8 @@ function buildAndroidUIConfig() {
 			setAppPrivacyOne: { title: PRIVACY_LINKS.privacyPolicy.name, url: PRIVACY_LINKS.privacyPolicy.url },
 			setAppPrivacyTwo: { title: PRIVACY_LINKS.userAgreement.name, url: PRIVACY_LINKS.userAgreement.url }
 		},
-		widgets: {
-			widgetWx: {
-				widgetId: 'customView_wx',
-				type: 'TextView',
-				width: String(btnWidth),
-				height: String(rpx2dp(96)),
-				bottom: String(rpx2dp(40 + 80 + 30)),
-				textContent: '微信登录',
-				textFont: '15',
-				textColor: '#2C89FF',
-				backgroundColor: '#00000000',
-				isFinish: 'true'
-			}
-		}
+		// 诊断：本轮暂时去掉自定义 widget，定位是否为 widget 块导致整套主题被丢弃
+		widgets: {},
 	}
 }
 
@@ -308,22 +299,23 @@ function openAndroid(m, hooks) {
 	const { onOpen, onSuccess, onCancel, onFail, onWxLogin } = hooks
 	const cfg = buildAndroidUIConfig()
 	try {
-		m.setAuthThemeConfig(cfg, (wres) => {
-			// 自定义微信按钮点击
-			const wid = (wres && (wres.widgetId || wres.result)) || ''
-			if (String(wid).indexOf('wx') !== -1 || wres?.code === 1001) {
-				try { m.finishAuthActivity && m.finishAuthActivity() } catch (e) {}
-				opening = false
-				onWxLogin && onWxLogin()
-			}
-		})
-	} catch (e) {
-		console.log('[shanyan] setAuthThemeConfig', e)
+		console.log('[shanyan] setAuthThemeConfig cfg=' + JSON.stringify(cfg).slice(0, 2000))
+	} catch (e) {}
+	if (!m || typeof m.setAuthThemeConfig !== 'function') {
+		const err = { code: -1, message: '原生方法不存在: setAuthThemeConfig，请重新制作自定义基座（CLSDK-ShanYanSDKModule）' }
+		saveErr(err)
+		opening = false
+		onFail && onFail(err)
+		return
 	}
+	const doOpen = () => {
 	try {
 		// true：点击一键登录自动销毁授权页
 		m.openLoginAuth(true,
 			(openRes) => {
+				try {
+					console.log('[shanyan] openLoginAuth result code=' + ((openRes && openRes.code) ?? 'null'))
+				} catch (e) {}
 				const code = openRes && openRes.code
 				if (code === 1000) {
 					setPrivacyAgreed(true)
@@ -353,6 +345,25 @@ function openAndroid(m, hooks) {
 		opening = false
 		onFail && onFail({ code: -1, message: String((e && e.message) || e) })
 	}
+	}
+	try {
+		m.setAuthThemeConfig(cfg, (wres) => {
+			try {
+				console.log('[shanyan] setAuthThemeConfig result=' + JSON.stringify(wres).slice(0, 500))
+			} catch (e) {}
+			// 自定义微信按钮点击
+			const wid = (wres && (wres.widgetId || wres.result)) || ''
+			if (String(wid).indexOf('wx') !== -1 || (wres && wres.code === 1001)) {
+				try { m.finishAuthActivity && m.finishAuthActivity() } catch (e2) {}
+				opening = false
+				onWxLogin && onWxLogin()
+			}
+		})
+	} catch (e) {
+		saveErr({ code: -1, message: 'setAuthThemeConfig调用异常: ' + String((e && e.message) || e) })
+	}
+	// 主题配置下发后延迟一拍再拉起，避免部分机型/版本上主题未生效就建页导致显示默认样式
+	setTimeout(doOpen, 300)
 }
 
 function openIOS(m, hooks) {
@@ -409,6 +420,10 @@ function saveErr(o) {
 		console.error('[shanyan] fail full:', JSON.stringify(o))
 		uni.setStorageSync('shanyanLastError', JSON.stringify(o || {}))
 	} catch (e) {}
+}
+
+export function isShanyanOpening() {
+	return opening
 }
 
 export function finishAuthPage() {

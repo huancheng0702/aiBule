@@ -1,6 +1,12 @@
 <template>
 	<view class="content">
 		<view class="container">
+			<view v-if="!shanyanOpened" class="oneBtn" @click="onRetryShanYan">
+				<image src="/static/btnBan.png" class="benBan" mode=""></image>
+				<view class="btntext">
+					本机号码一键登录
+				</view>
+			</view>
 			<view class="oneBtn" @click="onOpenSmsLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
@@ -84,6 +90,8 @@
 				showFallback: false,
 				maskPhone: '',
 				launching: false,
+				shanyanOpened: false,
+				shanyanRetryCount: 0,
 				showSmsLogin: false,
 				smsPhone: '',
 				smsCode: '',
@@ -104,9 +112,29 @@
 			this.$nextTick(() => {
 				this.openShanYanAuth()
 			})
+			try {
+				uni.onNetworkStatusChange((res) => {
+					if (res && res.isConnected && !this.shanyanOpened && !this.launching) {
+						this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
+						if (this.shanyanRetryCount <= 3) {
+							setTimeout(() => this.openShanYanAuth(), 800)
+						}
+					}
+				})
+			} catch (e) {}
 			// #endif
 			// #ifndef APP-PLUS
 			this.showFallback = true
+			// #endif
+		},
+		onShow() {
+			// #ifdef APP-PLUS
+			if (!this.shanyanOpened && !this.launching && !uni.getStorageSync('token')) {
+				this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
+				if (this.shanyanRetryCount <= 5) {
+					this.openShanYanAuth()
+				}
+			}
 			// #endif
 		},
 		onUnload() {
@@ -264,7 +292,7 @@
 				this.doWxLogin()
 			},
 			openShanYanAuth() {
-				if (this.launching) return
+				if (this.launching || this.shanyanOpened) return
 				this.launching = true
 				this.showFallback = true
 				openOneKeyLogin({
@@ -276,9 +304,11 @@
 					},
 					onOpen: () => {
 						this.launching = false
+						this.shanyanOpened = true
 					},
 					onSuccess: (shanyanToken) => {
 						this.launching = false
+						this.shanyanOpened = true
 						this.handleShanYanSuccess(shanyanToken)
 					},
 					onCancel: () => {
@@ -293,8 +323,19 @@
 						} catch (e) {
 							console.log('[shanyan] onFail silent')
 						}
+						const msg = String((err && (err.message || err.msg)) || '')
+						if (/网络|network|timeout|超时|1022|1015|1001/i.test(msg) && (this.shanyanRetryCount || 0) < 3) {
+							this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
+							setTimeout(() => {
+								if (!this.shanyanOpened && !this.launching) this.openShanYanAuth()
+							}, 2000)
+						}
 					}
 				})
+			},
+			onRetryShanYan() {
+				this.shanyanRetryCount = 0
+				this.openShanYanAuth()
 			},
 			async handleShanYanSuccess(shanyanToken) {
 				if (!shanyanToken) {

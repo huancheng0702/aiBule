@@ -295,6 +295,7 @@
 				try {
 					await editUserInfo(payload)
 					this.persistLocal(payload)
+					uni.setStorageSync('needCompleteInfo', false)
 					if (this.fromMine) {
 						uni.showToast({ title: '已保存', icon: 'none' })
 						setTimeout(() => {
@@ -312,6 +313,7 @@
 				}
 			},
 			onSkip() {
+				uni.setStorageSync('needCompleteInfo', false)
 				uni.redirectTo({
 					url: '/pages/mine/bluePower'
 				})

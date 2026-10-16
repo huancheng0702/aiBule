@@ -410,8 +410,9 @@
 				})
 			},
 			goBindPhone(loginData) {
-				const uid = (loginData && (loginData.userId || loginData.id)) || uni.getStorageSync('userId') || ''
-				const need = loginData && loginData.needCompleteInfo !== undefined ? !!loginData.needCompleteInfo : !!uni.getStorageSync('needCompleteInfo')
+				const data = (loginData && loginData.data) || loginData || {}
+				const uid = data.userId || data.id || ''
+				const need = data.needCompleteInfo === true
 				uni.showToast({ title: '请绑定手机号', icon: 'none' })
 				setTimeout(() => {
 					uni.navigateTo({ url: '/pages/mine/bindPhone?from=login' + (uid ? '&userId=' + uid : '') + (need ? '&needCompleteInfo=1' : '') })
@@ -421,33 +422,13 @@
 				uni.reLaunch({ url: '/pages/mine/myInfo' })
 			},
 			afterLogin(loginData) {
-				let data = (loginData && loginData.data) || loginData || {}
-				if (data.phoneBound === undefined) {
-					const stored = uni.getStorageSync('phoneBound')
-					if (stored !== '' && stored !== undefined && stored !== null) {
-						data = Object.assign({}, data, {
-							phoneBound: !!stored
-						})
-					}
-				}
-				if (data.needCompleteInfo === undefined) {
-					const storedNeed = uni.getStorageSync('needCompleteInfo')
-					if (storedNeed !== '' && storedNeed !== undefined && storedNeed !== null) {
-						data = Object.assign({}, data, {
-							needCompleteInfo: !!storedNeed
-						})
-					}
-				}
+				const data = (loginData && loginData.data) || loginData || {}
 				if (data.phoneBound === false) {
 					this.showFallback = true
 					this.goBindPhone(data)
 					return
 				}
 				if (data.needCompleteInfo === true) {
-					this.goProfile()
-					return
-				}
-				if (!uni.getStorageSync('onboardingDone')) {
 					this.goProfile()
 					return
 				}

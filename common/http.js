@@ -7,7 +7,7 @@ import {
 	clearLoginSession
 } from '@/common/auth.js'
 
-const LOGIN_EXPIRED_CODE = 301
+const LOGIN_EXPIRED_CODE = 401
 const SUCCESS_CODES = [0, 1, 200]
 
 let isHandlingLoginExpired = false

@@ -53,7 +53,7 @@ export default {
 		this.from = q.from || ''
 		const qUid = q.userId || q.user_id || q.uid
 		const cached = uni.getStorageSync(USER_INFO_KEY) || {}
-		this.needCompleteInfo = q.needCompleteInfo === '1' || q.needCompleteInfo === 1 || !!uni.getStorageSync('needCompleteInfo')
+		this.needCompleteInfo = q.needCompleteInfo === '1' || q.needCompleteInfo === 1
 		const cachedUid = uni.getStorageSync('userId') || cached.userId || cached.id || null
 		this.userId = qUid || cachedUid
 		this.currentPhone = uni.getStorageSync('phone') || cached.phone || ''
@@ -147,14 +147,13 @@ export default {
 				try {
 					const info = await getUserInfo()
 					const infoData = (info && info.data) || info || {}
-					if (infoData.needCompleteInfo !== undefined) need = !!infoData.needCompleteInfo
+					if (infoData.needCompleteInfo !== undefined) need = infoData.needCompleteInfo === true
 					saveLoginSession(infoData || {})
 				} catch (e) {}
-				uni.setStorageSync('needCompleteInfo', !!need)
 				uni.showToast({ title: this.isChange ? '换绑成功' : '绑定成功', icon: 'success' })
 				setTimeout(() => {
 					if (this.from === 'login') {
-						if (need || !uni.getStorageSync('onboardingDone')) {
+						if (need === true) {
 							uni.reLaunch({ url: '/pages/mine/myInfo' })
 						} else {
 							uni.reLaunch({ url: '/pages/index/index' })

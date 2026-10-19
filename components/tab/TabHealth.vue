@@ -19,7 +19,7 @@
 			<text class="section-title">最近数据</text>
 
 			<!-- 健康报告中心 -->
-			<view class="report-card" @click="navAiReport">
+			<view class="report-card" @click="navRecord(0)">
 				<image src="/static/jiankangbaogao.png" class="reprotImg" mode=""></image>
 			</view>
 
@@ -33,7 +33,7 @@
 						<text class="mini-desc">{{ abnormalDesc }}</text>
 					</view>
 				</view>
-				<view class="mini-card" @click="navRecord(0)">
+				<view class="mini-card"  @click="navAiReport">
 					<image class="mini-bg" src="/static/aibaogaojie.png" mode="aspectFill"></image>
 
 				</view>

@@ -23,7 +23,7 @@
 			<image class="privacy-icon" src="/static/dunpai.png" mode=""></image>
 			<text class="privacy-text">平台承诺保证隐私安全</text>
 		</view>
-		
+
 		<!-- AI解析报告 -->
 		<view v-if="parseResult" class="parse-card">
 			<!-- 报告卡片背景图，自行补充 src -->
@@ -41,12 +41,8 @@
 					</view>
 				</view>
 
-				<view
-					v-for="(item, index) in parseResult.items"
-					:key="index"
-					class="parse-item"
-					:class="{ long: (item.value || '').length > 18 }"
-				>
+				<view v-for="(item, index) in parseResult.items" :key="index" class="parse-item"
+					:class="{ long: (item.value || '').length > 18 }">
 					<!-- 指标卡片背景图，自行补充 src -->
 					<image class="parse-item-bg" mode="aspectFill"></image>
 					<view class="parse-item-left">
@@ -177,8 +173,15 @@
 </template>
 
 <script>
-	import { getReportHistory, getReportDetail, analyzeReportStreamByUrl, exportAndDownloadReport } from '@/common/api/ai.js'
-	import { uploadFile } from '@/common/api/file.js'
+	import {
+		getReportHistory,
+		getReportDetail,
+		analyzeReportStreamByUrl,
+		exportAndDownloadReport
+	} from '@/common/api/ai.js'
+	import {
+		uploadFile
+	} from '@/common/api/file.js'
 
 	function pad2(n) {
 		return String(n).padStart(2, '0')
@@ -204,15 +207,24 @@
 	function toDayMonth(dateStr) {
 		const s = String(dateStr || '').slice(0, 10)
 		const parts = s.split('-')
-		if (parts.length >= 3) return { day: String(Number(parts[2])), month: `${Number(parts[1])}月` }
+		if (parts.length >= 3) return {
+			day: String(Number(parts[2])),
+			month: `${Number(parts[1])}月`
+		}
 		const now = new Date()
-		return { day: pad2(now.getDate()), month: `${now.getMonth() + 1}月` }
+		return {
+			day: pad2(now.getDate()),
+			month: `${now.getMonth() + 1}月`
+		}
 	}
 
 	function uploadToUrl(filePath) {
 		return new Promise((resolve, reject) => {
 			uploadFile(filePath).then((d) => {
-				if (typeof d === 'string' && d) { resolve(d); return }
+				if (typeof d === 'string' && d) {
+					resolve(d);
+					return
+				}
 				const url = d && (d.url || d.fileUrl || d.path || d.data) || ''
 				if (url) resolve(url)
 				else reject(new Error('上传失败'))
@@ -226,21 +238,52 @@
 		const ABNORMAL_RE = /偏高|偏低|异常|阳性|\+|↑|↓|超标|增高|降低|临界/
 		const out = []
 		let pending = null
-		const flush = () => { if (pending && (pending.name || pending.value)) out.push(pending); pending = null }
-		;(rawList || []).forEach((r) => {
+		const flush = () => {
+			if (pending && (pending.name || pending.value)) out.push(pending);
+			pending = null
+		};
+		(rawList || []).forEach((r) => {
 			const k = String((r && r.k) || '').trim()
 			const v = String((r && r.v) || '').trim()
 			if (!k && !v) return
-			if (k === '名称') { flush(); pending = { name: v, ref: '', status: '正常', value: '', abnormal: '' }; return }
-			if (k === '正常' && pending) { pending.ref = v; return }
-			if (k === '异常' && pending) { pending.abnormal = v; pending.value = pending.value || v; flush(); return }
+			if (k === '名称') {
+				flush();
+				pending = {
+					name: v,
+					ref: '',
+					status: '正常',
+					value: '',
+					abnormal: ''
+				};
+				return
+			}
+			if (k === '正常' && pending) {
+				pending.ref = v;
+				return
+			}
+			if (k === '异常' && pending) {
+				pending.abnormal = v;
+				pending.value = pending.value || v;
+				flush();
+				return
+			}
 			if (pending && pending.name === k) {
 				if (!pending.ref) pending.ref = v
-				else { pending.abnormal = v; pending.value = pending.value || v; flush() }
+				else {
+					pending.abnormal = v;
+					pending.value = pending.value || v;
+					flush()
+				}
 				return
 			}
 			flush()
-			pending = { name: k || '指标', ref: '', status: '正常', value: v, abnormal: '' }
+			pending = {
+				name: k || '指标',
+				ref: '',
+				status: '正常',
+				value: v,
+				abnormal: ''
+			}
 		})
 		flush()
 		return out.map((it) => {
@@ -302,7 +345,8 @@
 					const data = await getReportHistory()
 					const list = asArray(data)
 					this.reportList = list.map((row) => {
-						const dm = toDayMonth(pickText(row.createTime, row.create_time, row.date, row.reportDate))
+						const dm = toDayMonth(pickText(row.createTime, row.create_time, row.date, row
+							.reportDate))
 						const items = asArray(row.items || row.itemsJson)
 						const title = pickText(row.title, row.reportName, row.name) || '体检报告'
 						return {
@@ -310,7 +354,8 @@
 							day: dm.day,
 							month: dm.month,
 							title,
-							desc: items.length ? `${items.length}项指标` : pickText(row.summary, row.analysis, row.desc) || '已解析',
+							desc: items.length ? `${items.length}项指标` : pickText(row.summary, row.analysis, row
+								.desc) || '已解析',
 							_raw: row
 						}
 					})
@@ -373,7 +418,10 @@
 					},
 					fail: (err) => {
 						if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
-						uni.showToast({ title: '选择PDF失败', icon: 'none' })
+						uni.showToast({
+							title: '选择PDF失败',
+							icon: 'none'
+						})
 					}
 				})
 				// #endif
@@ -382,7 +430,9 @@
 				this.closeUploadPopup()
 				// App 端原生选 PDF 不稳定，走远端 H5 中转页上传，成功后通过 onPdfUploaded 回跳解析
 				const htmlParam = `?html=${encodeURIComponent('https://fx.tailunkaluo.com/html/pdf-upload.html')}`
-				uni.navigateTo({ url: `/pages/health/pdfWebview${htmlParam}` })
+				uni.navigateTo({
+					url: `/pages/health/pdfWebview${htmlParam}`
+				})
 				return
 				// #endif
 
@@ -399,12 +449,18 @@
 						},
 						fail: (err) => {
 							if (err && err.errMsg && err.errMsg.indexOf('cancel') > -1) return
-							uni.showToast({ title: '选择PDF失败', icon: 'none' })
+							uni.showToast({
+								title: '选择PDF失败',
+								icon: 'none'
+							})
 						}
 					})
 					return
 				}
-				uni.showToast({ title: '当前端暂不支持PDF上传', icon: 'none' })
+				uni.showToast({
+					title: '当前端暂不支持PDF上传',
+					icon: 'none'
+				})
 				// #endif
 			},
 			onPdfUploaded(fileUrl, name) {
@@ -428,12 +484,21 @@
 					advice: '',
 					detail: null
 				}
-				uni.showLoading({ title: 'AI解析中...', mask: true })
+				uni.showLoading({
+					title: 'AI解析中...',
+					mask: true
+				})
 				try {
 					await this.runReportStream(fileUrl, reportTitle, fileUrl)
-					uni.showToast({ title: '解析完成', icon: 'success' })
+					uni.showToast({
+						title: '解析完成',
+						icon: 'success'
+					})
 				} catch (e) {
-					uni.showToast({ title: (e && e.message) || '解析失败，请重试', icon: 'none' })
+					uni.showToast({
+						title: (e && e.message) || '解析失败，请重试',
+						icon: 'none'
+					})
 				} finally {
 					uni.hideLoading()
 					this.streaming = false
@@ -443,7 +508,10 @@
 				let firstChunk = false
 				const rawStream = []
 				const hideMaskOnFirstChunk = () => {
-					if (!firstChunk) { firstChunk = true; uni.hideLoading() }
+					if (!firstChunk) {
+						firstChunk = true;
+						uni.hideLoading()
+					}
 				}
 				await analyzeReportStreamByUrl(fileUrl, (evt) => {
 					if (!evt) return
@@ -453,7 +521,10 @@
 						const k = pickText(d.key, d.name, d.indicator)
 						const v = pickText(d.value, d.detectValue, d.val)
 						if (!k && !v) return
-						rawStream.push({ k, v })
+						rawStream.push({
+							k,
+							v
+						})
 						this.streamItems = groupStreamItems(rawStream)
 						this.parseResult.items = this.streamItems.slice()
 						this.parseResult.title = `${this.streamItems.length}项指标识别中...`
@@ -466,7 +537,8 @@
 					} else if (evt.type === 'message') {
 						const m = evt.data
 						if (m && typeof m === 'object' && (m.items || m.analysis || m.reportId != null)) {
-							this.finishReportStream(m.data !== undefined && typeof m.data === 'object' ? m.data : m, reportTitle, localPath)
+							this.finishReportStream(m.data !== undefined && typeof m.data === 'object' ? m
+								.data : m, reportTitle, localPath)
 						}
 					} else if (evt.type === 'error') {
 						throw new Error((evt.data && (evt.data.msg || evt.data.message)) || '解析失败')
@@ -495,11 +567,26 @@
 					detail: {
 						subText: `${reportTitle} · ${this.streamItems.length}项指标`,
 						alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
-						cells: [
-							{ label: '指标总数', value: `${this.streamItems.length}项`, icon: '/static/baogaoDate.png' },
-							{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
-							{ label: '正常项目', value: `${Math.max(this.streamItems.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
-							{ label: '报告来源', value: reportTitle, icon: '/static/tijiancenter.png' }
+						cells: [{
+								label: '指标总数',
+								value: `${this.streamItems.length}项`,
+								icon: '/static/baogaoDate.png'
+							},
+							{
+								label: '关注项目',
+								value: `${abnormalCount}项`,
+								icon: '/static/yichang.png'
+							},
+							{
+								label: '正常项目',
+								value: `${Math.max(this.streamItems.length - abnormalCount, 0)}项`,
+								icon: '/static/success.png'
+							},
+							{
+								label: '报告来源',
+								value: reportTitle,
+								icon: '/static/tijiancenter.png'
+							}
 						]
 					}
 				}
@@ -521,13 +608,22 @@
 					advice: '',
 					detail: null
 				}
-				uni.showLoading({ title: 'AI解析中...', mask: true })
+				uni.showLoading({
+					title: 'AI解析中...',
+					mask: true
+				})
 				try {
 					const imageUrl = await uploadToUrl(localPath)
 					await this.runReportStream(imageUrl, reportTitle, localPath)
-					uni.showToast({ title: '解析完成', icon: 'success' })
+					uni.showToast({
+						title: '解析完成',
+						icon: 'success'
+					})
 				} catch (e) {
-					uni.showToast({ title: (e && e.message) || '解析失败，请重试', icon: 'none' })
+					uni.showToast({
+						title: (e && e.message) || '解析失败，请重试',
+						icon: 'none'
+					})
 				} finally {
 					uni.hideLoading()
 					this.streaming = false
@@ -537,7 +633,11 @@
 				if (!data || typeof data !== 'object') return
 				let rawItems = data.items || data.itemList || data.resultList || data.itemsJson
 				if (typeof rawItems === 'string') {
-					try { rawItems = JSON.parse(rawItems) } catch (e) { rawItems = [] }
+					try {
+						rawItems = JSON.parse(rawItems)
+					} catch (e) {
+						rawItems = []
+					}
 				}
 				// reportText 可能是 "key: value\n..." 文本或 JSON 字符串，兜底解析
 				if ((!rawItems || !rawItems.length) && typeof data.reportText === 'string' && data.reportText) {
@@ -548,12 +648,20 @@
 						rawItems = String(data.reportText).split('\n').map((line) => {
 							const m = String(line).split(/[:：]/)
 							if (m.length < 2) return null
-							return { name: m[0].trim(), value: m.slice(1).join(':').trim() }
+							return {
+								name: m[0].trim(),
+								value: m.slice(1).join(':').trim()
+							}
 						}).filter(Boolean)
 					}
 				}
 				const items = asArray(rawItems).map((it) => {
-					if (typeof it === 'string') return { name: it, ref: '', status: '', value: '' }
+					if (typeof it === 'string') return {
+						name: it,
+						ref: '',
+						status: '',
+						value: ''
+					}
 					return {
 						name: pickText(it.name, it.key, it.indicator, it.title),
 						ref: pickText(it.ref, it.reference, it.range, it.normalRange),
@@ -574,23 +682,47 @@
 					detail: {
 						subText: `${meta.title || '体检报告'} · ${items.length}项指标`,
 						alertText: abnormalCount ? `${abnormalCount}项需关注` : '指标总体平稳',
-						cells: [
-							{ label: '指标总数', value: `${items.length}项`, icon: '/static/baogaoDate.png' },
-							{ label: '关注项目', value: `${abnormalCount}项`, icon: '/static/yichang.png' },
-							{ label: '正常项目', value: `${Math.max(items.length - abnormalCount, 0)}项`, icon: '/static/success.png' },
-							{ label: '报告来源', value: meta.title || '体检报告', icon: '/static/tijiancenter.png' }
+						cells: [{
+								label: '指标总数',
+								value: `${items.length}项`,
+								icon: '/static/baogaoDate.png'
+							},
+							{
+								label: '关注项目',
+								value: `${abnormalCount}项`,
+								icon: '/static/yichang.png'
+							},
+							{
+								label: '正常项目',
+								value: `${Math.max(items.length - abnormalCount, 0)}项`,
+								icon: '/static/success.png'
+							},
+							{
+								label: '报告来源',
+								value: meta.title || '体检报告',
+								icon: '/static/tijiancenter.png'
+							}
 						]
 					}
 				}
 			},
 			async onReportTap(item) {
 				if (!item || item.reportId == null) return
-				uni.showLoading({ title: '加载中...', mask: true })
+				uni.showLoading({
+					title: '加载中...',
+					mask: true
+				})
 				try {
 					const data = await getReportDetail(item.reportId)
-					this.applyAnalyzeResult(data, { title: item.title, path: '' })
+					this.applyAnalyzeResult(data, {
+						title: item.title,
+						path: ''
+					})
 				} catch (e) {
-					uni.showToast({ title: '加载失败', icon: 'none' })
+					uni.showToast({
+						title: '加载失败',
+						icon: 'none'
+					})
 				} finally {
 					uni.hideLoading()
 				}
@@ -625,7 +757,10 @@
 				if (this.exporting) return
 				const reportId = this.parseResult && this.parseResult.reportId
 				if (this.streaming || reportId == null || reportId === '') {
-					uni.showToast({ title: '报告尚未生成，请稍后重试', icon: 'none' })
+					uni.showToast({
+						title: '报告尚未生成，请稍后重试',
+						icon: 'none'
+					})
 					return
 				}
 				this.exporting = true
@@ -636,9 +771,8 @@
 				}
 			},
 			onParseAsk() {
-				uni.showToast({
-					title: '继续提问',
-					icon: 'none'
+				uni.reLaunch({
+					url: '/pages/index/index?tab=2'
 				})
 			}
 		}
@@ -1223,7 +1357,7 @@
 		height: 234rpx;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -1283,6 +1417,7 @@
 		from {
 			transform: translateY(100%);
 		}
+
 		to {
 			transform: translateY(0);
 		}

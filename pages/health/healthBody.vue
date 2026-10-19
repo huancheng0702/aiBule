@@ -19,11 +19,17 @@
 			<!-- 身体可视化区域 -->
 			<view class="body-section">
 				<scroll-view class="part-list" scroll-y :show-scrollbar="false">
-					<view v-for="(item, index) in partList" :key="item.categoryId || item.name" class="part-item"
+					<view v-for="(item, index) in partList" :key="item.categoryId || item.categoryName" class="part-item"
 						:class="{ active: activePart === index }" @click="onSelectPart(index)">
 						<image v-if="activePart === index" class="part-item-bg" src="/static/selectBodyIcon.png"
 							mode="aspectFit"></image>
-						<text class="part-text">{{ item.name }}</text>
+						<text class="part-text">{{ item.categoryName }}</text>
+					</view>
+					<view v-if="!partList.length && organsLoading" class="part-item">
+						<text class="part-text">加载中...</text>
+					</view>
+					<view v-else-if="!partList.length" class="part-item">
+						<text class="part-text">暂无部位数据</text>
 					</view>
 				</scroll-view>
 
@@ -79,7 +85,7 @@
 					<view class="summary-left">
 						<view class="summary-title-row">
 							<view class="title-bar"></view>
-							<text class="summary-title">{{ currentPartName }}健康解读</text>
+							<text class="summary-title">健康解读</text>
 						</view>
 						<text class="summary-status">{{ summaryStatus }}</text>
 						<text class="summary-desc">{{ summaryDesc }}</text>
@@ -115,14 +121,36 @@
 							</view>
 						</view>
 
+						<view v-if="weeklyDays.length" class="weekly-chart">
+							<view
+								v-for="(day, index) in weeklyDays"
+								:key="day.date || index"
+								class="weekly-col"
+							>
+								<text class="weekly-count" :class="{ zero: !day.count }">{{ day.count }}</text>
+								<view class="weekly-bar-track">
+									<view
+										class="weekly-bar"
+										:class="{ today: day.date === todayYmd }"
+										:style="{ height: weeklyBarHeight(day.count) }"
+									></view>
+								</view>
+								<text class="weekly-label" :class="{ today: day.date === todayYmd }">{{ day.label }}</text>
+							</view>
+						</view>
+						<view v-else class="empty-box">
+							<image class="empty-img" src="/static/empty.png" mode=""></image>
+						</view>
+
 						<view v-if="weeklyContents.length" class="weekly-list">
 							<view
 								v-for="(item, index) in weeklyContents"
-								:key="index"
+								:key="item.archiveType + '-' + item.text"
 								class="weekly-item"
 								:class="{ border: index < weeklyContents.length - 1 }"
 							>
-								<text class="weekly-item-text">{{ item }}</text>
+								<text class="weekly-item-text">{{ item.text }}</text>
+								<text v-if="item.archiveTypeName" class="weekly-item-type">{{ item.archiveTypeName }}</text>
 							</view>
 						</view>
 						<view v-else class="empty-box">
@@ -156,7 +184,7 @@
 			<view class="history-popup" @click.stop>
 				<image class="history-popup-bg" src="/static/bushuPopBg.png" mode="aspectFill"></image>
 				<view class="history-popup-body">
-					<text class="history-popup-title">{{ currentPartName }} · 近7天</text>
+					<text class="history-popup-title">近7天</text>
 					<text class="history-popup-desc">{{ historyPopupDesc }}</text>
 
 					<view class="history-list">
@@ -225,8 +253,8 @@ import { getHealthCenterIndex, getPortraitList } from '@/common/api/healthCenter
 import {
 	getHealthArchiveOrgans,
 	getHealthArchiveByOrgan,
-	getHealthArchiveWeekly,
 	getHealthArchiveDetail,
+	getHealthArchiveWeekly,
 	getHealthArchiveOptions,
 	saveHealthArchive
 } from '@/common/api/healthArchive.js'
@@ -321,22 +349,6 @@ const ARCHIVE_META = [
 	{ archiveType: 9, label: '运动史', desc: '日常运动习惯与强度', otherLabel: '其他运动 +' }
 ]
 
-const DEFAULT_PARTS = [
-	{ name: '全身', categoryId: null, icon: '' },
-	{ name: '体征', categoryId: null, icon: '' },
-	{ name: '大脑', categoryId: null, icon: '' },
-	{ name: '甲状腺', categoryId: null, icon: '' },
-	{ name: '呼吸', categoryId: null, icon: '' },
-	{ name: '肺部', categoryId: null, icon: '' },
-	{ name: '心脏', categoryId: null, icon: '' },
-	{ name: '肝脏', categoryId: null, icon: '' },
-	{ name: '血管', categoryId: null, icon: '' },
-	{ name: '胃部', categoryId: null, icon: '' },
-	{ name: '胰腺', categoryId: null, icon: '' },
-	{ name: '肾脏', categoryId: null, icon: '' },
-	{ name: '其他', categoryId: null, icon: '' }
-]
-
 export default {
 	data() {
 		return {
@@ -346,11 +358,11 @@ export default {
 			score: 0,
 			summaryStatus: '加载中...',
 			summaryDesc: '',
-			organSummaryText: '',
 			centerSummaryStatus: '',
 			centerSummaryDesc: '',
 			rangeStart: null,
-			partList: DEFAULT_PARTS.map((p) => ({ ...p })),
+			partList: [],
+			organsLoading: true,
 			archiveList: ARCHIVE_META.map((m) => ({
 				archiveType: m.archiveType,
 				label: m.label,
@@ -366,6 +378,8 @@ export default {
 			historyList: [],
 			historyPopupDesc: '当前数据未发现明显异常变化',
 			weeklyContents: [],
+			weeklyDays: [],
+			weeklyRangeText: '',
 			archiveEditingIndex: -1,
 			archiveSelected: [],
 			archiveOptionList: [],
@@ -374,9 +388,8 @@ export default {
 		}
 	},
 	computed: {
-		currentPartName() {
-			const part = this.partList[this.activePart]
-			return (part && part.name) || '全身'
+		todayYmd() {
+			return toYmd(new Date())
 		},
 		bodyImgSrc() {
 			const part = this.partList[this.activePart]
@@ -499,13 +512,7 @@ export default {
 			ctx.draw()
 		},
 		async bootstrap() {
-			await Promise.all([
-				this.loadCenterIndex(),
-				this.loadOrgans(),
-				this.loadArchiveDetail(),
-				this.loadWeekly()
-			])
-			this.refreshPartSummary()
+			await Promise.all([this.loadCenterIndex(), this.loadOrgans(), this.loadWeekly()])
 		},
 		async loadCenterIndex() {
 			try {
@@ -547,52 +554,18 @@ export default {
 			) || '活动、睡眠和心率数据均处于个人近期稳定范围'
 			this.summaryStatus = this.centerSummaryStatus
 			this.summaryDesc = this.centerSummaryDesc
-
-			const abnormalList = asArray(
-				data.abnormalList ||
-					data.abnormals ||
-					data.abnormalRecords ||
-					data.todayAbnormals ||
-					data.recordList ||
-					data.tags
-			)
-			this.statusBubbles = this.mapBubbles(abnormalList)
 		},
-		mapBubbles(list) {
-			const texts = list
-				.map((item) => {
-					if (typeof item === 'string') return item
-					return pickText(
-						item.text,
-						item.name,
-						item.title,
-						item.label,
-						item.dataTypeName,
-						item.content,
-						item.status
-					)
-				})
-				.filter(Boolean)
-				.slice(0, BUBBLE_POS.length)
-			if (!texts.length) {
-				return BUBBLE_POS.slice(0, 3).map((pos, i) => ({
-					...pos,
-					text: ['心率正常', '睡眠良好', '压力平稳'][i]
-				}))
-			}
-			return texts.map((text, i) => ({
-				...BUBBLE_POS[i],
-				text
-			}))
+		// 弹幕标签：显示当前选中部位下 items 的 name
+		mapBubblesFromOrgans(part) {
+			return this.mapBubblesFromItems(part && part.items)
 		},
 		async loadOrgans() {
+			this.organsLoading = true
 			try {
 				const data = await getHealthArchiveOrgans()
 				const list = asArray(data)
-				if (!list.length) return
 				const organs = list
-					.map((item) => ({
-						name: pickText(item.name, item.categoryName, item.organName) || '未命名',
+					.map((item, i) => ({
 						categoryId:
 							item.categoryId != null
 								? item.categoryId
@@ -601,42 +574,64 @@ export default {
 									: item.organId != null
 										? item.organId
 										: null,
+						categoryName: pickText(item.categoryName, item.name, item.organName) || '',
 						icon: pickText(item.icon, item.iconUrl, item.img, item.imageUrl),
-						items: asArray(item.items),
-						sort: Number(item.sort != null ? item.sort : 999)
+						items: asArray(item.items).map((it) => ({
+							archiveType: it.archiveType != null ? it.archiveType : it.type,
+							archiveTypeName: pickText(it.archiveTypeName, it.typeName),
+							name: pickText(it.name, it.optionName) || '',
+							optionId: it.optionId != null ? it.optionId : null
+						})),
+						sort: Number(item.sort != null ? item.sort : i + 1)
 					}))
-					.filter((item) => item.name)
+					.filter((item) => item.categoryName)
 					.sort((a, b) => a.sort - b.sort)
-				const hasWhole = organs.some((o) => o.name === '全身')
-				this.partList = hasWhole ? organs : [{ name: '全身', categoryId: null, icon: '', sort: 0 }].concat(organs)
-				if (this.activePart >= this.partList.length) {
+				this.partList = organs
+				if (this.activePart >= organs.length) {
 					this.activePart = 0
 				}
-			} catch (e) {}
+				// 默认选中「全身」（档案数据挂在它下面）
+				const wholeIdx = organs.findIndex((o) => o.categoryName === '全身')
+				if (wholeIdx > 0) this.activePart = wholeIdx
+				await this.loadPartBubbles()
+				await this.loadArchiveDetail()
+			} catch (e) {
+				console.log('[healthBody] loadOrgans failed', e && (e.msg || e.message))
+			} finally {
+				this.organsLoading = false
+			}
 		},
 		async loadArchiveDetail() {
 			try {
 				const data = await getHealthArchiveDetail(0)
 				this.applyArchiveDetail(data)
-			} catch (e) {}
+			} catch (e) {
+				console.log('[healthBody] loadArchiveDetail failed', e && (e.msg || e.message))
+			}
 		},
 		applyArchiveDetail(data) {
-			const list = asArray(data)
 			const byType = {}
-			list.forEach((row) => {
+			// 兼容两种结构：[{archiveType, items:[...]}] 或扁平 [{archiveType, name}]
+			const nodes = Array.isArray(data)
+				? data
+				: asArray(data && (data.list || data.items || data.records))
+			nodes.forEach((node, i) => {
 				const type = Number(
-					row.archiveType != null
-						? row.archiveType
-						: row.type != null
-							? row.type
-							: row.archive_type
+					node.archiveType != null
+						? node.archiveType
+						: node.type != null
+							? node.type
+							: node.archive_type
 				)
 				if (!type) return
-				const items = asArray(row.items || row.itemList || row.records).map((it) => ({
-					optionId: it.optionId != null ? it.optionId : it.id != null ? it.id : null,
-					name: pickText(it.name, it.optionName, it.label, it.content)
-				})).filter((it) => it.name)
-				byType[type] = items
+				const children = node.items || node.itemList || node.records || node.options
+				const rawItems = children && children.length ? asArray(children) : [node]
+				byType[type] = rawItems
+					.map((it) => ({
+						optionId: it.optionId != null ? it.optionId : it.id != null ? it.id : null,
+						name: pickText(it.name, it.optionName, it.label, it.content)
+					}))
+					.filter((it) => it.name)
 			})
 			this.archiveList = ARCHIVE_META.map((meta) => {
 				const selected = byType[meta.archiveType] || []
@@ -648,79 +643,104 @@ export default {
 				}
 			})
 		},
+		weeklyBarHeight(count) {
+			const max = this.weeklyDays.reduce((m, d) => Math.max(m, d.count || 0), 0)
+			if (!max || !count) return '0rpx'
+			const ratio = count / max
+			// 最高柱占满，最矮柱不低于 10%，避免 1 vs 3 时矮柱几乎不可见
+			return Math.round((10 + ratio * 90) * 2.2) + 'rpx'
+		},
 		async loadWeekly() {
 			if (!this.rangeStart) return
 			try {
 				const data = await getHealthArchiveWeekly(toYmd(this.rangeStart))
 				this.applyWeekly(data)
 			} catch (e) {
+				this.weeklyDays = []
 				this.weeklyContents = []
 			}
 		},
 		applyWeekly(data) {
 			if (!data) {
+				this.weeklyDays = []
 				this.weeklyContents = []
 				return
 			}
-			const contents = asArray(
-				data.contents || data.contentList || data.items || data.list || data.records
-			)
-			this.weeklyContents = contents
-				.map((item) => {
-					if (typeof item === 'string') return item
-					return pickText(
-						item.content,
-						item.name,
-						item.text,
-						item.title,
-						item.label,
-						item.desc
-					)
-				})
+			this.weeklyRangeText = [pickText(data.weekStart), pickText(data.weekEnd)]
 				.filter(Boolean)
-		},
-		async refreshPartSummary() {
-			const part = this.partList[this.activePart]
-			if (!part || part.categoryId == null) {
-				this.summaryStatus = this.centerSummaryStatus || '今日整体状态良好'
-				this.summaryDesc = this.centerSummaryDesc || '活动、睡眠和心率数据均处于个人近期稳定范围'
-				this.organSummaryText = ''
-				return
-			}
-			try {
-				const data = await getHealthArchiveByOrgan(part.categoryId)
-				const text =
-					typeof data === 'string'
-						? data
-						: pickText(
-								data && data.content,
-								data && data.text,
-								data && data.desc,
-								data && data.description,
-								data && data.result,
-								data && data.data
-							)
-				this.organSummaryText = text
-				if (text) {
-					this.summaryStatus = `${part.name}相关档案`
-					this.summaryDesc = text
-				} else {
-					const fromOrganItems = asArray(part.items)
-						.map((it) => pickText(it.name, it.optionName))
-						.filter(Boolean)
-						.join('、')
-					this.summaryStatus = fromOrganItems ? `${part.name}有关联档案` : `${part.name}暂无关联档案`
-					this.summaryDesc = fromOrganItems || '当前健康档案中暂无该器官相关选项'
-				}
-			} catch (e) {
-				this.summaryStatus = `${part.name}健康解读`
-				this.summaryDesc = '暂无法获取该部位解读'
-			}
+				.join(' ~ ')
+			this.weeklyDays = asArray(data.days).map((day, i) => ({
+				date: pickText(day.date) || '',
+				label: pickText(day.label, day.date) || '',
+				count: Number(day.count) || 0,
+				items: asArray(day.items)
+			}))
+			// 展示内容：本周有器官关联的档案项
+			const contents = []
+			const seen = {}
+			this.weeklyDays.forEach((day) => {
+				day.items.forEach((it) => {
+					const name = pickText(it.name, it.optionName)
+					if (!name) return
+					const key = `${it.archiveType}-${name}`
+					if (seen[key]) return
+					seen[key] = true
+					contents.push({
+						text: name,
+						archiveType: it.archiveType,
+						archiveTypeName: pickText(it.archiveTypeName)
+					})
+				})
+			})
+			this.weeklyContents = contents
 		},
 		onSelectPart(index) {
 			if (this.activePart === index) return
 			this.activePart = index
-			this.refreshPartSummary()
+			this.loadPartBubbles()
+		},
+		// 点击部位后请求 byOrgan，把返回数据显示到弹幕
+		async loadPartBubbles() {
+			const part = this.partList[this.activePart]
+			if (!part) return
+			if (part.categoryId == null) {
+				this.statusBubbles = this.mapBubblesFromItems(part.items)
+				return
+			}
+			try {
+				const data = await getHealthArchiveByOrgan(part.categoryId)
+				this.statusBubbles = this.mapBubblesFromByOrgan(data)
+			} catch (e) {
+				console.log('[healthBody] byOrgan failed', e && (e.msg || e.message))
+				this.statusBubbles = []
+			}
+		},
+		mapBubblesFromItems(items) {
+			const texts = []
+			asArray(items).forEach((it) => {
+				const name = pickText(it.name, it.optionName)
+				if (name && texts.indexOf(name) === -1) texts.push(name)
+			})
+			return this.mapBubblesFromTexts(texts)
+		},
+		mapBubblesFromByOrgan(data) {
+			const raw =
+				typeof data === 'string'
+					? data
+					: pickText(data && data.content, data && data.text, data && data.desc, data && data.result)
+			if (!raw) return []
+			return this.mapBubblesFromTexts(
+				String(raw)
+					.split(/[,，]/)
+					.map((t) => t.trim())
+					.filter(Boolean)
+			)
+		},
+		mapBubblesFromTexts(texts) {
+			return texts.slice(0, BUBBLE_POS.length).map((text, i) => ({
+				...BUBBLE_POS[i],
+				text
+			}))
 		},
 		goBack() {
 			const pages = getCurrentPages()
@@ -917,8 +937,8 @@ export default {
 					value
 				})
 				this.closeArchivePopup()
-				this.loadOrgans()
-				this.refreshPartSummary()
+				// 保存后重新拉取服务端档案，确保与云端一致
+				await Promise.all([this.loadArchiveDetail(), this.loadOrgans()])
 				uni.showToast({
 					title: '已保存',
 					icon: 'none'
@@ -1418,6 +1438,108 @@ export default {
 		font-size: 26rpx;
 		line-height: 36rpx;
 		color: rgba(255, 255, 255, 0.45);
+	}
+
+	.weekly-chart {
+		margin-top: 28rpx;
+		padding: 24rpx 8rpx 0;
+		display: flex;
+		align-items: flex-end;
+		border-radius: 16rpx;
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	.weekly-col {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.weekly-count {
+		min-height: 32rpx;
+		font-size: 24rpx;
+		font-weight: 600;
+		color: #FFFFFF;
+		line-height: 32rpx;
+	}
+
+	.weekly-count.zero {
+		color: rgba(255, 255, 255, 0.25);
+		font-weight: 400;
+	}
+
+	.weekly-bar-track {
+		position: relative;
+		width: 100%;
+		height: 220rpx;
+		margin: 10rpx 0 12rpx;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+
+	// 底部基线
+	.weekly-bar-track::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 1rpx;
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	.weekly-bar {
+		width: 28rpx;
+		min-height: 6rpx;
+		border-radius: 14rpx;
+		background: linear-gradient(to bottom, #7EA6FF 0%, #3D6FE0 100%);
+	}
+
+	.weekly-bar.today {
+		background: linear-gradient(to bottom, #FFFFFF 0%, #A8C4FF 100%);
+	}
+
+	.weekly-label {
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.55);
+		line-height: 30rpx;
+	}
+
+	.weekly-label.today {
+		color: #FFFFFF;
+	}
+
+	.weekly-list {
+		margin-top: 12rpx;
+	}
+
+	.weekly-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 24rpx 0;
+		border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+	}
+
+	.weekly-item:last-child {
+		border-bottom: none;
+	}
+
+	.weekly-item-text {
+		flex: 1;
+		font-size: 28rpx;
+		color: rgba(255, 255, 255, 0.9);
+		line-height: 40rpx;
+	}
+
+	.weekly-item-type {
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.4);
+		padding: 4rpx 14rpx;
+		border-radius: 20rpx;
+		background: rgba(255, 255, 255, 0.06);
 	}
 
 	.archive-card {

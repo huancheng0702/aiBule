@@ -27,15 +27,14 @@
 						<image class="menu-arrow" src="/static/rightLitterIcon.png" mode="aspectFit"></image>
 					</view>
 				</view>
-				<view class="menu-divider"></view>
+				<!-- <view class="menu-divider"></view>
 				<view class="menu-row" @click="onCheckFirmware">
 					<text class="menu-label">固件版本</text>
 					<view class="menu-right">
 						<text class="menu-value muted">{{ firmware }}</text>
-						<!-- 检测升级图标，自行补充 src -->
 						<image class="fw-icon" src="/static/shuaxin.png" mode=""></image>
 					</view>
-				</view>
+				</view> -->
 			</view>
 		</view>
 
@@ -252,7 +251,7 @@
 					editable: true,
 					placeholderText: '请输入设备名称',
 					content: this.deviceName,
-					success: (res) => {
+					success: async (res) => {
 						if (!res.confirm) return
 						const name = (res.content || '').trim()
 						if (!name) {
@@ -263,7 +262,15 @@
 							return
 						}
 						this.deviceName = name
-						BleService.updateDeviceName(name)
+						uni.showLoading({
+							title: '写入中...',
+							mask: true
+						})
+						try {
+							await BleService.updateDeviceName(name)
+						} finally {
+							uni.hideLoading()
+						}
 						uni.showToast({
 							title: '已修改',
 							icon: 'success'

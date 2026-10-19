@@ -382,6 +382,7 @@
 				}
 			},
 			onBleSportUploaded(s) {
+				console.log('[todayStep] onBleSportUploaded:', JSON.stringify(s))
 				if (!s || !this.isActiveToday()) return
 				const key = [s.steps, s.distanceM, s.calories, s.updatedAt].join('|')
 				if (key === this._lastBleKey) return

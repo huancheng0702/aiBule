@@ -776,6 +776,24 @@ public class CoolWearBLEModule extends UniModule {
         }
     }
 
+    /**
+     * 修改设备（蓝牙）名称，会写入戒指硬件
+     */
+    @UniJSMethod(uiThread = true)
+    public void setDeviceName(JSONObject options, UniJSCallback callback) {
+        try {
+            String name = options != null ? options.getString("name") : null;
+            if (name == null || name.trim().isEmpty()) {
+                fail(callback, "name is required");
+                return;
+            }
+            BluetoothHelper.getInstance().getSendBlueData().sendChangeName(name.trim());
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
     @UniJSMethod(uiThread = true)
     public void requestBattery(UniJSCallback callback) {
         try {

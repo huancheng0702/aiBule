@@ -51,7 +51,7 @@
 					<text class="popup-sub">手机号、登录与账号状态</text>
 
 					<view class="info-grid">
-						<view v-for="item in securityCards" :key="item.key" class="info-card" @click="onSecurityCard(item)">
+						<view v-for="(item,index) in securityCards" :key="indexy" class="info-card" @click="onSecurityCard(item)">
 							<!-- 图标，自行补充 src -->
 							<image class="info-icon" :src="item.icon" mode=""></image>
 							<text class="info-label">{{ item.label }}</text>
@@ -197,13 +197,13 @@
 						label: '账号状态',
 						icon:'/static/settingAccStatus.png',
 						value: this.accountStatus
-					},
-					{
-						key: 'protect',
-						label: '登录保护',
-						icon:'/static/xiaoyusan.png',
-						value: this.loginProtect
 					}
+					// {
+					// 	key: 'protect',
+					// 	label: '登录保护',
+					// 	icon:'/static/xiaoyusan.png',
+					// 	value: this.loginProtect
+					// }
 				]
 			}
 		},
@@ -215,9 +215,7 @@
 			applyUser(info) {
 				if (!info || typeof info !== 'object') return
 				this.phone = info.phone || this.phone
-				this.lastLoginText = formatLoginTime(
-					info.lastLoginTime || info.lastLoginDate || info.loginTime || info.updateTime
-				)
+				this.lastLoginText = info.loginDate
 				this.accountStatus = mapAccountStatus(info)
 				this.loginProtect = mapLoginProtect(info)
 			},

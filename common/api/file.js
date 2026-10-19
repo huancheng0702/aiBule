@@ -33,9 +33,11 @@ export function downloadFileToLocal(fileUrl, fileName = '下载文件') {
 		// #endif
 
 		// #ifdef APP-PLUS
-		// 使用持久目录并保留扩展名，避免临时文件被清理或无法识别文档类型。
+		// 直接下载到用户可访问的本地目录：Android 公共“下载”目录(_downloads)、iOS 应用文档目录(_documents)，
+		// 不再先落沙箱再拷贝，下载即另存。
 		// OSS 返回的 fileUrl 常带中文文件名，iOS downloader 不做编码会直接 404/0KB，
 		// 这里对 path/query 中的中文做 encodeURI，保留 ? & = 等分隔符。
+		const targetDir = plus.os.name === 'iOS' ? '_documents/' : '_downloads/'
 		let safeUrl = String(fileUrl)
 		try {
 			const qIdx = safeUrl.indexOf('?')
@@ -66,7 +68,7 @@ export function downloadFileToLocal(fileUrl, fileName = '下载文件') {
 		let safeName = String(fileName).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
 		if (!/\.docx?$/i.test(safeName)) safeName += '.docx'
 		const task = plus.downloader.createDownload(safeUrl, {
-			filename: `_doc/exports/${Date.now()}_${safeName}`,
+			filename: `${targetDir}${safeName}`,
 			timeout: 120
 		}, (download, status) => {
 			if (status !== 200 || !download.filename) {

@@ -410,10 +410,13 @@ function formatMeasureTime(value) {
 function reportSportToCloud(sport) {
 	if (!sport || !hasLogin()) return
 	const key = [sport.steps, sport.distanceM, sport.calories].join('|')
-	if (key === lastUploadedSportKey) return
+	if (key === lastUploadedSportKey) {
+		console.log('[reportSportToCloud] 数据未变化，跳过上报:', key)
+		return
+	}
 	lastUploadedSportKey = key
 	const device = state.device || {}
-	uploadDeviceData({
+	const payload = {
 		deviceMac: device.mac || device.id || '',
 		deviceVersion: getFirmware() || '',
 		batteryLevel: getBatteryLevel(),
@@ -425,10 +428,19 @@ function reportSportToCloud(sport) {
 			measureTime: formatMeasureTime(sport.time || sport.updatedAt),
 			source: '1'
 		}]
-	}).catch((e) => {
-		if (lastUploadedSportKey === key) lastUploadedSportKey = ''
-		console.log('[ble-service] upload sport failed', e && (e.msg || e.message))
-	})
+	}
+	console.log('[reportSportToCloud] 上报步数请求:', JSON.stringify(payload))
+	uploadDeviceData(payload)
+		.then((res) => {
+			console.log('[reportSportToCloud] 上报步数响应:', JSON.stringify(res))
+		})
+		.catch((e) => {
+			if (lastUploadedSportKey === key) lastUploadedSportKey = ''
+			console.log('[reportSportToCloud] 上报步数失败:', JSON.stringify({
+				msg: e && (e.msg || e.message),
+				err: e && (e.errMsg || String(e))
+			}))
+		})
 }
 
 function sleepTypeOfStage(stage) {
@@ -1250,11 +1262,28 @@ function pickBatteryField(o, keys) {
 			} : null
 		},
 
-		updateDeviceName(name) {
-			if (!state.device || !name) return
-			state.device.name = name
+		/**
+		 * 修改设备名称：写入戒指硬件（蓝牙名称）+ 更新本地缓存
+		 * 注意：戒指改名后需断开重新配对/重连才会在广播名称中生效
+		 */
+		async updateDeviceName(name) {
+			const trimmed = String(name == null ? '' : name).trim()
+			if (!trimmed) return false
+			if (state.connected) {
+				try {
+					await CoolWearBLE.setDeviceName(trimmed)
+				} catch (e) {
+					// iOS 当前 SDK 未提供改名命令时静默降级为仅本地修改
+					console.log('[ble-service] setDeviceName 写入硬件失败', e && (e.message || e))
+				}
+			}
+			if (state.device) {
+				state.device.name = trimmed
+			}
 			persistDevice()
 			emit()
+			if (state.connected) notifyBindToCloud()
+			return true
 		}
 	}
 

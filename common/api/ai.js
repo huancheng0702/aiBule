@@ -44,57 +44,101 @@ export function exportReportHistory(reportIds) {
 
 export async function exportAndDownloadReport(reportIds) {
 	uni.showLoading({ title: '导出中...', mask: true })
-	let filePath
-	let fileName
+	let fileUrl = ''
+	let fileName = ''
 	try {
 		const response = await exportReportHistory(reportIds)
-		// 实际导出响应为 { fileName, fileUrl }，兼容尚未解包的 data。
+		// 接口返回 { code:200, msg, data:{ fileName, fileUrl } }；http 层已解包到 data，
+		// 这里再兜底兼容一次未解包的情形。
 		const data = response && (response.data || response)
 		if (!data || typeof data.fileUrl !== 'string' || !/^https?:\/\//i.test(data.fileUrl)) {
 			throw new Error('导出失败，未返回有效文件链接')
 		}
 		fileName = data.fileName || '体检报告解析记录.docx'
-		uni.showLoading({ title: '下载中...', mask: true })
-		filePath = await downloadFileToLocal(data.fileUrl, fileName)
+		fileUrl = data.fileUrl
 	} catch (error) {
 		uni.hideLoading()
 		uni.showToast({ title: String((error && (error.message || error.msg)) || '导出失败，请重试').slice(0, 40), icon: 'none' })
-		return
+		return ''
 	}
+
+	// #ifdef APP-PLUS
+	// 文件名带中文，iOS downloader / 浏览器打开前先编码
+	const safeUrl = (() => {
+		try { return encodeURI(fileUrl) } catch (e) { return fileUrl }
+	})()
+	// Android：下载 → 保存到本地 → 打开查看
+	if (plus.os.name === 'Android') {
+		uni.hideLoading()
+		uni.showLoading({ title: '下载中...', mask: true })
+		return new Promise((resolve) => {
+			uni.downloadFile({
+				url: safeUrl,
+				success: (res) => {
+					if (res.statusCode !== 200 || !res.tempFilePath) {
+						uni.hideLoading()
+						uni.showToast({ title: '下载失败，请重试', icon: 'none' })
+						resolve('')
+						return
+					}
+					uni.saveFile({
+						tempFilePath: res.tempFilePath,
+						success: (saveRes) => {
+							uni.hideLoading()
+							setTimeout(() => {
+								uni.openDocument({
+									filePath: saveRes.savedFilePath,
+									fileType: 'docx',
+									fail: () => uni.showToast({ title: '打开失败，请安装WPS/Office', icon: 'none' })
+								})
+							}, 500)
+							resolve(saveRes.savedFilePath)
+						},
+						fail: () => {
+							uni.hideLoading()
+							uni.showToast({ title: '保存失败，请重试', icon: 'none' })
+							resolve('')
+						}
+					})
+				},
+				fail: () => {
+					uni.hideLoading()
+					uni.showToast({ title: '下载失败，请重试', icon: 'none' })
+					resolve('')
+				}
+			})
+		})
+	}
+	// iOS：交给系统浏览器打开下载
 	uni.hideLoading()
+	uni.showLoading({ title: '下载中...', mask: true })
+	try {
+		plus.runtime.openURL(safeUrl)
+	} catch (e) {}
+	setTimeout(() => {
+		uni.hideLoading()
+		uni.showToast({ title: '正在浏览器中下载', icon: 'none' })
+	}, 1000)
+	return fileUrl
+	// #endif
+
+	// #ifndef APP-PLUS
+	uni.hideLoading()
+	let filePath = ''
+	try {
+		filePath = await downloadFileToLocal(fileUrl, fileName)
+	} catch (error) {
+		uni.showToast({ title: '下载失败，请重试', icon: 'none' })
+		return ''
+	}
 	// #ifdef H5
 	uni.showToast({ title: '已开始下载', icon: 'none' })
 	// #endif
 	// #ifndef H5
-	// #ifndef APP-PLUS
 	uni.showToast({ title: '已下载到本地', icon: 'success' })
 	// #endif
-	// #endif
-	// #ifdef APP-PLUS
-	// downloadFileToLocal 已返回 file:// 绝对路径；iOS 的 UIActivityViewController
-	// 必须等 loading 完全收起再调，否则就是截图里那种空白 NOWA 弹窗。
-	const toAbs = (p) => {
-		try {
-			if (!p) return p
-			if (/^file:\/\//i.test(p)) return p
-			return plus.io.convertLocalFileSystemURL(p)
-		} catch (e) { return p }
-	}
-	const absPath = toAbs(filePath)
-	const openFile = () => plus.runtime.openFile(absPath, {}, () => {
-		uni.showToast({ title: '文件已保存，请安装WPS/Office打开', icon: 'none' })
-	})
-	setTimeout(() => {
-		try {
-			plus.share.sendWithSystem({ type: 'file', files: [absPath] }, () => {}, (error) => {
-				if (!/cancel|取消/i.test((error && error.message) || '')) openFile()
-			})
-		} catch (error) {
-			openFile()
-		}
-	}, 350)
-	// #endif
 	return filePath
+	// #endif
 }
 
 export function analyzeReportStreamByUrl(imageUrl, onEvent) {

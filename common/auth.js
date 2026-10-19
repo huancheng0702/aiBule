@@ -7,6 +7,9 @@ export const ONBOARDING_PATH = '/pages/mine/myInfo'
 
 const WHITE_LIST = [LOGIN_PATH, '/pages/webAgreement', '/pages/mine/minewebview', '/pages/mine/contentView']
 
+// 登录路由拦截开关：置为 false 可跳过登录校验（仅调试用）
+export const AUTH_GUARD_ENABLED = false
+
 let bypassAuth = false
 
 export function hasLogin() {
@@ -86,6 +89,7 @@ function allowNavigate(url) {
 }
 
 export function applyLaunchAuth() {
+	if (!AUTH_GUARD_ENABLED) return
 	const target = getEntryPath()
 	if (target === LOGIN_PATH) {
 		return
@@ -94,6 +98,10 @@ export function applyLaunchAuth() {
 }
 
 export function installAuthInterceptor() {
+	if (!AUTH_GUARD_ENABLED) {
+		console.log('[auth] 路由拦截已关闭（调试模式）')
+		return
+	}
 	;['navigateTo', 'redirectTo', 'reLaunch', 'switchTab'].forEach((method) => {
 		uni.addInterceptor(method, {
 			invoke(args) {

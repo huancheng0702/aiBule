@@ -12,7 +12,8 @@ const METHODS_WITH_OPTIONS = new Set([
   'setHeartRateSwitch',
   'setHRVSwitch',
   'setBloodOxygenSwitch',
-  'setHeartAutoSwitch'
+  'setHeartAutoSwitch',
+  'setDeviceName'
 ])
 
 let nativeModule = null
@@ -260,6 +261,11 @@ const CoolWearBLE = {
       o2: options.o2 !== false,
       intervalMin: options.intervalMin || 30
     })
+  },
+
+  /** 修改设备蓝牙名称，写入戒指硬件（修改后通常需断开重连生效） */
+  setDeviceName(name) {
+    return callNative('setDeviceName', { name })
   },
 
   requestBattery() {

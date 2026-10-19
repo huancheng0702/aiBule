@@ -9,7 +9,7 @@
 				<text class="bpm">{{ bpm }}</text>
 				<text class="unit">bpm</text>
 				<view class="status-tag">
-					<text class="status-tag-text">{{ statusText }}</text>
+					{{ statusText }}
 				</view>
 			</view>
 		</view>
@@ -254,9 +254,14 @@
 	.status-tag {
 		margin-left: 16rpx;
 		margin-bottom: 16rpx;
-		padding: 4rpx 16rpx;
 		border-radius: 8rpx;
 		background: #2f6bff;
+		font-size: 22rpx;
+		color: #ffffff;
+		width: 78rpx;
+		height: 38rpx;
+		text-align: center;
+		line-height: 42rpx;
 	}
 
 	.status-tag-text {

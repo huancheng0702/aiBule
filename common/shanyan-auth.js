@@ -84,10 +84,6 @@ export function exchangeLoginByShanYanToken(shanyanToken) {
 	return oneKeyLogin({ token: shanyanToken, platform })
 }
 
-function rpx2dp(rpx) {
-	return Math.round(rpx / 2)
-}
-
 function parseToken(result) {
 	if (!result) return ''
 	if (typeof result === 'string') {
@@ -124,42 +120,62 @@ function isInitOk(res) {
  * 注意：图片路径走 static/ 下文件，插件内部自动取包内资源
  */
 function buildAndroidUIConfig() {
+	// 闪验插件按物理像素消费这些布局字段，故统一以屏幕像素为基准做 750rpx 换算；
+	// 字号类字段单独走 dp（setTextSizeIsdp: true）
 	const sys = uni.getSystemInfoSync()
-	const btnWidth = Math.floor(sys.screenWidth - rpx2dp(60))
+	const screenWidthPx = sys.screenWidth || 1080
+	const screenWidthDp = Math.round(screenWidthPx / (sys.devicePixelRatio || 2))
+	const rpx = (v) => Math.round(v * screenWidthPx / 750)
+	const fontDp = (v) => Math.round(v * screenWidthDp / 375)
+	const btnWidth = screenWidthPx - rpx(60)
 	return {
 		uiConfig: {
-			setAuthBGImgPath: 'static/loginBanner.png',
+			setAuthBGImgPath: '/static/loginBanner.png',
 			setFullScreen: 'true',
+			setTextSizeIsdp: true,
+			// 状态栏正常显示：不要隐藏，深色图标 + 浅色背景
+			setStatusBarHidden: false,
+			setStatusBarColor: '#FFFFFF',
 			setLightColor: false,
 			setAuthNavHidden: true,
 			setAuthNavTransparent: true,
 			setNavReturnImgHidden: true,
 			setLogoHidden: true,
 			setNumberColor: '#09090D',
-			setNumberSize: '28',
+			setNumberSize: String(fontDp(36)),
 			setNumberBold: true,
-			setNumFieldOffsetBottomY: String(rpx2dp(40 + 80 + 30 + 96 + 30 + 96 + 40)),
+			setNumFieldOffsetBottomY: String(rpx(40 + 80 + 30 + 96 + 30 + 96 + 40)),
 			setNumFieldWidth: String(btnWidth),
 			setSloganHidden: 'true',
 			setShanYanSloganHidden: true,
 			setLogBtnText: '本机号码一键登录',
 			setLogBtnTextColor: '#FFFFFF',
-			setLogBtnTextSize: '15',
+			setLogBtnTextSize: String(fontDp(32)),
+			setLogBtnTextBold: false,
 			setLogBtnWidth: String(btnWidth),
-			setLogBtnHeight: String(rpx2dp(96)),
-			setLogBtnOffsetX: String(rpx2dp(30)),
-			setLogBtnOffsetBottomY: String(rpx2dp(40 + 80 + 30 + 96 + 30)),
+			setLogBtnHeight: String(rpx(96)),
+			setLogBtnOffsetX: String(rpx(30)),
+			setLogBtnOffsetBottomY: String(rpx(40 + 80 + 30 + 96 + 30)),
 			setLogBtnBackgroundColor: '#2C89FF',
 			setPrivacyState: 'false',
-			setPrivacyTextSize: '12',
+			setPrivacySmhHidden: false,
+			setPrivacyTextBold: false,
+			setPrivacyNameUnderline: false,
+			setPrivacyTextSize: String(rpx(30)),
 			setAppPrivacyColor: { privacyBaseColor: '#666666', privacyColor: '#2C89FF' },
-			setPrivacyOffsetBottomY: String(rpx2dp(40)),
-			setPrivacyOffsetX: String(rpx2dp(30)),
+			setPrivacyOffsetBottomY: String(rpx(40)),
+			setPrivacyOffsetX: String(rpx(30)),
 			setPrivacyOffsetGravityLeft: true,
 			setPrivacyGravityHorizontalCenter: false,
-			setCheckedImgPath: 'static/celiangSuccess.png',
-			setUncheckedImgPath: 'static/checkCircle.png',
-			setCheckBoxWH: { width: '18', height: '18' },
+			setCheckedImgPath: '/static/celiangSuccess.png',
+			setUncheckedImgPath: '/static/checkCircle.png',
+			setCheckBoxWH: { width: String(rpx(16)), height: String(rpx(16)) },
+			setCheckBoxMargin: {
+				marginLeft: String(rpx(6)),
+				marginTop: String(rpx(2)),
+				marginRight: String(rpx(8)),
+				marginBottom: String(rpx(2))
+			},
 			setPrivacyCustomToastText: '请先同意用户协议',
 			setPrivacyText: {
 				privacyTextOne: '我已阅读并同意',
@@ -208,7 +224,7 @@ function buildIOSUIConfig() {
 		clCheckBoxCheckedImage: 'static/celiangSuccess.png',
 		clCheckBoxUncheckedImage: 'static/checkCircle.png',
 		clAppPrivacyColor: [[0.4, 0.4, 0.4, 1.0], [0.17, 0.54, 1.0, 1.0]],
-		clAppPrivacyTextFont: 12 * scale,
+		clAppPrivacyTextFont: 11 * scale,
 		clAppPrivacyTextAlignment: 1,
 		clAppPrivacyFirst: [PRIVACY_LINKS.privacyPolicy.name, PRIVACY_LINKS.privacyPolicy.url],
 		clAppPrivacySecond: [PRIVACY_LINKS.userAgreement.name, PRIVACY_LINKS.userAgreement.url],
@@ -225,10 +241,10 @@ function buildIOSUIConfig() {
 			clLayoutLoginBtnRight: -sidePad,
 			clLayoutLoginBtnHeight: btnH,
 			clLayoutLoginBtnBottom: -loginBottom,
-			clLayoutAppPrivacyLeft: sidePad,
-			clLayoutAppPrivacyRight: -sidePad,
-			clLayoutAppPrivacyHeight: 50,
-			clLayoutAppPrivacyBottom: -40 / 2 * scale,
+			clLayoutAppPrivacyLeft: 16 * scale,
+			clLayoutAppPrivacyRight: -16 * scale,
+			clLayoutAppPrivacyHeight: 56,
+			clLayoutAppPrivacyBottom: -18 * scale,
 			clLayoutSloganHeight: 0,
 			clLayoutSloganBottom: 0
 		},

@@ -21,6 +21,12 @@
 					</view>
 					<text v-if="item.open" class="faq-answer">{{ item.answer }}</text>
 				</view>
+				<view v-if="!faqList.length && !faqLoading" class="faq-empty">
+					<text class="faq-empty-text">暂无常见问题</text>
+				</view>
+				<view v-else-if="faqLoading" class="faq-empty">
+					<text class="faq-empty-text">加载中...</text>
+				</view>
 			</view>
 		</view>
 
@@ -52,40 +58,83 @@
 			</view>
 		</view>
 
+		<!-- 联系方式 -->
+		<view class="section">
+			<text class="section-label">联系方式（选填）</text>
+			<view class="desc-card contact-card">
+				<input
+					class="contact-input"
+					v-model="contact"
+					maxlength="50"
+					placeholder="手机号或微信号，方便我们联系你"
+					placeholder-class="desc-placeholder"
+				/>
+			</view>
+		</view>
+
 		<!-- 提交 -->
 		<view class="footer">
-			<view class="submit-btn" @click="onSubmit">
+			<view class="submit-btn" :class="{ disabled: submitting }" @click="onSubmit">
 				<image class="submit-btn-bg" src="/static/btnBan.png" mode="scaleToFill"></image>
-				<text class="submit-btn-text">提交问题反馈</text>
+				<text class="submit-btn-text">{{ submitting ? '提交中...' : '提交问题反馈' }}</text>
 			</view>
 		</view>
 	</view>
 </template>
 
 <script>
+	import { getFaqList } from '@/common/api/faq.js'
+	import { submitFeedback } from '@/common/api/feedback.js'
+	import { uploadFile } from '@/common/api/file.js'
+
 	export default {
 		data() {
 			return {
 				content: '',
+				contact: '',
 				images: [],
 				maxImages: 3,
-				faqList: [
-					{
-						id: 1,
-						question: '戒指无法连接怎么办',
-						answer: '确认蓝牙已开启、戒指电量充足，并在设备管理中重新搜索',
-						open: true
-					},
-					{
-						id: 2,
-						question: '数据为什么没有同步？',
-						answer: '请保持戒指与手机连接，并确保网络正常，稍后下拉刷新数据',
-						open: false
-					}
-				]
+				submitting: false,
+				faqList: [],
+				faqLoading: false
 			}
 		},
+		onShow() {
+			this.loadFaqList()
+		},
 		methods: {
+			async loadFaqList() {
+				if (this.faqLoading) return
+				this.faqLoading = true
+				try {
+					const data = await getFaqList()
+					const list = Array.isArray(data)
+						? data
+						: data && Array.isArray(data.list)
+							? data.list
+							: []
+					this.faqList = list
+						.map((item, i) => ({
+							id: item.faqId != null ? item.faqId : item.id != null ? item.id : i,
+							question: item.question || '',
+							answer: item.answer || '',
+							category: item.category || '',
+							sort: Number(item.sort != null ? item.sort : i + 1),
+							open: false
+						}))
+						.filter((item) => item.question)
+						.sort((a, b) => a.sort - b.sort)
+					// 默认展开第一条
+					if (this.faqList.length) {
+						this.$set(this.faqList[0], 'open', true)
+					}
+				} catch (e) {
+					console.log('[helpFeedback] faq list failed', e && (e.msg || e.message))
+					this.faqList = []
+				} finally {
+					this.faqLoading = false
+				}
+			},
 			toggleFaq(index) {
 				const item = this.faqList[index]
 				if (!item) return
@@ -113,16 +162,52 @@
 					urls: this.images
 				})
 			},
-			onSubmit() {
+			async onSubmit() {
 				const text = (this.content || '').trim()
 				if (!text) {
 					uni.showToast({ title: '请描述你遇到的问题', icon: 'none' })
 					return
 				}
-				uni.showToast({ title: '反馈已提交', icon: 'none' })
-				setTimeout(() => {
-					uni.navigateBack()
-				}, 500)
+				if (this.submitting) return
+				this.submitting = true
+				uni.showLoading({ title: '提交中...', mask: true })
+				try {
+					// 先把本地图片上传，拿到 URL 再逗号拼接提交
+					let imageUrls = ''
+					if (this.images.length) {
+						const uploaded = []
+						for (let i = 0; i < this.images.length; i++) {
+							try {
+								const res = await uploadFile(this.images[i])
+								const url = typeof res === 'string' ? res : (res && (res.url || res.fileUrl || res.path))
+								if (url) uploaded.push(url)
+							} catch (e) {
+								console.log('[helpFeedback] upload image failed', i, e && (e.msg || e.message))
+							}
+						}
+						imageUrls = uploaded.join(',')
+					}
+					await submitFeedback({
+						content: text,
+						images: imageUrls || undefined,
+						contact: (this.contact || '').trim() || undefined
+					})
+					uni.hideLoading()
+					uni.showToast({ title: '反馈已提交', icon: 'none' })
+					this.content = ''
+					this.images = []
+					setTimeout(() => {
+						uni.navigateBack()
+					}, 800)
+				} catch (e) {
+					uni.hideLoading()
+					uni.showToast({
+						title: String((e && (e.msg || e.message)) || '提交失败，请重试').slice(0, 30),
+						icon: 'none'
+					})
+				} finally {
+					this.submitting = false
+				}
 			}
 		}
 	}
@@ -202,6 +287,18 @@
 		color: rgba(255, 255, 255, 0.45);
 	}
 
+	.faq-empty {
+		padding: 48rpx 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.faq-empty-text {
+		font-size: 26rpx;
+		color: rgba(255, 255, 255, 0.35);
+	}
+
 	.desc-card {
 		background: #1a1b25;
 		border-radius: 24rpx;
@@ -220,6 +317,22 @@
 
 	.desc-placeholder {
 		color: #636366;
+	}
+
+	.contact-card {
+		padding: 0 28rpx;
+		height: 96rpx;
+		display: flex;
+		align-items: center;
+	}
+
+	.contact-input {
+		flex: 1;
+		width: 100%;
+		height: 96rpx;
+		font-size: 28rpx;
+		line-height: 40rpx;
+		color: #ffffff;
 	}
 
 	.upload-row {
@@ -305,5 +418,9 @@
 		font-weight: 600;
 		line-height: 44rpx;
 		color: #ffffff;
+	}
+
+	.submit-btn.disabled {
+		opacity: 0.6;
 	}
 </style>

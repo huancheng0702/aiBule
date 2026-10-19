@@ -14,7 +14,7 @@
 				</view>
 			</view>
 			<view class="wxLogin" @click="onWxLogin">
-				微信登录
+				微信登录 
 			</view>
 			<view class="agreement">
 				<image @click.stop="agreed = !agreed"

@@ -185,20 +185,21 @@
 						</view>
 					</view>
 
-					<view class="cal-week">
+					<view v-if="period !== 'month'" class="cal-week">
 						<text v-for="(w, i) in weekLabels" :key="i" class="cal-week-item">{{ w }}</text>
 					</view>
 
-					<view class="cal-grid">
+					<view class="cal-grid" :class="{ 'month-grid': period === 'month' }">
 						<view
 							v-for="(cell, index) in calendarCells"
 							:key="index"
 							class="cal-cell"
-							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
-							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)"
+							:class="{ empty: !cell.day && !cell.month, active: cell.active, inRange: cell.inRange, disabled: cell.disabled }"
+							@click="(cell.day || cell.month) && !cell.disabled && onSelectCalCell(cell)"
 						>
 							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
 							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
+							<text v-if="cell.month" class="cal-day">{{ cell.month }}月</text>
 						</view>
 					</view>
 
@@ -246,6 +247,9 @@
 <script>
 	import { toSvgDataUrl } from '@/common/svg-data-url.js'
 	import { getBodyTemperatureTrend, addManualHealthRecord } from '@/common/api/manualHealth.js'
+	import {
+		pickXLabels
+	} from '@/common/chart-x-labels.js'
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
 	const Y_MIN = 30
@@ -343,17 +347,6 @@
 		return startOfDay(new Date(year, month, day)).getTime() > startOfDay(new Date()).getTime()
 	}
 
-	function pickXLabels(labels) {
-		const times = (labels || []).filter(Boolean)
-		if (!times.length) return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
-		if (times.length <= 7) return times
-		// day 24 点：按服务端 labels 等距取 00/04/08/12/16/20/最后一个
-		const out = []
-		for (let i = 0; i < times.length; i += 4) out.push(times[i])
-		if (out[out.length - 1] !== times[times.length - 1]) out.push(times[times.length - 1])
-		return out.slice(0, 7)
-	}
-
 	export default {
 		data() {
 			return {
@@ -392,6 +385,7 @@
 				calYear: new Date().getFullYear(),
 				calMonth: new Date().getMonth(),
 				calSelectedDay: new Date().getDate(),
+				calSelectedMonth: new Date().getMonth(),
 				weekLabels: ['一', '二', '三', '四', '五', '六', '日'],
 				tipText: '体温需结合测量部位与时间解读。请记录测量时间；如多次结果明显超出个人正常范围，建议咨询专业医生。',
 				recentList: []
@@ -409,6 +403,13 @@
 				const y = d.getFullYear()
 				const m = String(d.getMonth() + 1).padStart(2, '0')
 				const day = String(d.getDate()).padStart(2, '0')
+				if (this.period === 'month') return `${y}年${m}月`
+				if (this.period === 'week') {
+					const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6)
+					const sm = String(start.getMonth() + 1).padStart(2, '0')
+					const sd = String(start.getDate()).padStart(2, '0')
+					return `${sm}月${sd}日 - ${d.getMonth() + 1}月${day}日`
+				}
 				return `${y}年${m}月${day}日`
 			},
 			chartPoints() {
@@ -477,19 +478,42 @@
 				}
 			},
 			calendarTitle() {
+				if (this.period === 'month') return `${this.calYear}年`
 				return `${this.calYear}年${this.calMonth + 1}月`
 			},
 			canCalNextMonth() {
 				const today = new Date()
+				if (this.period === 'month') return this.calYear < today.getFullYear()
 				if (this.calYear > today.getFullYear()) return false
 				if (this.calYear === today.getFullYear() && this.calMonth >= today.getMonth()) return false
 				return true
 			},
 			calendarCells() {
+				if (this.period === 'month') {
+					const now = new Date()
+					const months = []
+					for (let m = 0; m < 12; m++) {
+						const disabled = this.calYear > now.getFullYear() ||
+							(this.calYear === now.getFullYear() && m > now.getMonth())
+						months.push({
+							day: 0,
+							month: m + 1,
+							active: !disabled && m === this.calSelectedMonth,
+							disabled
+						})
+					}
+					return months
+				}
 				const year = this.calYear
 				const month = this.calMonth
 				const daysInMonth = new Date(year, month + 1, 0).getDate()
 				const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
+				let rangeStart = 0
+				let rangeEnd = 0
+				if (this.period === 'week') {
+					rangeEnd = this.calSelectedDay
+					rangeStart = rangeEnd - 6
+				}
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
 					cells.push({ day: 0, active: false, disabled: false })
@@ -499,6 +523,7 @@
 					cells.push({
 						day: d,
 						active: !disabled && d === this.calSelectedDay,
+						inRange: this.period === 'week' && d >= rangeStart && d <= rangeEnd,
 						disabled
 					})
 				}
@@ -555,7 +580,7 @@
 					this.apiPosition = null
 					this.chartValues = []
 					this.chartTimes = []
-					this.xLabels = pickXLabels([])
+					this.xLabels = pickXLabels([], this.period)
 					this.statsMax = '--'
 					this.statsMin = '--'
 					this.statsAvg = '--'
@@ -581,7 +606,7 @@
 				// 保留服务端完整长度，0 不过滤，X 轴按 labels 等距展开
 				this.chartValues = values
 				this.chartTimes = labels
-				this.xLabels = pickXLabels(labels.length ? labels : this.chartTimes)
+				this.xLabels = pickXLabels(labels.length ? labels : this.chartTimes, this.period)
 
 				const stats = data.stats || {}
 				this.statsMax = Number(stats.max) > 0 ? Number(stats.max) : '--'
@@ -642,6 +667,7 @@
 				const d = this.currentDate
 				this.calYear = d.getFullYear()
 				this.calMonth = d.getMonth()
+				this.calSelectedMonth = d.getMonth()
 				this.calSelectedDay = d.getDate()
 				this.showCalendar = true
 			},
@@ -649,6 +675,10 @@
 				this.showCalendar = false
 			},
 			onCalPrevMonth() {
+				if (this.period === 'month') {
+					this.calYear -= 1
+					return
+				}
 				if (this.calMonth === 0) {
 					this.calYear -= 1
 					this.calMonth = 11
@@ -660,6 +690,10 @@
 			},
 			onCalNextMonth() {
 				if (!this.canCalNextMonth) return
+				if (this.period === 'month') {
+					this.calYear += 1
+					return
+				}
 				if (this.calMonth === 11) {
 					this.calYear += 1
 					this.calMonth = 0
@@ -675,6 +709,15 @@
 					this.calSelectedDay = today.getDate()
 				}
 			},
+			onSelectCalCell(cell) {
+				if (this.period === 'month') {
+					if (!cell || cell.disabled || !cell.month) return
+					this.calSelectedMonth = cell.month - 1
+					return
+				}
+				if (!cell || !cell.day) return
+				this.onSelectCalDay(cell.day)
+			},
 			onSelectCalDay(day) {
 				if (isFutureDate(this.calYear, this.calMonth, day)) {
 					uni.showToast({
@@ -686,6 +729,12 @@
 				this.calSelectedDay = day
 			},
 			confirmCalendar() {
+				if (this.period === 'month') {
+					this.currentDate = new Date(this.calYear, this.calSelectedMonth, 1)
+					this.showCalendar = false
+					this.loadTrend()
+					return
+				}
 				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
 					uni.showToast({
 						title: '不能选择今天之后的日期',
@@ -1405,6 +1454,16 @@
 		margin-bottom: 8rpx;
 		box-sizing: border-box;
 		overflow: hidden;
+	}
+
+	.cal-cell.inRange {
+		background: rgba(255, 94, 123, 0.12);
+		border-radius: 16rpx;
+	}
+
+	.cal-grid.month-grid .cal-cell {
+		width: 25%;
+		height: 96rpx;
 	}
 
 	.cal-day-bg {

@@ -4,7 +4,8 @@ import {
 import {
 	LOGIN_TOKEN_KEY,
 	LOGIN_PATH,
-	clearLoginSession
+	clearLoginSession,
+	AUTH_GUARD_ENABLED
 } from '@/common/auth.js'
 
 const LOGIN_EXPIRED_CODE = 401
@@ -22,6 +23,10 @@ function getCurrentPath() {
 }
 
 function redirectToLogin(message = '登录失效') {
+	if (!AUTH_GUARD_ENABLED) {
+		console.warn('[http] 收到登录失效，但路由拦截已关闭，不跳转登录页:', message)
+		return
+	}
 	if (isHandlingLoginExpired) {
 		return
 	}

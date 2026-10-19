@@ -23,11 +23,11 @@
 					<text class="info-value">{{ connectStatus }}</text>
 				</view>
 			</view>
-			<view class="info-divider"></view>
+		<!-- 	<view class="info-divider"></view>
 			<view class="info-row">
 				<text class="info-label">固件版本</text>
 				<text class="info-value muted">{{ firmware }}</text>
-			</view>
+			</view> -->
 		</view>
 
 		<!-- 底部按钮 -->

@@ -21,14 +21,10 @@
 
 		<!-- 日 / 周 / 月 -->
 		<view class="period-bar">
-			<view
-				v-for="item in periodList"
-				:key="item.key"
-				class="period-item"
-				:class="{ active: period === item.key }"
-				@click="onPeriodChange(item.key)"
-			>
-				<image v-if="period === item.key" src="/static/confirmBg.png" class="period-item-bg" mode="scaleToFill"></image>
+			<view v-for="item in periodList" :key="item.key" class="period-item"
+				:class="{ active: period === item.key }" @click="onPeriodChange(item.key)">
+				<image v-if="period === item.key" src="/static/confirmBg.png" class="period-item-bg" mode="scaleToFill">
+				</image>
 				<text class="period-text">{{ item.label }}</text>
 			</view>
 		</view>
@@ -64,27 +60,13 @@
 			</view>
 
 			<view class="trend-chart">
-				<view
-					class="trend-plot"
-					@touchstart="onChartTouch"
-					@touchmove.stop="onChartTouch"
-					@touchend="onChartTouchEnd"
-					@touchcancel="onChartTouchEnd"
-				>
+				<view class="trend-plot" @touchstart="onChartTouch" @touchmove.stop="onChartTouch"
+					@touchend="onChartTouchEnd" @touchcancel="onChartTouchEnd">
 					<!-- App 不支持模板 svg，改用 data-url image 渲染 -->
-					<image
-						v-if="chartImageSrc"
-						class="trend-svg"
-						:src="chartImageSrc"
-						mode="scaleToFill"
-					/>
+					<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 					<view class="threshold-label" :style="{ top: thresholdLabelTop }">&lt; 100</view>
 					<!-- 按压数值提示 -->
-					<view
-						v-if="touchActive && touchPoint"
-						class="chart-tip"
-						:style="chartTipStyle"
-					>
+					<view v-if="touchActive && touchPoint" class="chart-tip" :style="chartTipStyle">
 						<text class="chart-tip-value">{{ touchValue }} bpm</text>
 						<text class="chart-tip-time">{{ touchTimeText }}</text>
 					</view>
@@ -141,12 +123,8 @@
 		<view class="section">
 			<text class="section-title">最近数据</text>
 			<view class="card recent-card">
-				<view
-					v-for="(item, index) in recentList"
-					:key="index"
-					class="recent-row"
-					:class="{ border: index < recentList.length - 1 }"
-				>
+				<view v-for="(item, index) in recentList" :key="index" class="recent-row"
+					:class="{ border: index < recentList.length - 1 }">
 					<view class="recent-left">
 						<text class="recent-time">{{ item.time }}</text>
 						<text class="recent-source">{{ item.source }}</text>
@@ -172,21 +150,19 @@
 						</view>
 					</view>
 
-					<view class="cal-week">
+					<view v-if="period !== 'month'" class="cal-week">
 						<text v-for="(w, i) in weekLabels" :key="i" class="cal-week-item">{{ w }}</text>
 					</view>
 
-					<view class="cal-grid">
-						<view
-							v-for="(cell, index) in calendarCells"
-							:key="index"
-							class="cal-cell"
-							:class="{ empty: !cell.day, active: cell.active, disabled: cell.disabled }"
-							@click="cell.day && !cell.disabled && onSelectCalDay(cell.day)"
-						>
+					<view class="cal-grid" :class="{ 'month-grid': period === 'month' }">
+						<view v-for="(cell, index) in calendarCells" :key="index" class="cal-cell"
+							:class="{ empty: !cell.day && !cell.month, active: cell.active, inRange: cell.inRange, disabled: cell.disabled }"
+							@click="(cell.day || cell.month) && !cell.disabled && onSelectCalCell(cell)">
 							<!-- 选中日期背景图，自行补充 src -->
-							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
+							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill">
+							</image>
 							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
+							<text v-if="cell.month" class="cal-day">{{ cell.month }}月</text>
 						</view>
 					</view>
 
@@ -212,19 +188,15 @@
 					<!-- 佩戴示意，自行补充 src -->
 					<image class="tip-popup-illust" src="/static/celiangTipsIcon.png" mode=""></image>
 					<view class="tip-popup-card">
-						<view
-							v-for="(item, index) in measureTips"
-							:key="item.no"
-							class="tip-popup-row"
-							:class="{ border: index < measureTips.length - 1 }"
-						>
+						<view v-for="(item, index) in measureTips" :key="item.no" class="tip-popup-row"
+							:class="{ border: index < measureTips.length - 1 }">
 							<view class="tip-popup-no">
 								<text class="tip-popup-no-text">{{ item.no }}</text>
 							</view>
 							<text class="tip-popup-desc">{{ item.text }}</text>
 						</view>
 					</view>
-				
+
 					<view class="cal-btn confirm" style="margin-top: 46rpx;" @click="onMeasureNext">
 						<!-- 确定按钮背景图，自行补充 src -->
 						<image class="cal-btn-bg" src="/static/xiayibu.png" mode=""></image>
@@ -274,14 +246,21 @@
 <script>
 	import CoolWearBLE from '@/common/coolwear-ble.js'
 	import BleService from '@/common/ble-service.js'
-	import { toSvgDataUrl } from '@/common/svg-data-url.js'
-	import { hasLogin } from '@/common/auth.js'
+	import {
+		toSvgDataUrl
+	} from '@/common/svg-data-url.js'
+	import {
+		hasLogin
+	} from '@/common/auth.js'
 	import {
 		getDeviceLatest,
 		getHeartRateTrend,
 		getDeviceDataList,
 		uploadDeviceData
 	} from '@/common/api/deviceData.js'
+	import {
+		pickXLabels
+	} from '@/common/chart-x-labels.js'
 
 	const CHART_PAD_TOP = 28
 	const CHART_PAD_BOTTOM = 12
@@ -324,10 +303,10 @@
 	function pickHeartBpm(item) {
 		if (!item) return 0
 		const n = Number(
-			item.heartrate != null ? item.heartrate
-				: (item.averHr != null ? item.averHr
-					: (item.maxHr != null ? item.maxHr
-						: (item.heartNum != null ? item.heartNum : item.value)))
+			item.heartrate != null ? item.heartrate :
+			(item.averHr != null ? item.averHr :
+				(item.maxHr != null ? item.maxHr :
+					(item.heartNum != null ? item.heartNum : item.value)))
 		)
 		return n > 0 ? n : 0
 	}
@@ -401,34 +380,19 @@
 		return []
 	}
 
-	function pickXLabels(times, period) {
-		const list = (times || []).filter(Boolean)
-		if (!list.length) {
-			if (period === 'week') return ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-			if (period === 'month') return ['1日', '6日', '11日', '16日', '21日', '26日']
-			return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
-		}
-		// 日视图：series 是 24 点，按 time 等距展示，只取 00/04/08/12/16/20/最后一个
-		if (period === 'day' && list.length > 7) {
-			const out = []
-			for (let i = 0; i < list.length; i += 4) out.push(list[i])
-			if (out[out.length - 1] !== list[list.length - 1]) out.push(list[list.length - 1])
-			return out
-		}
-		const count = period === 'month' ? 6 : 7
-		if (list.length <= count) return list
-		const out = []
-		for (let i = 0; i < count; i++) {
-			out.push(list[Math.round(i * (list.length - 1) / (count - 1))])
-		}
-		return out
-	}
 
 	function toPoints(values, chartW, chartH) {
 		const stepX = values.length <= 1 ? 0 : chartW / (values.length - 1)
 		return values.map((v, i) => {
-			if (v == null || isNaN(Number(v))) return { x: i * stepX, y: null, empty: true }
-			return { x: i * stepX, y: valueToY(Number(v), chartH) }
+			if (v == null || isNaN(Number(v))) return {
+				x: i * stepX,
+				y: null,
+				empty: true
+			}
+			return {
+				x: i * stepX,
+				y: valueToY(Number(v), chartH)
+			}
 		})
 	}
 
@@ -458,7 +422,10 @@
 			cur = []
 		}
 		points.forEach((p) => {
-			if (!p || p.empty || p.y == null) { flush(); return }
+			if (!p || p.empty || p.y == null) {
+				flush();
+				return
+			}
 			cur.push(p)
 		})
 		flush()
@@ -484,10 +451,18 @@
 				latestBpm: '--',
 				latestStatus: '暂无数据',
 				period: 'day',
-				periodList: [
-					{ key: 'day', label: '日' },
-					{ key: 'week', label: '周' },
-					{ key: 'month', label: '月' }
+				periodList: [{
+						key: 'day',
+						label: '日'
+					},
+					{
+						key: 'week',
+						label: '周'
+					},
+					{
+						key: 'month',
+						label: '月'
+					}
 				],
 				currentDate: new Date(),
 				trendBpm: '--',
@@ -514,15 +489,21 @@
 				measureTimer: null,
 				measureStableTimer: null,
 				heartRateUnsub: null,
-				measureTips: [
-					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
-					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
+				measureTips: [{
+						no: '1',
+						text: '请正确佩戴设备，使设备光路对准指腹或手指两侧'
+					},
+					{
+						no: '2',
+						text: '测量过程中身体尽可能保持静止，请勿走动或晃动'
+					}
 				],
 				calYear: new Date().getFullYear(),
 				calMonth: new Date().getMonth(),
 				calSelectedDay: new Date().getDate(),
+				calSelectedMonth: new Date().getMonth(),
 				weekLabels: ['一', '二', '三', '四', '五', '六', '日'],
-				tipText: '心率是指心脏每分钟跳动的次数，单位是bpm。正常成年人安静时心率在60-100次/分钟。本设备仅用于健康管理参考，不能用于医疗诊断。',
+				tipText: '',
 				recentList: []
 			}
 		},
@@ -532,6 +513,13 @@
 				const y = d.getFullYear()
 				const m = String(d.getMonth() + 1).padStart(2, '0')
 				const day = String(d.getDate()).padStart(2, '0')
+				if (this.period === 'month') return `${y}年${m}月`
+				if (this.period === 'week') {
+					const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6)
+					const sm = String(start.getMonth() + 1).padStart(2, '0')
+					const sd = String(start.getDate()).padStart(2, '0')
+					return `${sm}月${sd}日 - ${d.getMonth() + 1}月${day}日`
+				}
 				return `${y}年${m}月${day}日`
 			},
 			chartPoints() {
@@ -625,33 +613,65 @@
 				}
 			},
 			calendarTitle() {
+				if (this.period === 'month') return `${this.calYear}年`
 				return `${this.calYear}年${this.calMonth + 1}月`
 			},
 			canCalNextMonth() {
 				const today = new Date()
+				if (this.period === 'month') return this.calYear < today.getFullYear()
 				if (this.calYear > today.getFullYear()) return false
 				if (this.calYear === today.getFullYear() && this.calMonth >= today.getMonth()) return false
 				return true
 			},
 			calendarCells() {
+				if (this.period === 'month') {
+					const now = new Date()
+					const months = []
+					for (let m = 0; m < 12; m++) {
+						const disabled = this.calYear > now.getFullYear() ||
+							(this.calYear === now.getFullYear() && m > now.getMonth())
+						months.push({
+							day: 0,
+							month: m + 1,
+							active: !disabled && m === this.calSelectedMonth,
+							disabled
+						})
+					}
+					return months
+				}
 				const year = this.calYear
 				const month = this.calMonth
 				const daysInMonth = new Date(year, month + 1, 0).getDate()
 				const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7
+				let rangeStart = 0
+				let rangeEnd = 0
+				if (this.period === 'week') {
+					rangeEnd = this.calSelectedDay
+					rangeStart = rangeEnd - 6
+				}
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
-					cells.push({ day: 0, active: false, disabled: false })
+					cells.push({
+						day: 0,
+						active: false,
+						disabled: false
+					})
 				}
 				for (let d = 1; d <= daysInMonth; d++) {
 					const disabled = isFutureDate(year, month, d)
 					cells.push({
 						day: d,
 						active: !disabled && d === this.calSelectedDay,
+						inRange: this.period === 'week' && d >= rangeStart && d <= rangeEnd,
 						disabled
 					})
 				}
 				while (cells.length % 7 !== 0) {
-					cells.push({ day: 0, active: false, disabled: false })
+					cells.push({
+						day: 0,
+						active: false,
+						disabled: false
+					})
 				}
 				return cells
 			}
@@ -771,13 +791,14 @@
 				const lastVal = last ? pickHeartBpm(last) : 0
 				this.trendBpm = lastVal > 0 ? lastVal : '--'
 				this.trendStatus = data.status || (lastVal > 0 ? bpmStatusText(lastVal) : '暂无数据')
-				this.trendTime = (last && (last.time || last.fullTime)) ? (last.time || formatRecordTime(last.fullTime)) : '--'
+				this.trendTime = (last && (last.time || last.fullTime)) ? (last.time || formatRecordTime(last.fullTime)) :
+					'--'
 
 				const stats = data.stats || {}
 				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
 				this.statsMin = Number(stats.minValue) > 0 ? Math.round(Number(stats.minValue)) : '--'
 				this.statsAvg = Number(stats.avgValue) > 0 ? Math.round(Number(stats.avgValue)) : '--'
-				if (data.description || data.desc) this.tipText = data.description || data.desc
+				this.tipText = data.desc
 				this.$nextTick(() => this.measureChart(0))
 			},
 			async loadRecent() {
@@ -855,6 +876,7 @@
 				const d = this.currentDate
 				this.calYear = d.getFullYear()
 				this.calMonth = d.getMonth()
+				this.calSelectedMonth = d.getMonth()
 				this.calSelectedDay = d.getDate()
 				this.showCalendar = true
 			},
@@ -862,6 +884,10 @@
 				this.showCalendar = false
 			},
 			onCalPrevMonth() {
+				if (this.period === 'month') {
+					this.calYear -= 1
+					return
+				}
 				if (this.calMonth === 0) {
 					this.calYear -= 1
 					this.calMonth = 11
@@ -873,6 +899,10 @@
 			},
 			onCalNextMonth() {
 				if (!this.canCalNextMonth) return
+				if (this.period === 'month') {
+					this.calYear += 1
+					return
+				}
 				if (this.calMonth === 11) {
 					this.calYear += 1
 					this.calMonth = 0
@@ -888,6 +918,15 @@
 					this.calSelectedDay = today.getDate()
 				}
 			},
+			onSelectCalCell(cell) {
+				if (this.period === 'month') {
+					if (!cell || cell.disabled || !cell.month) return
+					this.calSelectedMonth = cell.month - 1
+					return
+				}
+				if (!cell || !cell.day) return
+				this.onSelectCalDay(cell.day)
+			},
 			onSelectCalDay(day) {
 				if (isFutureDate(this.calYear, this.calMonth, day)) {
 					uni.showToast({
@@ -899,6 +938,12 @@
 				this.calSelectedDay = day
 			},
 			confirmCalendar() {
+				if (this.period === 'month') {
+					this.currentDate = new Date(this.calYear, this.calSelectedMonth, 1)
+					this.showCalendar = false
+					this.loadTrend()
+					return
+				}
 				if (isFutureDate(this.calYear, this.calMonth, this.calSelectedDay)) {
 					uni.showToast({
 						title: '不能选择今天之后的日期',
@@ -1043,9 +1088,14 @@
 				await this.stopRealMeasure(true)
 
 				let measureId = createMeasureId()
-				uni.showLoading({ title: '保存中', mask: true })
+				uni.showLoading({
+					title: '保存中',
+					mask: true
+				})
 				try {
-					await this.uploadHeartOnce({ heartNum: Number(value) || 0 }, measureId)
+					await this.uploadHeartOnce({
+						heartNum: Number(value) || 0
+					}, measureId)
 				} catch (e) {
 					measureId = ''
 					console.log('[heartRate] upload failed', e && (e.msg || e.message))
@@ -1055,7 +1105,9 @@
 
 				let url = '/pages/index/heartSuccess?bpm=' + value
 				if (measureId) url += '&measureId=' + encodeURIComponent(measureId)
-				uni.navigateTo({ url })
+				uni.navigateTo({
+					url
+				})
 			},
 			async uploadHeartOnce(payload, measureId) {
 				if (!hasLogin()) {
@@ -1174,6 +1226,7 @@
 		margin: 0 16rpx;
 		min-width: 80rpx;
 	}
+
 	.period-bar {
 		display: flex;
 		align-items: center;
@@ -1182,10 +1235,10 @@
 		padding: 6rpx;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
 	}
-	
+
 	.period-item {
 		position: relative;
 		flex: 1;
@@ -1194,7 +1247,7 @@
 		align-items: center;
 		justify-content: center;
 	}
-	
+
 	.period-item-bg {
 		position: absolute;
 		left: 0;
@@ -1203,7 +1256,7 @@
 		height: 100%;
 		z-index: 0;
 	}
-	
+
 	.period-text {
 		position: relative;
 		z-index: 1;
@@ -1211,17 +1264,18 @@
 		color: #8e8e93;
 		line-height: 40rpx;
 	}
-	
+
 	.period-item.active .period-text {
 		color: #ffffff;
 		font-weight: 600;
 	}
+
 	.card {
 		margin-top: 28rpx;
 		padding: 32rpx 28rpx 28rpx;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
 	}
 
@@ -1234,7 +1288,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width:510rpx;
+		width: 510rpx;
 		margin: 0 auto 28rpx;
 		padding: 14rpx 20rpx;
 		box-sizing: border-box;
@@ -1257,7 +1311,8 @@
 		align-items: center;
 		justify-content: center;
 	}
-	.date-btn image{
+
+	.date-btn image {
 		width: 34rpx;
 		height: 34rpx;
 	}
@@ -1330,7 +1385,7 @@
 		height: 44rpx;
 		border-radius: 30rpx;
 		text-align: center;
-		background:#212F34;
+		background: #212F34;
 		line-height: 44rpx;
 	}
 
@@ -1434,7 +1489,7 @@
 		padding: 36rpx 0;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 	}
 
 	.stats-col {
@@ -1674,6 +1729,16 @@
 		opacity: 0.28;
 	}
 
+	.cal-cell.inRange {
+		background: rgba(255, 94, 123, 0.12);
+		border-radius: 16rpx;
+	}
+
+	.cal-grid.month-grid .cal-cell {
+		width: 25%;
+		height: 96rpx;
+	}
+
 	.cal-day-bg {
 		position: absolute;
 		left: 0;
@@ -1713,7 +1778,7 @@
 		overflow: hidden;
 	}
 
-	.cal-btn + .cal-btn {
+	.cal-btn+.cal-btn {
 		margin-left: 24rpx;
 	}
 
@@ -1965,6 +2030,7 @@
 	}
 
 	@keyframes disc-breathe {
+
 		0%,
 		100% {
 			transform: scale(0.9);
@@ -2058,7 +2124,7 @@
 		box-sizing: border-box;
 	}
 
-	.cancel-btn + .cancel-btn {
+	.cancel-btn+.cancel-btn {
 		margin-left: 24rpx;
 	}
 

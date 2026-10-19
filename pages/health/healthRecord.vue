@@ -18,7 +18,6 @@
 				<!-- 卡片背景图，自行补充 src -->
 				<image class="daily-card-bg" src="/static/recordBg.png" mode=""></image>
 				<view class="daily-body">
-					<image src="/static/yuanhuanBg.png" class="defsBg" mode=""></image>
 					<view class="daily-left">
 						<view class="daily-tag">
 							<!-- 日报图标，自行补充 src -->
@@ -35,7 +34,9 @@
 						</view>
 					</view>
 					<view class="score-wrap">
+						<image src="/static/yuanhuanBg.png" class="defsBg" mode=""></image>
 						<canvas canvas-id="scoreCanvas" id="scoreCanvas" class="score-canvas"></canvas>
+
 						<view class="score-center">
 							<text class="score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${scoreAccentColor} 100%)` }">{{ score }}</text>
 
@@ -206,6 +207,62 @@
 			</view>
 		</view>
 
+		<!-- 今日健康日报详情弹窗 -->
+		<view v-if="showDailyPopup" class="week-mask" @click="closeDailyPopup">
+			<view class="week-popup" @click.stop>
+				<image class="week-popup-bg" src="/static/bushuPopBg.png" mode=""></image>
+				<scroll-view class="week-popup-scroll" scroll-y :show-scrollbar="false">
+					<view class="week-popup-body">
+						<view class="week-popup-head">
+							<text class="week-popup-title">{{ dailyPopup.title }}</text>
+							<text class="week-popup-date">{{ dailyPopup.dateText }}</text>
+						</view>
+
+						<view class="week-score-wrap">
+							<canvas canvas-id="dailyScoreCanvas" id="dailyScoreCanvas" class="week-score-canvas"></canvas>
+							<view class="week-score-center">
+								<text class="week-score-num" :style="{ backgroundImage: `linear-gradient(to right, #FFFFFF 28%, ${dailyAccentColor} 100%)` }">{{ dailyPopup.score }}</text>
+								<text class="week-score-label">综合分</text>
+							</view>
+						</view>
+
+						<text class="week-popup-summary">{{ dailyPopup.summary }}</text>
+
+						<view class="metric-card">
+							<view v-for="(item, index) in dailyPopup.metrics" :key="item.name" class="metric-row"
+								:class="{ border: index < dailyPopup.metrics.length - 1 }">
+								<image class="metric-icon" :src="item.icon" mode="aspectFit"></image>
+								<view class="metric-info">
+									<text class="metric-name">{{ item.name }}</text>
+									<text class="metric-trend">{{ item.trend }}</text>
+								</view>
+								<text class="metric-value">{{ item.value }}</text>
+							</view>
+							<view v-if="!dailyPopup.metrics.length" class="metric-row">
+								<text class="metric-trend">暂无指标数据</text>
+							</view>
+						</view>
+
+						<view class="advice-card">
+							<image class="advice-bg" src="/static/heartCardBg.png" mode="aspectFill"></image>
+							<image class="advice-icon" src="/static/qushijianyi.png" mode="aspectFit"></image>
+							<view class="advice-body">
+								<text class="advice-title">健康与建议</text>
+								<text class="advice-desc">{{ dailyPopup.advice }}</text>
+							</view>
+						</view>
+
+						<view class="week-popup-actions">
+							<view class="week-btn solid" @click="closeDailyPopup">
+								<image class="week-btn-bg" src="/static/confirmBg.png" mode="scaleToFill"></image>
+								<text class="week-btn-text">返回</text>
+							</view>
+						</view>
+					</view>
+				</scroll-view>
+			</view>
+		</view>
+
 		<!-- 异常记录详情弹窗 -->
 		<view v-if="showAbPopup" class="ab-mask" @click="closeAbPopup">
 			<view class="ab-popup" @click.stop>
@@ -303,6 +360,17 @@
 	import { exportAndDownloadReport } from '@/common/api/ai.js'
 
 	const ARCHIVE_TYPE_MAP = ['既往病史', '家族病史', '手术史', '过敏史', '用药史', '个人史', '婚育史', '月经史', '运动史']
+	// AppHealthAbnormal.status: 0-异常中 1-已恢复
+	function abnormalStatusText(status) {
+		const s = String(status == null ? '' : status).trim()
+		if (s === '0') return '异常中'
+		if (s === '1') return '已恢复'
+		if (!s) return ''
+		if (s.indexOf('异常') >= 0) return '异常中'
+		if (s.indexOf('恢复') >= 0 || s.indexOf('正常') >= 0) return '已恢复'
+		return s
+	}
+
 	function scoreStops(score) {
 		const s = Number(score) || 0
 		if (s >= 80) return ['#2C89FF', '#1D4FA0', '#12255E']
@@ -358,90 +426,17 @@
 				score: 21,
 				dailyStatus: '恢复状态良好',
 				dailyDesc: '睡眠与静息心率稳定，建议今天完成25分钟轻量活动。',
-				weekList: [{
-						day: '07',
-						month: '8月',
-						title: '本周健康周报',
-						desc: '7项指标 · 已生成',
-						dateText: '2025年8月1日-8月7日',
-						score: 83,
-						summary: '本周恢复表现稳定，运动时长较上周增加。',
-						advice: '建议保持当前运动节奏，并尽量固定睡眠时间，进一步提升恢复质量。',
-						metrics: [{
-								name: '心率',
-								trend: '较上周下降 2 bpm',
-								value: '平均 71 Bpm',
-								icon: '/static/xinlv.png'
-							},
-							{
-								name: '睡眠',
-								trend: '较上周提升 16 分钟',
-								value: '平均 7小时18分',
-								icon: '/static/shuimian.png'
-							},
-							{
-								name: '血氧',
-								trend: '与上周持平',
-								value: '平均 98%',
-								icon: '/static/xueyang.png'
-							},
-							{
-								name: '压力',
-								trend: '较上周下降 4',
-								value: '平均 31',
-								icon: '/static/yali.png'
-							},
-							{
-								name: '运动',
-								trend: '较上周提升 22 分钟',
-								value: '186 分钟',
-								icon: '/static/bushu.png'
-							}
-						]
-					},
-					{
-						day: '31',
-						month: '7月',
-						title: '本周健康周报',
-						desc: '7项指标 · 已生成',
-						dateText: '2025年7月25日-7月31日',
-						score: 79,
-						summary: '本周整体状态平稳，睡眠略有波动。',
-						advice: '建议保持当前运动节奏，并尽量固定睡眠时间，进一步提升恢复质量。',
-						metrics: [{
-								name: '心率',
-								trend: '较上周下降 1 bpm',
-								value: '平均 72 Bpm',
-								icon: '/static/xinlv.png'
-							},
-							{
-								name: '睡眠',
-								trend: '较上周下降 10 分钟',
-								value: '平均 7小时05分',
-								icon: '/static/shuimian.png'
-							},
-							{
-								name: '血氧',
-								trend: '与上周持平',
-								value: '平均 98%',
-								icon: '/static/xueyang.png'
-							},
-							{
-								name: '压力',
-								trend: '较上周上升 2',
-								value: '平均 33',
-								icon: '/static/yali.png'
-							},
-							{
-								name: '运动',
-								trend: '较上周提升 12 分钟',
-								value: '164 分钟',
-								icon: '/static/bushu.png'
-							}
-						]
-					}
-				],
+				weekList: [],
 				showWeekPopup: false,
+				showDailyPopup: false,
+				dailyPopup: {
+					dateText: '',
+					title: '今日健康日报',
+					score: 0,
+					summary: '',
+					advice: '',
+					metrics: []
+				},
 				exporting: false,
 				weekPopup: {
 					dateText: '',
@@ -582,6 +577,9 @@
 			weekAccentColor() {
 				return scoreAccent(this.weekPopup.score)
 			},
+			dailyAccentColor() {
+				return scoreAccent(this.dailyPopup.score)
+			},
 			scoreRing() {
 				return buildRingSegs(this.score, '#FF2C30')
 			},
@@ -646,17 +644,28 @@
 			showWeekPopup(v) {
 				if (v) this.$nextTick(() => this.drawWeekScoreRing())
 			},
+			showDailyPopup(v) {
+				if (v) this.$nextTick(() => this.drawDailyScoreRing())
+			},
 			'weekPopup.score'() {
 				if (this.showWeekPopup) this.$nextTick(() => this.drawWeekScoreRing())
 			}
 		},
 		methods: {
-			drawRing(canvasId, score, color, size) {
+			// 先量出画布在屏幕上的真实像素尺寸，再按该尺寸绘制，保证不同屏幕下圆环与画布始终对齐
+			drawRing(canvasId, score, color) {
+				uni.createSelectorQuery().select('#' + canvasId).boundingClientRect((rect) => {
+					// 画布尚未完成布局时退回按 rpx 设计稿换算，避免首帧不绘制
+					const designRpx = canvasId === 'weekScoreCanvas' ? 250 : 238.52
+					const s = Math.round((rect && rect.width) || uni.upx2px(designRpx))
+					this.paintRing(canvasId, score, color, s)
+				}).exec()
+			},
+			paintRing(canvasId, score, color, s) {
 				const ctx = uni.createCanvasContext(canvasId, this)
-				const s = 132
-				const cx = s / 2
+				const cx = s / 2 
 				const cy = s / 2
-				const lineWidth = Math.round(s * 0.1)
+				const lineWidth = Math.max(1, Math.round(s * 0.1))
 				const r = (s - lineWidth) / 2 - 2
 				const percent = Math.max(0, Math.min(1, score / 100))
 				const startAngle = -Math.PI / 2
@@ -690,10 +699,13 @@
 				ctx.draw()
 			},
 			drawScoreRing() {
-				this.drawRing('scoreCanvas', this.score, '#FF2C30', 120)
+				this.drawRing('scoreCanvas', this.score, '#FF2C30')
 			},
 			drawWeekScoreRing() {
-				this.drawRing('weekScoreCanvas', this.weekPopup.score || 0, '#3D9BFF', 110)
+				this.drawRing('weekScoreCanvas', this.weekPopup.score || 0, '#3D9BFF')
+			},
+			drawDailyScoreRing() {
+				this.drawRing('dailyScoreCanvas', this.dailyPopup.score || 0, '#3D9BFF')
 			},
 			unwrapList(res) {
 				if (Array.isArray(res)) return res
@@ -721,47 +733,94 @@
 					this.dailyDesc = daily.summary || daily.desc || daily.advice || this.dailyDesc
 				}
 				const list = this.unwrapList(weekly)
-				if (list.length) {					this.weekList = list.map((w, i) => {
-						const range = w.dateRangeText || w.dateRange || w.weekRange || w.dateText || ''
-						const d = w.date || w.endDate || w.endTime || ''
-						return {
-							raw: w,
-							day: w.day || (d ? String(d).slice(8, 10) : `0${7 - i}`.slice(-2)),
-							month: w.month || (d ? `${Number(String(d).slice(5, 7))}月` : ''),
-							title: w.title || '本周健康周报',
-							desc: w.desc || `${(w.indicators || []).length || w.indicatorCount || 7}项指标 · 已生成`,
-							dateText: range, date: d, score: w.healthScore ?? w.score ?? 0,
-							summary: w.summary || '', advice: w.advice || '',
-							metrics: this.normalizeWeekMetrics(w)
-						}
-					})
-				}
+				this.weekList = list.map((w, i) => {
+					// weekTitle 形如 "15 9月"，dateRangeText 形如 "9月15日-9月21日 · 健康周报"
+					const weekTitle = String(w.weekTitle || '').trim()
+					const titleParts = weekTitle.split(/\s+/).filter(Boolean)
+					const rangeText = String(w.dateRangeText || '').trim()
+					const rangeParts = rangeText.split('·').map((t) => t.trim())
+					const range = rangeParts[0] || ''
+					const title = rangeParts[1] || w.title || '健康周报'
+					return {
+						raw: w,
+						reportId: w.reportId != null ? w.reportId : null,
+						day: w.day || titleParts[0] || '',
+						month: w.month || (titleParts[1] ? titleParts[1] : ''),
+						title: title,
+						desc: range,
+						dateText: range,
+						date: w.date || range,
+						score: w.healthScore ?? w.score ?? 0,
+						summary: w.summary || '',
+						advice: w.advice || '',
+						metrics: this.normalizeWeekMetrics(w)
+					}
+				})
 				this.$nextTick(() => this.drawScoreRing())
 			},
 			onDailyDetail() {
-				uni.navigateTo({ url: '/pages/health/aiReport?type=daily' })
+				this.openDailyPopup()
+			},
+			async openDailyPopup() {
+				const date = new Date()
+				const p = (n) => String(n).padStart(2, '0')
+				const ymd = `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`
+				try {
+					const data = await getDailyDetail(ymd)
+					this.dailyPopup = {
+						dateText: (data && data.dateRangeText) || ymd,
+						title: (data && data.title) || '今日健康日报',
+						score: Number(data && (data.healthScore ?? data.score)) || 0,
+						summary: (data && (data.summary || data.desc)) || '',
+						advice: (data && data.advice) || '',
+						metrics: this.normalizeWeekMetrics(data || {})
+					}
+				} catch (e) {
+					console.log('[healthRecord] daily report failed', e && (e.msg || e.message))
+					this.dailyPopup = {
+						dateText: ymd,
+						title: '今日健康日报',
+						score: 0,
+						summary: '',
+						advice: '',
+						metrics: []
+					}
+				}
+				this.showDailyPopup = true
+			},
+			closeDailyPopup() {
+				this.showDailyPopup = false
 			},
 			normalizeWeekMetrics(src) {
 				const arr = src.indicators || src.metrics || src.items || []
 				const iconMap = { '心率': '/static/xinlv.png', '睡眠': '/static/shuimian.png', '血氧': '/static/xueyang.png', '压力': '/static/yali.png', '运动': '/static/bushu.png', '步数': '/static/bushu.png' }
-				return (Array.isArray(arr) ? arr : []).map((m) => ({
-					name: m.name || m.label || m.title || '',
-					trend: m.trend || m.desc || m.compare || m.subTitle || '',
-					value: m.value || m.display || m.text || (m.avg != null ? `平均 ${m.avg}` : ''),
-					icon: m.icon || iconMap[m.name] || '/static/xinlv.png'
-				}))
+				return (Array.isArray(arr) ? arr : []).map((m) => {
+					const name = m.name || m.label || m.title || ''
+					// value + unit 拼接，如 "71 bpm"
+					const rawValue = m.value != null && m.value !== '' ? String(m.value) : ''
+					const value = m.display || m.text || (rawValue ? (m.unit ? `${rawValue} ${m.unit}` : rawValue) : m.avg != null ? `平均 ${m.avg}` : '')
+					// compareText 优先，其次用 compareDirection + compareValue 组装
+					const dirMap = { up: '较昨日上升', down: '较昨日下降', flat: '与昨日持平' }
+					const trend = m.trend || m.desc || m.compare || m.subTitle || m.compareText || (m.compareDirection ? `${dirMap[m.compareDirection] || ''}${m.compareValue != null ? ` ${m.compareValue}` : ''}`.trim() : '')
+					return {
+						name: name,
+						trend: trend,
+						value: value,
+						icon: m.icon || iconMap[name] || '/static/xinlv.png'
+					}
+				})
 			},
 			async onWeekDetail(item) {
 				const toPopup = (src) => ({
 					dateText: src.dateRangeText || src.dateRange || src.weekRange || src.dateText || item.dateText || '',
-					title: src.title || item.title || '本周健康周报',
+					title: src.title || item.title || '健康周报',
 					score: src.healthScore ?? src.score ?? src.totalScore ?? item.score ?? 0,
 					summary: src.summary || item.summary || '',
 					advice: src.advice || item.advice || '',
 					metrics: this.normalizeWeekMetrics(src).length ? this.normalizeWeekMetrics(src) : (item.metrics || [])
 				})
 				try {
-					const d = await getWeeklyDetail(item.date || undefined)
+					const d = await getWeeklyDetail(item.reportId || item.date || undefined)
 					this.weekPopup = toPopup((d && typeof d === 'object') ? { ...item.raw, ...item, ...d } : item)
 				} catch (e) { this.weekPopup = toPopup(item) }
 				this.showWeekPopup = true
@@ -797,7 +856,7 @@
 					{ label: '检测值', value: val != null && val !== '' ? `${val}${unit ? ` ${unit}` : ''}` : '--', icon: '/static/jianceImg.png' },
 					{ label: '个人参考区间', value: ref || '--', icon: '/static/cankaoqujian.png' },
 					{ label: '持续时间', value: a.duration != null && a.duration !== '' ? `${a.duration} 分钟` : '--', icon: '/static/chixushijian.png' },
-					{ label: '当前状态', value: a.statusText || (String(a.status) === '0' ? '已恢复' : a.status || '已恢复'), icon: '/static/dangqianzhuangtai.png' }
+					{ label: '当前状态', value: a.statusText || abnormalStatusText(a.status) || '--', icon: '/static/dangqianzhuangtai.png' }
 				]
 			},
 			toAbCard(a) {
@@ -809,7 +868,7 @@
 					time,
 					title,
 					desc: a.advice || a.remark || a.desc || '点击查看详情',
-					statusTitle: a.statusTitle || '其余时段未发现异常',
+					statusTitle: a.statusTitle || abnormalStatusText(a.status) || '异常记录',
 					statusDesc: a.statusDesc || a.advice || '',
 					subText: a.subText || (time ? `${time} · ${title}` : title),
 					level: a.severity || a.level || a.attentionLevel || '轻度关注',
@@ -836,7 +895,10 @@
 					if (item.id != null) {
 						const d = await getAbnormalDetail(item.id)
 						if (d && typeof d === 'object') {
-							const card = this.toAbCard({ ...item.raw, ...d })
+							// 详情里的 status/duration 等比列表全，cells 必须重算
+							const merged = { ...item.raw, ...d }
+							delete merged.cells
+							const card = this.toAbCard(merged)
 							this.abPopup = {
 								subText: card.subText, level: card.level,
 								headline: card.headline, cells: card.cells

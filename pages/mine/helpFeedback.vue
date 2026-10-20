@@ -215,7 +215,7 @@
 
 <style scoped lang="scss">
 	.page {
-		height: 100vh;
+		min-height: 100vh;
 		padding: 24rpx 28rpx 48rpx;
 		box-sizing: border-box;
 		background: #000000;

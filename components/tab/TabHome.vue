@@ -1472,7 +1472,8 @@
 		margin-top: 40rpx;
 		width: 356rpx;
 		height: 353.32rpx;
-		border: 2rpx dashed rgba(255, 255, 255, 0.20);
+		border: 2rpx solid rgba(44,137,255,0.1);
+		border-radius: 30rpx;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1480,8 +1481,8 @@
 	}
 
 	.butler-qr {
-		width: 282rpx;
-		height: 282rpx;
+		width: 292rpx;
+		height: 292rpx;
 	}
 
 	.butler-tip {

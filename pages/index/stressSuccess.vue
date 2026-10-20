@@ -14,7 +14,7 @@
 
 		<view class="scale-box">
 			<view class="scale-track">
-				<image class="scale-img" src="/static/keduHeart.png" mode=""></image>
+				<image class="scale-img" src="/static/stressImg.png" mode=""></image>
 				<image class="scale-pointer" :style="{ left: pointerLeft }" src="/static/zhizhen.png" mode=""></image>
 			</view>
 		</view>
@@ -249,8 +249,8 @@
 		background: #2f6bff;
 		font-size: 22rpx;
 		color: #ffffff;
-		width: 78rpx;
-		height: 38rpx;
+		width: 128rpx;
+		height: 42rpx;
 		text-align: center;
 		line-height: 42rpx;
 	}

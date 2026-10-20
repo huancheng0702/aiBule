@@ -371,6 +371,17 @@
 		return s
 	}
 
+	// dateRangeText 形如 "2026年9月15日-2026年9月21日 · 健康周报"，取结束日期并转成 yyyy-M-d
+	function parseWeekEndDate(text) {
+		const s = String(text || '')
+		const re = /(\d{4})年(\d{1,2})月(\d{1,2})日/g
+		let m
+		let last = null
+		while ((m = re.exec(s)) !== null) last = m
+		if (!last) return ''
+		return `${Number(last[1])}-${Number(last[2])}-${Number(last[3])}`
+	}
+
 	function scoreStops(score) {
 		const s = Number(score) || 0
 		if (s >= 80) return ['#2C89FF', '#1D4FA0', '#12255E']
@@ -750,6 +761,7 @@
 						desc: range,
 						dateText: range,
 						date: w.date || range,
+						endDate: parseWeekEndDate(rangeText),
 						score: w.healthScore ?? w.score ?? 0,
 						summary: w.summary || '',
 						advice: w.advice || '',
@@ -820,7 +832,7 @@
 					metrics: this.normalizeWeekMetrics(src).length ? this.normalizeWeekMetrics(src) : (item.metrics || [])
 				})
 				try {
-					const d = await getWeeklyDetail(item.reportId || item.date || undefined)
+					const d = await getWeeklyDetail(item.endDate || undefined)
 					this.weekPopup = toPopup((d && typeof d === 'object') ? { ...item.raw, ...item, ...d } : item)
 				} catch (e) { this.weekPopup = toPopup(item) }
 				this.showWeekPopup = true

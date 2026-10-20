@@ -18,11 +18,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 
 import ce.com.cenewbluesdk.CEBC;
 import ce.com.cenewbluesdk.entity.K6_sleepData;
 import ce.com.cenewbluesdk.entity.MyBleDevice;
 import ce.com.cenewbluesdk.entity.k6.K6_Action;
+import ce.com.cenewbluesdk.entity.k6.K6_CESyncTime;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_BATTERY_INFO;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_REAL_O2;
 import ce.com.cenewbluesdk.entity.k6.K6_DevInfoStruct;
@@ -717,6 +719,28 @@ public class CoolWearBLEModule extends UniModule {
         try {
             BluetoothHelper.getInstance().getSendBlueData().sendSyncInfo();
             success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    /**
+     * 同步手机时间到设备。设备时间决定睡眠/运动数据的时间归属，
+     * 不同步时固件可能判定不到「夜晚」，导致睡眠数据为空或日期错位。
+     */
+    @UniJSMethod(uiThread = true)
+    public void syncTime(UniJSCallback callback) {
+        try {
+            K6_CESyncTime time = K6_CESyncTime.getCurrentTime();
+            if (time == null) {
+                long now = System.currentTimeMillis();
+                int offsetSeconds = TimeZone.getDefault().getOffset(now) / 1000;
+                time = new K6_CESyncTime(now / 1000, offsetSeconds, (byte) 1, (byte) 0);
+            }
+            BluetoothHelper.getInstance().getSendBlueData().sendDateTimeFormat(time);
+            HashMap<String, Object> data = new HashMap<>();
+            data.put("absTime", System.currentTimeMillis() / 1000);
+            success(callback, data);
         } catch (Exception e) {
             fail(callback, e.getMessage());
         }

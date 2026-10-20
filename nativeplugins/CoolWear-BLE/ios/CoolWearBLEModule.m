@@ -516,6 +516,27 @@ UNI_EXPORT_METHOD(@selector(sendSyncInfo:))
     }
 }
 
+UNI_EXPORT_METHOD(@selector(syncTime:))
+- (void)syncTime:(UniModuleKeepAliveCallback)callback {
+    @try {
+        NSDate *now = [NSDate date];
+        NSTimeInterval absTime = [now timeIntervalSince1970];
+        NSInteger offset = [[NSTimeZone localTimeZone] secondsFromGMTForDate:now];
+        CE_SyncTimeCmd *cmd = [[CE_SyncTimeCmd alloc] initWithAbsTime:absTime
+                                                               offset:offset
+                                                               format:1
+                                                             mdFormat:0];
+        [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
+        if (callback) {
+            callback([self okResult:@{@"absTime": @((long long)absTime)}], NO);
+        }
+    } @catch (NSException *exception) {
+        if (callback) {
+            callback([self errResult:exception.reason], NO);
+        }
+    }
+}
+
 UNI_EXPORT_METHOD(@selector(setHeartRateSwitch:callback:))
 - (void)setHeartRateSwitch:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
     @try {

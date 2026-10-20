@@ -264,17 +264,57 @@
 
 	const CHART_PAD_TOP = 28
 	const CHART_PAD_BOTTOM = 12
-	const Y_MIN = 40
-	const Y_MAX = 120
+	const DEFAULT_Y_MIN = 40
+	const DEFAULT_Y_MAX = 120
+	const Y_TICK_COUNT = 4
 	const THRESHOLD_TOP = 100
 	const THRESHOLD_BOTTOM = 55
 	const MEASURE_TIMEOUT_MS = 45000
 	const MEASURE_MIN_SAMPLES = 2
 	const MEASURE_STABLE_MS = 8000
 
-	function valueToY(value, chartH) {
+	function niceStep(raw) {
+		if (!(raw > 0)) return 20
+		const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+		const n = raw / pow
+		let m = 10
+		if (n <= 1) m = 1
+		else if (n <= 2) m = 2
+		else if (n <= 2.5) m = 2.5
+		else if (n <= 3) m = 3
+		else if (n <= 4) m = 4
+		else if (n <= 5) m = 5
+		else if (n <= 8) m = 8
+		return m * pow
+	}
+
+	/** Y 轴范围跟随数据（心率不适合从 0 开始），超出默认范围时自动扩展，避免曲线被裁剪 */
+	function calcYScale(values) {
+		let min = Infinity
+		let max = -Infinity
+		;(values || []).forEach((v) => {
+			const n = Number(v)
+			if (Number.isNaN(n) || n <= 0) return
+			if (n < min) min = n
+			if (n > max) max = n
+		})
+		if (!(max > -Infinity)) {
+			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks: [40, 60, 80, 100, 120] }
+		}
+		const step = Math.max(niceStep((max - Math.min(min, DEFAULT_Y_MIN)) / Y_TICK_COUNT), 5)
+		const yMin = Math.min(DEFAULT_Y_MIN, Math.floor((min - step * 0.5) / step) * step)
+		const yMax = Math.max(DEFAULT_Y_MAX, Math.ceil((max + step * 0.5) / step) * step)
+		const ticks = []
+		for (let v = yMin; v <= yMax + 0.0001; v += step) {
+			ticks.push(Math.round(v))
+		}
+		return { min: yMin, max: yMax, ticks }
+	}
+
+	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
 		const usableH = chartH - CHART_PAD_TOP - CHART_PAD_BOTTOM
-		const ratio = (Math.max(Y_MIN, Math.min(Y_MAX, value)) - Y_MIN) / (Y_MAX - Y_MIN)
+		const span = (yMax - yMin) || 1
+		const ratio = (Math.max(yMin, Math.min(yMax, value)) - yMin) / span
 		return CHART_PAD_TOP + usableH * (1 - ratio)
 	}
 
@@ -381,8 +421,10 @@
 	}
 
 
-	function toPoints(values, chartW, chartH) {
+	function toPoints(values, chartW, chartH, scale) {
 		const stepX = values.length <= 1 ? 0 : chartW / (values.length - 1)
+		const yMin = scale ? scale.min : DEFAULT_Y_MIN
+		const yMax = scale ? scale.max : DEFAULT_Y_MAX
 		return values.map((v, i) => {
 			if (v == null || isNaN(Number(v))) return {
 				x: i * stepX,
@@ -391,34 +433,66 @@
 			}
 			return {
 				x: i * stepX,
-				y: valueToY(Number(v), chartH)
+				y: valueToY(Number(v), chartH, yMin, yMax)
 			}
 		})
 	}
 
-	/** Catmull-Rom → 三次贝塞尔，null 处断开，不断线 */
-	function buildSmoothLinePath(points) {
+	/**
+	 * 单调三次插值（PCHIP）→ 三次贝塞尔：
+	 * 顶点/谷点以及平坦段切线为 0，过渡是平滑弧度而不是折角；
+	 * 不会过冲（不越过相邻数据点），null 处断开；控制点限制在绘图区内。
+	 */
+	function buildSmoothLinePath(points, minY = CHART_PAD_TOP, maxY = Infinity) {
+		const clamp = (v) => Math.max(minY, Math.min(maxY, v))
 		const segs = []
 		let cur = []
 		const flush = () => {
 			if (!cur.length) return
 			if (cur.length === 1) {
-				segs.push(`M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`)
-			} else {
-				let d = `M${cur[0].x.toFixed(2)} ${cur[0].y.toFixed(2)}`
-				for (let i = 0; i < cur.length - 1; i++) {
-					const p0 = cur[i - 1] || cur[i]
-					const p1 = cur[i]
-					const p2 = cur[i + 1]
-					const p3 = cur[i + 2] || p2
-					const cp1x = p1.x + (p2.x - p0.x) / 6
-					const cp1y = p1.y + (p2.y - p0.y) / 6
-					const cp2x = p2.x - (p3.x - p1.x) / 6
-					const cp2y = p2.y - (p3.y - p1.y) / 6
-					d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
-				}
-				segs.push(d)
+				segs.push(`M${cur[0].x.toFixed(2)} ${clamp(cur[0].y).toFixed(2)}`)
+				cur = []
+				return
 			}
+			const n = cur.length
+			const delta = []
+			const h = []
+			for (let i = 0; i < n - 1; i++) {
+				const step = (cur[i + 1].x - cur[i].x) || 1e-6
+				h.push(step)
+				delta.push((cur[i + 1].y - cur[i].y) / step)
+			}
+			const m = new Array(n)
+			if (n === 2) {
+				m[0] = delta[0]
+				m[1] = delta[0]
+			} else {
+				for (let i = 1; i < n - 1; i++) {
+					const d0 = delta[i - 1]
+					const d1 = delta[i]
+					if (d0 * d1 <= 0) {
+						m[i] = 0
+					} else {
+						const w1 = 2 * h[i] + h[i - 1]
+						const w2 = h[i] + 2 * h[i - 1]
+						m[i] = (w1 + w2) / (w1 / d0 + w2 / d1)
+					}
+				}
+				m[0] = endpointSlope(delta[0], delta[1], h[0], h[1])
+				m[n - 1] = endpointSlope(delta[n - 2], delta[n - 3], h[n - 2], h[n - 3])
+			}
+			let d = `M${cur[0].x.toFixed(2)} ${clamp(cur[0].y).toFixed(2)}`
+			for (let i = 0; i < n - 1; i++) {
+				const p1 = cur[i]
+				const p2 = cur[i + 1]
+				const dx = h[i]
+				const cp1x = p1.x + dx / 3
+				const cp1y = clamp(p1.y + (m[i] * dx) / 3)
+				const cp2x = p2.x - dx / 3
+				const cp2y = clamp(p2.y - (m[i + 1] * dx) / 3)
+				d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${clamp(p2.y).toFixed(2)}`
+			}
+			segs.push(d)
 			cur = []
 		}
 		points.forEach((p) => {
@@ -432,6 +506,15 @@
 		return segs.join(' ')
 	}
 
+	function endpointSlope(d0, d1, h0, h1) {
+		if (!d0) return 0
+		// 端点切线不超过相邻段斜率的 3 倍，且方向一致，避免端头过冲
+		let m = ((2 * (h0 || 1) + (h1 || 1)) * d0 - (h0 || 1) * (d1 || 0)) / ((h0 || 1) + (h1 || 1))
+		if (m * d0 <= 0) m = 0
+		else if (d0 * d1 > 0 && Math.abs(m) > 3 * Math.abs(d0)) m = 3 * d0
+		return m
+	}
+
 	function buildAreaPath(lineD, points, chartH) {
 		if (!lineD || !points.length) return ''
 		const valid = points.filter((p) => p && !p.empty && p.y != null)
@@ -440,7 +523,7 @@
 		if (valid.length !== points.length) return ''
 		const last = valid[valid.length - 1]
 		const first = valid[0]
-		const bottom = chartH
+		const bottom = chartH - CHART_PAD_BOTTOM
 		return `${lineD} L${last.x.toFixed(2)} ${bottom} L${first.x.toFixed(2)} ${bottom} Z`
 	}
 
@@ -522,21 +605,27 @@
 				}
 				return `${y}年${m}月${day}日`
 			},
+			yScale() {
+				return calcYScale(this.chartValues)
+			},
 			chartPoints() {
-				return toPoints(this.chartValues, this.chartW, this.chartH)
+				return toPoints(this.chartValues, this.chartW, this.chartH, this.yScale)
 			},
 			midGridYs() {
-				const top = valueToY(THRESHOLD_TOP, this.chartH)
-				const bottom = valueToY(THRESHOLD_BOTTOM, this.chartH)
+				const s = this.yScale
+				const top = valueToY(THRESHOLD_TOP, this.chartH, s.min, s.max)
+				const bottom = valueToY(THRESHOLD_BOTTOM, this.chartH, s.min, s.max)
 				const mid1 = top + (bottom - top) / 3
 				const mid2 = top + ((bottom - top) * 2) / 3
 				return [mid1, mid2]
 			},
 			thresholdTopY() {
-				return valueToY(THRESHOLD_TOP, this.chartH)
+				const s = this.yScale
+				return valueToY(THRESHOLD_TOP, this.chartH, s.min, s.max)
 			},
 			thresholdBottomY() {
-				return valueToY(THRESHOLD_BOTTOM, this.chartH)
+				const s = this.yScale
+				return valueToY(THRESHOLD_BOTTOM, this.chartH, s.min, s.max)
 			},
 			thresholdLabelTop() {
 				// 贴在 100 阈值线上方，留 4px 间距
@@ -544,13 +633,15 @@
 				return `${y < 0 ? 0 : y}px`
 			},
 			linePath() {
-				return buildSmoothLinePath(this.chartPoints)
+				// 控制点限制在绘图区上下界内，避免平滑曲线冲出边界
+				return buildSmoothLinePath(this.chartPoints, CHART_PAD_TOP, this.chartH - CHART_PAD_BOTTOM)
 			},
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
 			},
 			chartImageSrc() {
 				if (!this.chartW || !this.chartH || !this.linePath) return ''
+				const s = this.yScale
 				const grids = (this.midGridYs || []).map((y) =>
 					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 5"/>`
 				).join('')
@@ -573,7 +664,7 @@
 					`<path d="${this.linePath}" fill="none" stroke="#FF5E7B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
 					`<line x1="0.5" y1="0" x2="0.5" y2="${this.chartH}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>` +
-					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1070,6 +1161,8 @@
 					} catch (e) {
 						console.log('[heartRate] 关闭心率失败', e)
 					}
+					// 实时推流关闭后立刻恢复后台自动监测，避免影响夜间心率与睡眠采集
+					BleService.restoreAutoMonitor().catch(() => {})
 				}
 			},
 			async finishMeasure(bpm) {

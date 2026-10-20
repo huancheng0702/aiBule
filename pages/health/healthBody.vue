@@ -122,20 +122,23 @@
 						</view>
 
 						<view v-if="weeklyDays.length" class="weekly-chart">
-							<view
-								v-for="(day, index) in weeklyDays"
-								:key="day.date || index"
-								class="weekly-col"
-							>
-								<text class="weekly-count" :class="{ zero: !day.count }">{{ day.count }}</text>
-								<view class="weekly-bar-track">
-									<view
-										class="weekly-bar"
-										:class="{ today: day.date === todayYmd }"
-										:style="{ height: weeklyBarHeight(day.count) }"
-									></view>
-								</view>
-								<text class="weekly-label" :class="{ today: day.date === todayYmd }">{{ day.label }}</text>
+							<view class="weekly-plot">
+								<image v-if="weeklyChartSrc" class="weekly-svg" :src="weeklyChartSrc" mode="scaleToFill" />
+								<text
+									v-for="(day, index) in weeklyDays"
+									:key="'v' + (day.date || index)"
+									class="weekly-point-value"
+									:class="{ zero: !day.count, today: day.date === todayYmd }"
+									:style="weeklyPointStyle(index)"
+								>{{ day.count }}</text>
+							</view>
+							<view class="weekly-x">
+								<text
+									v-for="(day, index) in weeklyDays"
+									:key="'l' + (day.date || index)"
+									class="weekly-label"
+									:class="{ today: day.date === todayYmd }"
+								>{{ day.label }}</text>
 							</view>
 						</view>
 						<view v-else class="empty-box">
@@ -250,6 +253,7 @@
 
 <script>
 import { getHealthCenterIndex, getPortraitList } from '@/common/api/healthCenter.js'
+import { toSvgDataUrl } from '@/common/svg-data-url.js'
 import {
 	getHealthArchiveOrgans,
 	getHealthArchiveByOrgan,
@@ -312,6 +316,43 @@ function pickText(...vals) {
 		if (v != null && String(v).trim() !== '') return String(v).trim()
 	}
 	return ''
+}
+
+// 异常指标记录：7 天折线图的绘图参数
+const WEEKLY_PAD_TOP = 30
+const WEEKLY_PAD_BOTTOM = 10
+const WEEKLY_PAD_X = 14
+
+/** 生成 7 天异常次数折线图（网格 + 渐变面积 + 折线 + 数据点），App 端通过 image 渲染 */
+function buildWeeklyChartSvg({ w, h, points, gridYs, todayIndex }) {
+	const bottom = h - WEEKLY_PAD_BOTTOM
+	const lineD = points
+		.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+		.join(' ')
+	const areaD = `${lineD} L${points[points.length - 1].x.toFixed(2)} ${bottom.toFixed(2)} L${points[0].x.toFixed(2)} ${bottom.toFixed(2)} Z`
+	const grids = gridYs
+		.map((y) => `<line x1="0" y1="${y.toFixed(2)}" x2="${w}" y2="${y.toFixed(2)}" stroke="rgba(255,255,255,0.10)" stroke-width="1" stroke-dasharray="4 5"/>`)
+		.join('')
+	const dots = points
+		.map((p, i) => {
+			const isToday = i === todayIndex
+			const ring = isToday
+				? `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="7" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/>`
+				: ''
+			const fill = isToday ? '#FFFFFF' : '#7EA6FF'
+			return ring + `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${isToday ? 4.5 : 3}" fill="${fill}" stroke="#1A1B25" stroke-width="1.5"/>`
+		})
+		.join('')
+	const inner =
+		`<defs><linearGradient id="weeklyAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
+		`<stop offset="0%" stop-color="#7EA6FF" stop-opacity="0.30"/>` +
+		`<stop offset="100%" stop-color="#7EA6FF" stop-opacity="0"/>` +
+		`</linearGradient></defs>` +
+		grids +
+		`<path d="${areaD}" fill="url(#weeklyAreaGrad)"/>` +
+		`<path d="${lineD}" fill="none" stroke="#7EA6FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
+		dots
+	return toSvgDataUrl(inner, w, h, 'preserveAspectRatio="none"')
 }
 
 function formatHistoryDate(dateStr) {
@@ -380,6 +421,8 @@ export default {
 			weeklyContents: [],
 			weeklyDays: [],
 			weeklyRangeText: '',
+			weeklyChartW: 0,
+			weeklyChartH: 0,
 			archiveEditingIndex: -1,
 			archiveSelected: [],
 			archiveOptionList: [],
@@ -413,6 +456,50 @@ export default {
 			const em = pad2(end.getMonth() + 1)
 			const ed = pad2(end.getDate())
 			return `${y}年${sm}月${sd}日-${em}月${ed}日`
+		},
+		weeklyMax() {
+			return this.weeklyDays.reduce((m, d) => Math.max(m, Number(d.count) || 0), 0)
+		},
+		weeklyTodayIndex() {
+			return this.weeklyDays.findIndex((d) => d.date === this.todayYmd)
+		},
+		weeklyPoints() {
+			const days = this.weeklyDays
+			const w = this.weeklyChartW
+			const h = this.weeklyChartH
+			if (!days.length || !w || !h) return []
+			const max = this.weeklyMax
+			const usable = Math.max(1, h - WEEKLY_PAD_TOP - WEEKLY_PAD_BOTTOM)
+			const innerW = Math.max(1, w - WEEKLY_PAD_X * 2)
+			const step = days.length > 1 ? innerW / (days.length - 1) : 0
+			return days.map((day, i) => {
+				const count = Number(day.count) || 0
+				const ratio = max > 0 ? Math.min(1, count / max) : 0
+				return {
+					x: days.length > 1 ? WEEKLY_PAD_X + step * i : w / 2,
+					y: WEEKLY_PAD_TOP + usable * (1 - ratio),
+					count
+				}
+			})
+		},
+		weeklyGridYs() {
+			const h = this.weeklyChartH
+			if (!h) return []
+			const max = this.weeklyMax
+			const usable = Math.max(1, h - WEEKLY_PAD_TOP - WEEKLY_PAD_BOTTOM)
+			const values = max > 0 ? [max, max / 2, 0] : [0]
+			return values.map((v) => WEEKLY_PAD_TOP + usable * (1 - (max > 0 ? v / max : 0)))
+		},
+		weeklyChartSrc() {
+			const points = this.weeklyPoints
+			if (!this.weeklyChartW || !this.weeklyChartH || !points.length) return ''
+			return buildWeeklyChartSvg({
+				w: this.weeklyChartW,
+				h: this.weeklyChartH,
+				points,
+				gridYs: this.weeklyGridYs,
+				todayIndex: this.weeklyTodayIndex
+			})
 		},
 		archivePopup() {
 			const item = this.archiveList[this.archiveEditingIndex]
@@ -448,9 +535,18 @@ export default {
 	mounted() {
 		this.$nextTick(() => this.drawBodyRing())
 	},
+	onReady() {
+		this.$nextTick(() => this.measureWeeklyChart())
+	},
 	watch: {
 		score() {
 			this.$nextTick(() => this.drawBodyRing())
+		},
+		activeTab() {
+			this.$nextTick(() => this.measureWeeklyChart())
+		},
+		weeklyDays() {
+			this.$nextTick(() => this.measureWeeklyChart())
 		}
 	},
 	onUnload() {
@@ -643,12 +739,27 @@ export default {
 				}
 			})
 		},
-		weeklyBarHeight(count) {
-			const max = this.weeklyDays.reduce((m, d) => Math.max(m, d.count || 0), 0)
-			if (!max || !count) return '0rpx'
-			const ratio = count / max
-			// 最高柱占满，最矮柱不低于 10%，避免 1 vs 3 时矮柱几乎不可见
-			return Math.round((10 + ratio * 90) * 2.2) + 'rpx'
+		weeklyPointStyle(index) {
+			const p = this.weeklyPoints[index]
+			if (!p || !this.weeklyChartW) return { display: 'none' }
+			return {
+				left: `${(p.x / this.weeklyChartW) * 100}%`,
+				top: `${p.y}px`
+			}
+		},
+		measureWeeklyChart(retry = 0) {
+			uni.createSelectorQuery()
+				.in(this)
+				.select('.weekly-plot')
+				.boundingClientRect((rect) => {
+					if (!rect || !rect.width) {
+						if (retry < 8) setTimeout(() => this.measureWeeklyChart(retry + 1), 80)
+						return
+					}
+					this.weeklyChartW = rect.width
+					this.weeklyChartH = rect.height || 110
+				})
+				.exec()
 		},
 		async loadWeekly() {
 			if (!this.rangeStart) return
@@ -1442,63 +1553,47 @@ export default {
 
 	.weekly-chart {
 		margin-top: 28rpx;
-		padding: 24rpx 8rpx 0;
-		display: flex;
-		align-items: flex-end;
+		padding: 24rpx 8rpx 12rpx;
 		border-radius: 16rpx;
 		background: rgba(255, 255, 255, 0.04);
 	}
 
-	.weekly-col {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-	}
-
-	.weekly-count {
-		min-height: 32rpx;
-		font-size: 24rpx;
-		font-weight: 600;
-		color: #FFFFFF;
-		line-height: 32rpx;
-	}
-
-	.weekly-count.zero {
-		color: rgba(255, 255, 255, 0.25);
-		font-weight: 400;
-	}
-
-	.weekly-bar-track {
+	.weekly-plot {
 		position: relative;
 		width: 100%;
 		height: 220rpx;
-		margin: 10rpx 0 12rpx;
-		display: flex;
-		align-items: flex-end;
-		justify-content: center;
 	}
 
-	// 底部基线
-	.weekly-bar-track::after {
-		content: '';
+	.weekly-svg {
+		width: 100%;
+		height: 100%;
+		display: block;
+	}
+
+	.weekly-point-value {
 		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		height: 1rpx;
-		background: rgba(255, 255, 255, 0.12);
+		transform: translate(-50%, -100%);
+		font-size: 22rpx;
+		font-weight: 600;
+		color: #FFFFFF;
+		line-height: 28rpx;
+		pointer-events: none;
 	}
 
-	.weekly-bar {
-		width: 28rpx;
-		min-height: 6rpx;
-		border-radius: 14rpx;
-		background: linear-gradient(to bottom, #7EA6FF 0%, #3D6FE0 100%);
+	.weekly-point-value.zero {
+		color: rgba(255, 255, 255, 0.3);
+		font-weight: 400;
 	}
 
-	.weekly-bar.today {
-		background: linear-gradient(to bottom, #FFFFFF 0%, #A8C4FF 100%);
+	.weekly-point-value.today {
+		color: #FFFFFF;
+	}
+
+	.weekly-x {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 12rpx;
+		padding: 0 6rpx;
 	}
 
 	.weekly-label {

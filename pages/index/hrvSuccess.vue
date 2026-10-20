@@ -8,7 +8,8 @@
 				<text class="bpm">{{ hrv }}</text>
 				<text class="unit">ms</text>
 				<view class="status-tag">
-					{{ statusText }}
+					<!-- {{ statusText }} -->
+					恢复良好
 				</view>
 			</view>
 		</view>
@@ -248,8 +249,8 @@
 		background: #2f6bff;
 		font-size: 22rpx;
 		color: #ffffff;
-		width: 78rpx;
-		height: 38rpx;
+		width: 128rpx;
+		height: 42rpx;
 		text-align: center;
 		line-height: 42rpx;
 	}

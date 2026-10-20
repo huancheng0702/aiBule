@@ -85,7 +85,7 @@
 			<view class="trend-chart">
 				<view class="trend-body">
 					<view class="y-axis">
-						<text v-for="label in yLabels" :key="label" class="y-label">{{ label }}</text>
+						<text v-for="item in yLabelItems" :key="item.text" class="y-label" :style="{ top: item.top }">{{ item.text }}</text>
 					</view>
 					<view
 						class="trend-plot"
@@ -252,8 +252,135 @@
 	} from '@/common/chart-x-labels.js'
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
-	const Y_MIN = 30
-	const Y_MAX = 45
+	const Y_TICK_COUNT = 4
+	const DEFAULT_Y_MIN = 30
+	const DEFAULT_Y_MAX = 45
+
+	function niceStep(raw) {
+		if (!(raw > 0)) return 5
+		const pow = Math.pow(10, Math.floor(Math.log10(raw)))
+		const n = raw / pow
+		let m = 10
+		if (n <= 1) m = 1
+		else if (n <= 2) m = 2
+		else if (n <= 2.5) m = 2.5
+		else if (n <= 5) m = 5
+		return m * pow
+	}
+
+	/** Y 轴范围跟随数据（体温不适合从 0 开始），刻度与曲线同步 */
+	function calcYScale(values) {
+		let min = Infinity
+		let max = -Infinity
+		;(values || []).forEach((v) => {
+			const n = Number(v)
+			if (Number.isNaN(n) || n <= 0) return
+			if (n < min) min = n
+			if (n > max) max = n
+		})
+		if (!(max > -Infinity)) {
+			const step = (DEFAULT_Y_MAX - DEFAULT_Y_MIN) / Y_TICK_COUNT
+			const ticks = []
+			for (let v = DEFAULT_Y_MIN; v <= DEFAULT_Y_MAX + 0.0001; v += step) {
+				ticks.push(Math.round(v * 10) / 10)
+			}
+			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks }
+		}
+		const step = Math.max(1, niceStep((max - min) / Y_TICK_COUNT))
+		const yMin = Math.floor((min - step * 0.5) / step) * step
+		let yMax = Math.ceil((max + step * 0.5) / step) * step
+		if (yMax - yMin < step * 2) yMax = yMin + step * 2
+		const ticks = []
+		for (let v = yMin; v <= yMax + 0.0001; v += step) {
+			ticks.push(Math.round(v * 10) / 10)
+		}
+		return { min: yMin, max: yMax, ticks }
+	}
+
+	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
+		const usableH = chartH - CHART_PAD_TOP - CHART_PAD_BOTTOM
+		const span = (yMax - yMin) || 1
+		const ratio = (Math.max(yMin, Math.min(yMax, value)) - yMin) / span
+		return CHART_PAD_TOP + usableH * (1 - ratio)
+	}
+
+	function toPoints(values, chartW, chartH, scale) {
+		const stepX = values.length === 1 ? 0 : chartW / (values.length - 1)
+		const yMin = scale ? scale.min : DEFAULT_Y_MIN
+		const yMax = scale ? scale.max : DEFAULT_Y_MAX
+		return values.map((v, i) => ({
+			x: i * stepX,
+			y: valueToY(v, chartH, yMin, yMax)
+		}))
+	}
+
+	/**
+	 * 单调三次插值（PCHIP）→ 三次贝塞尔：
+	 * 顶点/谷点以及平坦段切线为 0，曲线从平坦基线过渡时是平滑弧度而不是折角；
+	 * 同时保证不会过冲（不会越过相邻数据点）。
+	 */
+	function buildSmoothLinePath(points, minY = CHART_PAD_TOP, maxY = Infinity) {
+		if (!points.length) return ''
+		const clamp = (v) => Math.max(minY, Math.min(maxY, v))
+		if (points.length === 1) return `M${points[0].x.toFixed(2)} ${clamp(points[0].y).toFixed(2)}`
+
+		const n = points.length
+		const delta = []
+		const h = []
+		for (let i = 0; i < n - 1; i++) {
+			const step = (points[i + 1].x - points[i].x) || 1e-6
+			h.push(step)
+			delta.push((points[i + 1].y - points[i].y) / step)
+		}
+		const m = new Array(n)
+		if (n === 2) {
+			m[0] = delta[0]
+			m[1] = delta[0]
+		} else {
+			for (let i = 1; i < n - 1; i++) {
+				const d0 = delta[i - 1]
+				const d1 = delta[i]
+				if (d0 * d1 <= 0) {
+					m[i] = 0
+				} else {
+					const w1 = 2 * h[i] + h[i - 1]
+					const w2 = h[i] + 2 * h[i - 1]
+					m[i] = (w1 + w2) / (w1 / d0 + w2 / d1)
+				}
+			}
+			m[0] = endpointSlope(delta[0], delta[1], h[0], h[1])
+			m[n - 1] = endpointSlope(delta[n - 2], delta[n - 3], h[n - 2], h[n - 3])
+		}
+		let d = `M${points[0].x.toFixed(2)} ${clamp(points[0].y).toFixed(2)}`
+		for (let i = 0; i < n - 1; i++) {
+			const p1 = points[i]
+			const p2 = points[i + 1]
+			const dx = h[i]
+			const cp1x = p1.x + dx / 3
+			const cp1y = clamp(p1.y + (m[i] * dx) / 3)
+			const cp2x = p2.x - dx / 3
+			const cp2y = clamp(p2.y - (m[i + 1] * dx) / 3)
+			d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${clamp(p2.y).toFixed(2)}`
+		}
+		return d
+	}
+
+	function endpointSlope(d0, d1, h0, h1) {
+		if (!d0) return 0
+		// 端点切线不超过相邻段斜率的 3 倍，且方向一致，避免端头过冲
+		let m = ((2 * (h0 || 1) + (h1 || 1)) * d0 - (h0 || 1) * (d1 || 0)) / ((h0 || 1) + (h1 || 1))
+		if (m * d0 <= 0) m = 0
+		else if (d0 * d1 > 0 && Math.abs(m) > 3 * Math.abs(d0)) m = 3 * d0
+		return m
+	}
+
+	function buildAreaPath(lineD, points, chartH) {
+		if (!lineD || !points.length) return ''
+		const last = points[points.length - 1]
+		const first = points[0]
+		const bottom = chartH - CHART_PAD_BOTTOM
+		return `${lineD} L${last.x.toFixed(2)} ${bottom} L${first.x.toFixed(2)} ${bottom} Z`
+	}
 
 	const TEMP_LEVELS = [
 		{ key: 'low', label: '偏低', min: 30, max: 36.0, color: '#5B9FFF' },
@@ -263,47 +390,6 @@
 		{ key: 'high', label: '高热', min: 39.0, max: 41.0, color: '#FF7A45' },
 		{ key: 'abnormal', label: '异常', min: 41.0, max: 45, color: '#E74C3C' }
 	]
-
-	function valueToY(value, chartH) {
-		const usableH = chartH - CHART_PAD_TOP - CHART_PAD_BOTTOM
-		const ratio = (Math.max(Y_MIN, Math.min(Y_MAX, value)) - Y_MIN) / (Y_MAX - Y_MIN)
-		return CHART_PAD_TOP + usableH * (1 - ratio)
-	}
-
-	function toPoints(values, chartW, chartH) {
-		const stepX = values.length === 1 ? 0 : chartW / (values.length - 1)
-		return values.map((v, i) => ({
-			x: i * stepX,
-			y: valueToY(v, chartH)
-		}))
-	}
-
-	function buildSmoothLinePath(points) {
-		if (!points.length) return ''
-		if (points.length === 1) return `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-
-		let d = `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
-		for (let i = 0; i < points.length - 1; i++) {
-			const p0 = points[i - 1] || points[i]
-			const p1 = points[i]
-			const p2 = points[i + 1]
-			const p3 = points[i + 2] || p2
-			const cp1x = p1.x + (p2.x - p0.x) / 6
-			const cp1y = p1.y + (p2.y - p0.y) / 6
-			const cp2x = p2.x - (p3.x - p1.x) / 6
-			const cp2y = p2.y - (p3.y - p1.y) / 6
-			d += ` C${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
-		}
-		return d
-	}
-
-	function buildAreaPath(lineD, points, chartH) {
-		if (!lineD || !points.length) return ''
-		const last = points[points.length - 1]
-		const first = points[0]
-		const bottom = chartH
-		return `${lineD} L${last.x.toFixed(2)} ${bottom} L${first.x.toFixed(2)} ${bottom} Z`
-	}
 
 	function tempToPercent(value) {
 		const count = TEMP_LEVELS.length
@@ -339,6 +425,12 @@
 		return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
 	}
 
+	// 记录时间：日期取日期栏选中日，时间取当前时刻
+	function buildRecordTime(d) {
+		const now = new Date()
+		return dateToYmd(d) + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds())
+	}
+
 	function startOfDay(d) {
 		return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 	}
@@ -369,7 +461,6 @@
 				chartH: 220,
 				chartValues: [],
 				chartTimes: [],
-				yLabels: [45, 40, 35, 30],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				statsMax: '--',
 				statsMin: '--',
@@ -412,20 +503,34 @@
 				}
 				return `${y}年${m}月${day}日`
 			},
+			yScale() {
+				return calcYScale(this.chartValues)
+			},
+			yLabelItems() {
+				const s = this.yScale
+				const h = this.chartH || 220
+				return s.ticks.map((v) => ({
+					text: String(v),
+					top: `${((valueToY(v, h, s.min, s.max) / h) * 100).toFixed(3)}%`
+				}))
+			},
 			chartPoints() {
-				return toPoints(this.chartValues, this.chartW, this.chartH)
+				return toPoints(this.chartValues, this.chartW, this.chartH, this.yScale)
 			},
 			gridYs() {
-				return [35, 40].map((v) => valueToY(v, this.chartH))
+				const s = this.yScale
+				return s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
 			},
 			linePath() {
-				return buildSmoothLinePath(this.chartPoints)
+				// 控制点限制在绘图区上下界内，避免平滑曲线冲出边界
+				return buildSmoothLinePath(this.chartPoints, CHART_PAD_TOP, this.chartH - CHART_PAD_BOTTOM)
 			},
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
 			},
 			chartImageSrc() {
 				if (!this.chartW || !this.chartH || !this.linePath) return ''
+				const s = this.yScale
 				const grids = (this.gridYs || []).map((y) =>
 					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
 				).join('')
@@ -445,7 +550,7 @@
 					`<path d="${this.areaPath}" fill="url(#tempAreaGrad)"/>` +
 					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
-					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -765,7 +870,8 @@
 				try {
 					await addManualHealthRecord({
 						type: '3',
-						value: String(temp)
+						value: String(temp),
+						recordTime: buildRecordTime(this.currentDate)
 					})
 					this.showEnter = false
 					uni.showToast({ title: '录入成功', icon: 'success' })
@@ -1119,16 +1225,16 @@
 	}
 
 	.y-axis {
+		position: relative;
 		width: 48rpx;
-		height: 220rpx;
 		margin-right: 8rpx;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
 		flex-shrink: 0;
 	}
 
 	.y-label {
+		position: absolute;
+		right: 0;
+		transform: translateY(-50%);
 		font-size: 20rpx;
 		color: #8e8e93;
 		line-height: 24rpx;

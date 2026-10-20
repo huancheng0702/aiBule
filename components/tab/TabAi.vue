@@ -25,7 +25,8 @@
 		</view>
 
 		<!-- 对话区域：仅此处内部滚动 -->
-		<scroll-view class="chat-list" scroll-y :scroll-into-view="scrollIntoView" :scroll-with-animation="true">
+		<scroll-view class="chat-list" scroll-y :scroll-into-view="scrollIntoView"
+			:scroll-with-animation="scrollWithAnimation">
 			<view v-for="(msg, index) in messages" :id="'msg-' + index" :key="index" class="chat-row" :class="msg.role">
 				<template v-if="msg.role === 'user'">
 					<view class="bubble user-bubble">
@@ -73,12 +74,17 @@
 				</view>
 
 				<view class="history-section">
-					<text class="history-section-left">本月</text>
+					<view class="history-filter">
+						<view v-for="opt in historyFilters" :key="opt.value" class="history-filter-item"
+							:class="{ active: historyTimeType === opt.value }" @click="onHistoryFilter(opt.value)">
+							<text class="history-filter-text">{{ opt.label }}</text>
+						</view>
+					</view>
 					<text class="history-section-right">历史记录</text>
 				</view>
 
-				<scroll-view class="history-list" scroll-y>
-					<view v-for="(item, index) in historyList" :key="item.id" class="history-item"
+				<scroll-view class="history-list" scroll-y @scrolltolower="loadMoreHistory">
+					<view v-for="item in historyList" :key="item.id" class="history-item"
 						:class="{ active: activeHistoryId === item.id }" @click="onSelectHistory(item)">
 						<image v-if="activeHistoryId === item.id" src="/static/aiSelectBg.png" class="history-item-bg"
 							mode=""></image>
@@ -87,6 +93,15 @@
 							<text class="history-item-time"
 								:class="{ active: activeHistoryId === item.id }">{{ item.time }}</text>
 						</view>
+					</view>
+					<view v-if="historyLoading" class="history-tip">
+						<text class="history-tip-text">加载中...</text>
+					</view>
+					<view v-else-if="historyFinished && historyList.length" class="history-tip">
+						<text class="history-tip-text">没有更多了</text>
+					</view>
+					<view v-else-if="!historyList.length" class="history-tip">
+						<text class="history-tip-text">暂无历史对话</text>
 					</view>
 				</scroll-view>
 			</view>
@@ -140,6 +155,8 @@
 				statusBarHeight: 20,
 				inputValue: '',
 				scrollIntoView: '',
+				scrollWithAnimation: false,
+				scrollTimer: null,
 				showHistory: false,
 				activeHistoryId: null,
 				sessionId: '',
@@ -148,6 +165,25 @@
 				typeTimer: null,
 				typingIndex: -1,
 				historyList: [],
+				historyFilters: [{
+						label: '全部',
+						value: ''
+					},
+					{
+						label: '本月',
+						value: 'month'
+					},
+					{
+						label: '本周',
+						value: 'week'
+					}
+				],
+				historyTimeType: '',
+				historyPageNum: 1,
+				historyPageSize: 10,
+				historyLoading: false,
+				historyFinished: false,
+				historyReqId: 0,
 				suggestions: DEFAULT_SUGGESTIONS.slice(),
 				messages: []
 			}
@@ -156,19 +192,45 @@
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight || 20
 			this.loadQuickQuestions()
-			this.loadHistory()
+			this.loadHistory(true)
 		},
 		beforeDestroy() {
 			this.clearTypeTimer()
+			this.clearScrollTimer()
 		},
 		methods: {
-			scrollToBottom() {
+			scrollToBottom(animate = false) {
+				this.scrollWithAnimation = animate
 				this.$nextTick(() => {
 					this.scrollIntoView = ''
 					this.$nextTick(() => {
 						this.scrollIntoView = 'chat-bottom'
 					})
 				})
+			},
+			// 流式输出期间节流滚动，避免每 20ms 触发一次带动画的滚动导致抖动
+			scheduleScroll() {
+				if (this.scrollTimer) return
+				this.scrollTimer = setTimeout(() => {
+					this.scrollTimer = null
+					this.scrollToBottom(false)
+				}, 60)
+			},
+			clearScrollTimer() {
+				if (this.scrollTimer) {
+					clearTimeout(this.scrollTimer)
+					this.scrollTimer = null
+				}
+			},
+			// 回复结束后的收尾滚动：文本/光标布局在渲染完成后还会再变一次，
+			// 因此先动画贴底，再补一次无动画贴底，确保真正停在最底部
+			async settleScroll() {
+				this.clearScrollTimer()
+				this.scrollToBottom(true)
+				await new Promise((resolve) => setTimeout(resolve, 260))
+				this.scrollToBottom(false)
+				await new Promise((resolve) => setTimeout(resolve, 120))
+				this.scrollToBottom(false)
 			},
 			clearTypeTimer() {
 				if (this.typeTimer) {
@@ -193,7 +255,7 @@
 					if (msg) {
 						msg.content += piece
 					}
-					this.scrollToBottom()
+					this.scheduleScroll()
 				}, 20)
 			},
 			waitTypingDone() {
@@ -223,20 +285,51 @@
 					}).filter((item) => item.msgCon)
 				} catch (e) {}
 			},
-			async loadHistory() {
+			async loadHistory(reset = false) {
+				if (!reset && (this.historyLoading || this.historyFinished)) return
+				if (reset) {
+					this.historyPageNum = 1
+					this.historyFinished = false
+					this.historyList = []
+				}
+				const reqId = ++this.historyReqId
+				const pageNum = this.historyPageNum
+				this.historyLoading = true
 				try {
-					const list = await getAiSessionList()
-					const items = Array.isArray(list) ? list : (list && list.list) || []
-					this.historyList = items.map((item) => ({
+					const params = {
+						pageNum,
+						pageSize: this.historyPageSize
+					}
+					if (this.historyTimeType) params.timeType = this.historyTimeType
+					const res = await getAiSessionList(params)
+					// 期间切换了筛选条件或重新加载，丢弃过期响应
+					if (reqId !== this.historyReqId) return
+					const records = Array.isArray(res) ? res : (res && (res.records || res.list)) || []
+					const items = records.map((item) => ({
 						id: item.sessionId,
 						title: item.title || '新对话',
 						time: formatSessionTime(item.updateTime || item.createTime)
 					}))
-				} catch (e) {}
+					this.historyList = pageNum === 1 ? items : this.historyList.concat(items)
+					const total = res && res.total !== undefined && res.total !== null ? Number(res.total) : null
+					this.historyFinished = items.length < this.historyPageSize ||
+						(total !== null && this.historyList.length >= total)
+					this.historyPageNum = pageNum + 1
+				} catch (e) {} finally {
+					if (reqId === this.historyReqId) this.historyLoading = false
+				}
+			},
+			loadMoreHistory() {
+				this.loadHistory(false)
+			},
+			onHistoryFilter(value) {
+				if (this.historyTimeType === value) return
+				this.historyTimeType = value
+				this.loadHistory(true)
 			},
 			openHistory() {
 				this.showHistory = true
-				this.loadHistory()
+				this.loadHistory(true)
 			},
 			closeHistory() {
 				this.showHistory = false
@@ -269,7 +362,7 @@
 						content: msg.content || '',
 						streaming: false
 					}))
-					this.scrollToBottom()
+					this.settleScroll()
 				} catch (e) {
 					uni.showToast({
 						title: '历史消息加载失败',
@@ -296,7 +389,7 @@
 					content: '',
 					streaming: true
 				})
-				this.scrollToBottom()
+				this.scrollToBottom(false)
 				try {
 					const payload = {
 						content: text
@@ -319,7 +412,7 @@
 						msg.content = '暂时没有获取到回复'
 					}
 					if (msg) msg.streaming = false
-					this.loadHistory()
+					this.loadHistory(true)
 				} catch (e) {
 					await this.waitTypingDone()
 					const msg = this.messages[aiIndex]
@@ -329,7 +422,7 @@
 					}
 				} finally {
 					this.sending = false
-					this.scrollToBottom()
+					await this.settleScroll()
 				}
 			}
 		}
@@ -686,11 +779,50 @@
 		flex-shrink: 0;
 	}
 
-	.history-section-left,
+	.history-filter {
+		display: flex;
+		align-items: center;
+	}
+
+	.history-filter-item {
+		padding: 6rpx 22rpx;
+		margin-right: 12rpx;
+		border-radius: 999rpx;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
+	}
+
+	.history-filter-item.active {
+		background: #4da3ff;
+		border-color: #4da3ff;
+	}
+
+	.history-filter-text {
+		font-size: 22rpx;
+		line-height: 32rpx;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.history-filter-item.active .history-filter-text {
+		color: #ffffff;
+	}
+
 	.history-section-right {
 		font-size: 24rpx;
 		line-height: 34rpx;
 		color: rgba(255, 255, 255);
+	}
+
+	.history-tip {
+		display: flex;
+		justify-content: center;
+		padding: 20rpx 0 30rpx;
+	}
+
+	.history-tip-text {
+		font-size: 22rpx;
+		line-height: 30rpx;
+		color: rgba(255, 255, 255, 0.4);
 	}
 
 	.history-list {

@@ -83,6 +83,7 @@
 				showNotFoundPopup: false,
 				fromOnboarding: false,
 				connecting: false,
+				permRequesting: false,
 				unsub: null,
 				emptyCheckTimer: null,
 				notFoundTips: [
@@ -94,6 +95,7 @@
 		},
 		onLoad(options) {
 			this.fromOnboarding = !!(options && options.from === 'onboarding')
+			this.ensurePermission()
 			this.unsub = BleService.subscribe((s) => {
 				this.searching = s.scanning
 				this.deviceList = s.devices || []
@@ -118,6 +120,55 @@
 			BleService.stopScan().catch(() => {})
 		},
 		methods: {
+			/**
+			 * 该页面也可能被直接打开（不经过蓝牙权限引导页），这里补一次权限申请
+			 */
+			async ensurePermission() {
+				if (this.permRequesting) return
+				// 已授权过（如从蓝牙权限引导页跳转过来）则不重复申请
+				if (uni.getStorageSync('blePermissionGranted')) return
+				this.permRequesting = true
+				uni.showLoading({
+					title: '申请中...',
+					mask: true
+				})
+				try {
+					// #ifdef APP-PLUS
+					if (!BleService.isAvailable()) {
+						throw new Error('原生插件未加载，请重新制作并安装自定义调试基座')
+					}
+					await BleService.requestPermissions()
+					await BleService.ensureInit()
+					// #endif
+					// #ifndef APP-PLUS
+					uni.setStorageSync('blePermissionGranted', true)
+					// #endif
+					uni.hideLoading()
+					this.permRequesting = false
+				} catch (e) {
+					uni.hideLoading()
+					this.permRequesting = false
+					const msg = (e && e.message) ? e.message : '需要蓝牙权限'
+					uni.showModal({
+						title: '需要蓝牙权限',
+						content: msg + '\n\n请在系统设置中开启蓝牙与附近设备/定位权限后重试',
+						confirmText: '去设置',
+						success: (res) => {
+							if (res.confirm) {
+								// #ifdef APP-PLUS
+								uni.openAppAuthorizeSetting()
+								// #endif
+								// #ifndef APP-PLUS
+								uni.showToast({
+									title: '请在系统设置中开启',
+									icon: 'none'
+								})
+								// #endif
+							}
+						}
+					})
+				}
+			},
 			onPrimaryAction() {
 				if (this.selectedId) {
 					this.onConnect()

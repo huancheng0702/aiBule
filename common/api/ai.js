@@ -5,8 +5,8 @@ export function createAiSession() {
 	return uni.$post('/appApi/ai/session')
 }
 
-export function getAiSessionList() {
-	return uni.$get('/appApi/ai/session/list')
+export function getAiSessionList(params) {
+	return uni.$get('/appApi/ai/session/list', params)
 }
 
 export function getAiMessages(sessionId) {

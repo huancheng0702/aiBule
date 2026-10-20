@@ -29,7 +29,7 @@
 					<text v-for="(w, i) in weekLabels" :key="i" class="cal-week-item">{{ w }}</text>
 				</view>
 
-				<view class="cal-grid">
+				<view class="cal-grid" @touchstart="onCalendarTouchStart" @touchend="onCalendarTouchEnd">
 					<view v-for="(week, wi) in calendarWeeks" :key="wi" class="cal-week-row">
 						<view class="cal-run-layer">
 							<view v-for="(bar, bi) in week.bars" :key="'b' + bi" class="cal-run" :class="bar.type"
@@ -221,7 +221,6 @@
 	}
 
 	function barGroup(type) {
-		if (type === 'period' || type === 'predict') return 'menstrual'
 		return type
 	}
 
@@ -505,6 +504,40 @@
 				}
 				this.loadCalendar()
 			},
+			getTouchPoint(e) {
+				if (!e) return null
+				return (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || null
+			},
+			onCalendarTouchStart(e) {
+				const t = this.getTouchPoint(e)
+				if (!t) return
+				this.touchStartX = t.clientX
+				this.touchStartY = t.clientY
+				this.touchStartTime = Date.now()
+			},
+			onCalendarTouchEnd(e) {
+				if (this.touchStartX == null) return
+				const t = this.getTouchPoint(e)
+				const startX = this.touchStartX
+				const startY = this.touchStartY
+				const startTime = this.touchStartTime
+				this.touchStartX = null
+				if (!t) return
+				if (Date.now() - startTime > 600) return
+				const dx = t.clientX - startX
+				const dy = t.clientY - startY
+				if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+				if (this.switchingMonth) return
+				this.switchingMonth = true
+				if (dx < 0) {
+					this.onNextMonth()
+				} else {
+					this.onPrevMonth()
+				}
+				setTimeout(() => {
+					this.switchingMonth = false
+				}, 300)
+			},
 			onSelectDay(cell) {
 				if (!cell || !cell.day || !cell.date) return
 				if (cell.isFuture) {
@@ -704,10 +737,14 @@
 		border-radius: 16rpx;
 	}
 
-	.cal-run.period,
-	.cal-run.predict,
-	.cal-run.menstrual {
+	.cal-run.period {
 		background: rgba(240, 68, 136, 0.18);
+	}
+
+	.cal-run.predict {
+		box-sizing: border-box;
+		background: transparent;
+		border: 2rpx solid rgba(240, 68, 136, 0.6);
 	}
 
 	.cal-run.fertile {

@@ -20,21 +20,20 @@
 		<view class="section">
 			<text class="section-title">设备名称</text>
 			<view class="menu-card">
-				<view class="menu-row" @click="onEditName">
+				<view class="menu-row">
 					<text class="menu-label">设备名称</text>
 					<view class="menu-right">
 						<text class="menu-value">{{ deviceName }}</text>
-						<image class="menu-arrow" src="/static/rightLitterIcon.png" mode="aspectFit"></image>
 					</view>
 				</view>
-				<!-- <view class="menu-divider"></view>
+				<view class="menu-divider"></view>
 				<view class="menu-row" @click="onCheckFirmware">
 					<text class="menu-label">固件版本</text>
 					<view class="menu-right">
 						<text class="menu-value muted">{{ firmware }}</text>
 						<image class="fw-icon" src="/static/shuaxin.png" mode=""></image>
 					</view>
-				</view> -->
+				</view>
 			</view>
 		</view>
 

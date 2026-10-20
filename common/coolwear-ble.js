@@ -243,6 +243,11 @@ const CoolWearBLE = {
     return callNative('sendSyncInfo')
   },
 
+  /** 同步手机时间到设备（设备时间错误会导致睡眠判定失效/日期错位） */
+  syncTime() {
+    return callNative('syncTime')
+  },
+
   setHeartRateSwitch(open = true) {
     return callNative('setHeartRateSwitch', { open })
   },

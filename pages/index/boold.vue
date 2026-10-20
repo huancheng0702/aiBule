@@ -71,7 +71,7 @@
 			<view class="trend-chart">
 				<view class="trend-body">
 					<view class="y-axis">
-						<text v-for="label in yLabels" :key="label" class="y-label">{{ label }}</text>
+						<text v-for="item in yLabelItems" :key="item.text" class="y-label" :style="{ top: item.top }">{{ item.text }}</text>
 					</view>
 					<view
 						class="trend-plot"
@@ -290,8 +290,8 @@
 	} from '@/common/chart-x-labels.js'
 
 	const CHART_H = 220
-	const Y_MIN = 94
-	const Y_MAX = 100
+	const DEFAULT_Y_MIN = 94
+	const DEFAULT_Y_MAX = 100
 	const THRESHOLD = 95
 	const DAY_END_MIN = 22 * 60 + 40
 	const MEASURE_TIMEOUT_MS = 45000
@@ -302,8 +302,30 @@
 		return Math.max(min, Math.min(max, value))
 	}
 
-	function valueToY(value, chartH) {
-		const ratio = (clamp(value, Y_MIN, Y_MAX) - Y_MIN) / (Y_MAX - Y_MIN)
+	/** Y 轴范围跟随数据，刻度与柱子同步 */
+	function calcYScale(values) {
+		let min = Infinity
+		;(values || []).forEach((v) => {
+			const n = Number(v)
+			if (Number.isNaN(n) || n <= 0) return
+			if (n < min) min = n
+		})
+		if (!(min < Infinity)) {
+			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks: [94, 95, 96, 97, 98, 99, 100] }
+		}
+		const yMin = Math.min(DEFAULT_Y_MIN, Math.floor(min))
+		const yMax = DEFAULT_Y_MAX
+		const step = (yMax - yMin) <= 6 ? 1 : 2
+		const ticks = []
+		for (let v = yMin; v <= yMax + 0.0001; v += step) {
+			ticks.push(Math.round(v))
+		}
+		return { min: yMin, max: yMax, ticks }
+	}
+
+	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
+		const span = (yMax - yMin) || 1
+		const ratio = (clamp(value, yMin, yMax) - yMin) / span
 		return chartH * (1 - ratio)
 	}
 
@@ -445,7 +467,6 @@
 				chartH: CHART_H,
 				chartValues: [],
 				chartTimes: [],
-				yLabels: [100, 99, 98, 97, 96, 95, 94],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				legendList: [
 					{ color: '#3EE0C3', label: '≥95%' },
@@ -497,8 +518,20 @@
 				}
 				return `${y}年${m}月${day}日`
 			},
+			yScale() {
+				return calcYScale(this.chartValues)
+			},
+			yLabelItems() {
+				const s = this.yScale
+				const h = this.chartH || CHART_H
+				return s.ticks.map((v) => ({
+					text: String(v),
+					top: `${((valueToY(v, h, s.min, s.max) / h) * 100).toFixed(3)}%`
+				}))
+			},
 			thresholdY() {
-				return valueToY(THRESHOLD, this.chartH)
+				const s = this.yScale
+				return valueToY(THRESHOLD, this.chartH, s.min, s.max)
 			},
 			thresholdLabelTop() {
 				const y = this.thresholdY - 4
@@ -508,10 +541,11 @@
 				const values = this.chartValues
 				const count = values.length
 				if (!count || !this.chartW) return []
+				const s = this.yScale
 				const slot = this.chartW / count
 				const barW = Math.max(2, slot * 0.46)
 				return values.map((value, index) => {
-					const y = valueToY(value, this.chartH)
+					const y = valueToY(value, this.chartH, s.min, s.max)
 					const h = Math.max(2, this.chartH - y)
 					return {
 						x: index * slot + (slot - barW) / 2,
@@ -999,6 +1033,8 @@
 					} catch (e) {
 						console.log('[boold] 关闭血氧失败', e)
 					}
+					// 实时推流关闭后立刻恢复后台自动监测，避免影响夜间血氧与睡眠采集
+					BleService.restoreAutoMonitor().catch(() => {})
 				}
 			},
 			async finishMeasure(spo2) {
@@ -1333,16 +1369,16 @@
 	}
 
 	.y-axis {
+		position: relative;
 		width: 48rpx;
-		height: 220rpx;
 		margin-right: 8rpx;
-		display: flex;
-		flex-direction: column;
-		justify-content: space-between;
 		flex-shrink: 0;
 	}
 
 	.y-label {
+		position: absolute;
+		right: 0;
+		transform: translateY(-50%);
 		font-size: 20rpx;
 		color: #8e8e93;
 		line-height: 24rpx;

@@ -91,14 +91,14 @@
 				maskPhone: '',
 				launching: false,
 				shanyanOpened: false,
-				shanyanRetryCount: 0,
 				showSmsLogin: false,
 				smsPhone: '',
 				smsCode: '',
 				smsCountdown: 0,
 				smsTimer: null,
 				smsSending: false,
-				smsLogging: false
+				smsLogging: false,
+				autoAuthTimer: null
 			}
 		},
 		onLoad() {
@@ -107,37 +107,22 @@
 				return
 			}
 			this.agreed = isPrivacyAgreed()
-			this.startBannerSwitch()
-			// #ifdef APP-PLUS
-			this.$nextTick(() => {
-				this.openShanYanAuth()
-			})
-			try {
-				uni.onNetworkStatusChange((res) => {
-					if (res && res.isConnected && !this.shanyanOpened && !this.launching) {
-						this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
-						if (this.shanyanRetryCount <= 3) {
-							setTimeout(() => this.openShanYanAuth(), 800)
-						}
-					}
-				})
-			} catch (e) {}
-			// #endif
-			// #ifndef APP-PLUS
 			this.showFallback = true
-			// #endif
+			this.startBannerSwitch()
 		},
-		onShow() {
-			// #ifdef APP-PLUS
-			if (!this.shanyanOpened && !this.launching && !uni.getStorageSync('token')) {
-				this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
-				if (this.shanyanRetryCount <= 5) {
-					this.openShanYanAuth()
-				}
-			}
-			// #endif
+		onReady() {
+			if (uni.getStorageSync('token')) return
+			// 进入登录页主动拉起一键登录授权页（稍等页面转场完成再拉起原生页）
+			this.autoAuthTimer = setTimeout(() => {
+				this.autoAuthTimer = null
+				this.openShanYanAuth()
+			}, 300)
 		},
 		onUnload() {
+			if (this.autoAuthTimer) {
+				clearTimeout(this.autoAuthTimer)
+				this.autoAuthTimer = null
+			}
 			this.clearBannerSwitch()
 			this.clearSmsTimer()
 		},
@@ -175,8 +160,15 @@
 			},
 			onOpenSmsLogin() {
 				if (!this.ensureAgree()) return
+				this.cancelAutoAuth()
 				setPrivacyAgreed(true)
 				this.showSmsLogin = true
+			},
+			cancelAutoAuth() {
+				if (this.autoAuthTimer) {
+					clearTimeout(this.autoAuthTimer)
+					this.autoAuthTimer = null
+				}
 			},
 			closeSmsLogin() {
 				this.showSmsLogin = false
@@ -288,19 +280,26 @@
 			},
 			onWxLogin() {
 				if (this.showFallback && !this.ensureAgree()) return
+				this.cancelAutoAuth()
 				setPrivacyAgreed(true)
 				this.doWxLogin()
 			},
 			openShanYanAuth() {
 				if (this.launching || this.shanyanOpened) return
+				this.agreed = isPrivacyAgreed()
 				this.launching = true
 				this.showFallback = true
 				openOneKeyLogin({
-					onWxLogin: () => {
-						finishAuthPage()
+					onWxLoginSuccess: async (res) => {
 						this.launching = false
+						this.shanyanOpened = false
 						this.showFallback = true
-						this.doWxLogin()
+						try {
+							const loginData = await this.applyLoginResult(res, 'wechat')
+							this.afterLogin(loginData)
+						} catch (e) {
+							uni.showToast({ title: '微信登录失败', icon: 'none' })
+						}
 					},
 					onOpen: () => {
 						this.launching = false
@@ -313,28 +312,22 @@
 					},
 					onCancel: () => {
 						this.launching = false
+						this.shanyanOpened = false
 						this.showFallback = true
 					},
 					onFail: (err) => {
 						this.launching = false
+						this.shanyanOpened = false
 						this.showFallback = true
-						try {
-							console.log('[shanyan] onFail silent:', JSON.stringify(err))
-						} catch (e) {
-							console.log('[shanyan] onFail silent')
-						}
+						console.log('[shanyan] login failed:', (err && (err.message || err.msg)) || err)
 						const msg = String((err && (err.message || err.msg)) || '')
-						if (/网络|network|timeout|超时|1022|1015|1001/i.test(msg) && (this.shanyanRetryCount || 0) < 3) {
-							this.shanyanRetryCount = (this.shanyanRetryCount || 0) + 1
-							setTimeout(() => {
-								if (!this.shanyanOpened && !this.launching) this.openShanYanAuth()
-							}, 2000)
-						}
+						if (msg) uni.showToast({ title: msg.slice(0, 40), icon: 'none' })
 					}
 				})
 			},
 			onRetryShanYan() {
-				this.shanyanRetryCount = 0
+				if (!this.ensureAgree()) return
+				setPrivacyAgreed(true)
 				this.openShanYanAuth()
 			},
 			async handleShanYanSuccess(shanyanToken) {
@@ -362,12 +355,14 @@
 				}
 			},
 			doWxLogin() {
+				console.log(123)
 				uni.showLoading({
 					title: '登录中...',
 					mask: true
 				})
 				uni.login({
 					provider: 'weixin',
+					onlyAuthorize: true,
 					success: async (loginRes) => {
 						try {
 							const code = loginRes && loginRes.code
@@ -403,7 +398,8 @@
 							uni.showToast({ title: String(msg).slice(0, 40), icon: 'none' })
 						}
 					},
-					fail: () => {
+					fail: (err) => {
+						console.log(err)
 						uni.hideLoading()
 						uni.showToast({ title: '微信授权失败', icon: 'none' })
 					}

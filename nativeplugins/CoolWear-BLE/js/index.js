@@ -228,6 +228,7 @@ const CoolWearBLE = {
     return callNative('setHeartAutoSwitch', {
       heart: options.heart !== false,
       o2: options.o2 !== false,
+      hr24h: options.hr24h !== false,
       intervalMin: options.intervalMin || 30
     })
   },

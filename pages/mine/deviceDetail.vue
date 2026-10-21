@@ -96,6 +96,7 @@
 		'onBattery',
 		'onHeartRate',
 		'onHeartRateDaily',
+		'onHeartAutoSwitch',
 		'onHRV',
 		'onTemperature',
 		'onBloodOxygen',

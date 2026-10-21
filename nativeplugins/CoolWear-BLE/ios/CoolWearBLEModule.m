@@ -240,6 +240,24 @@ static NSString * const kEventChannel = @"CoolWearBLE";
             [self fireEvent:@"onBattery" data:payload];
             break;
         }
+        case DATA_TYPE_HEART_AUTO_SWITCH: {
+            // 设备回传自动监测开关状态（自动心率/24h心率/自动血氧/间隔），用于确认下发是否生效
+            NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+            if ([data isKindOfClass:[NSDictionary class]]) {
+                NSDictionary *dict = (NSDictionary *)data;
+                id autoHeart = [self pickFirst:dict keys:@[@"onoff", @"autoHROnoff", @"autoHeart", @"autoHeartOnoff"]];
+                id hr24h = [self pickFirst:dict keys:@[@"hr24hOnoff", @"hr24h", @"heart24"]];
+                id autoO2 = [self pickFirst:dict keys:@[@"O2_onoff", @"autoO2noff", @"autoO2", @"o2Onoff"]];
+                id interval = [self pickFirst:dict keys:@[@"time", @"timeInterval", @"interval"]];
+                if (autoHeart != nil) payload[@"autoHeart"] = autoHeart;
+                if (hr24h != nil) payload[@"hr24h"] = hr24h;
+                if (autoO2 != nil) payload[@"autoO2"] = autoO2;
+                if (interval != nil) payload[@"timeInterval"] = interval;
+                payload[@"raw"] = dict;
+            } else {
+                payload[@"raw"] = data ? [NSString stringWithFormat:@"%@", data] : @"";
+            }
+            [self fireEvent:@"onHeartAutoSwitch" data:payload];
             break;
         }
         case DATA_TYPE_REAL_HEART:
@@ -593,6 +611,9 @@ UNI_EXPORT_METHOD(@selector(setHeartAutoSwitch:callback:))
     @try {
         BOOL heart = options[@"heart"] == nil ? YES : [options[@"heart"] boolValue];
         BOOL o2 = options[@"o2"] == nil ? YES : [options[@"o2"] boolValue];
+        // 24 小时心率测量：设备支持 hasHR24h 时（见 DATA_TYPE_FUNCTION_CONTROL）才会生效，
+        // 不设置时该字段为 0，夜间/全天自动心率采集可能不会启动。
+        BOOL hr24h = options[@"hr24h"] == nil ? YES : [options[@"hr24h"] boolValue];
         NSInteger interval = options[@"intervalMin"] ? [options[@"intervalMin"] integerValue] : 30;
         if (interval <= 0) {
             interval = 30;
@@ -600,6 +621,7 @@ UNI_EXPORT_METHOD(@selector(setHeartAutoSwitch:callback:))
         YD_SyncAutoHeartCmd *cmd = [[YD_SyncAutoHeartCmd alloc] init];
         cmd.onoff = heart ? 1 : 0;
         cmd.O2_onoff = o2 ? 1 : 0;
+        cmd.hr24hOnoff = hr24h ? 1 : 0;
         cmd.time = (Byte)interval;
         [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
         if (callback) {

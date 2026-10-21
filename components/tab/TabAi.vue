@@ -786,25 +786,20 @@
 
 	.history-filter-item {
 		padding: 6rpx 22rpx;
-		margin-right: 12rpx;
-		border-radius: 999rpx;
-		background: rgba(255, 255, 255, 0.08);
-		border: 1rpx solid rgba(255, 255, 255, 0.1);
 	}
 
 	.history-filter-item.active {
-		background: #4da3ff;
-		border-color: #4da3ff;
+	
 	}
 
 	.history-filter-text {
 		font-size: 22rpx;
 		line-height: 32rpx;
-		color: rgba(255, 255, 255, 0.6);
+		color: #fff;
 	}
 
 	.history-filter-item.active .history-filter-text {
-		color: #ffffff;
+		color: #B46306;
 	}
 
 	.history-section-right {

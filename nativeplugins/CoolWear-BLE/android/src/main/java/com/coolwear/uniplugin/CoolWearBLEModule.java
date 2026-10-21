@@ -26,6 +26,7 @@ import ce.com.cenewbluesdk.entity.MyBleDevice;
 import ce.com.cenewbluesdk.entity.k6.K6_Action;
 import ce.com.cenewbluesdk.entity.k6.K6_CESyncTime;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_BATTERY_INFO;
+import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_HEART_AUTO_SWITCH;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_REAL_O2;
 import ce.com.cenewbluesdk.entity.k6.K6_DevInfoStruct;
 import ce.com.cenewbluesdk.entity.k6.K6_HeartStruct;
@@ -250,6 +251,37 @@ public class CoolWearBLEModule extends UniModule {
                 return false;
             }
         });
+
+        // 设备回传的自动监测开关状态（自动心率/24h 心率/自动血氧/间隔），用于确认下发是否生效
+        rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_K6_DATA_TYPE_HEART_AUTO_SWITCH,
+                new K6BleDataResult<K6_DATA_TYPE_HEART_AUTO_SWITCH>() {
+                    @Override
+                    public boolean bleDataResult(K6_DATA_TYPE_HEART_AUTO_SWITCH info) {
+                        HashMap<String, Object> payload = new HashMap<>();
+                        if (info != null) {
+                            try {
+                                payload.put("autoHeart", info.getAutoHROnoff());
+                            } catch (Exception ignore) {
+                            }
+                            try {
+                                payload.put("hr24h", info.getHr24hOnoff());
+                            } catch (Exception ignore) {
+                            }
+                            try {
+                                payload.put("autoO2", info.getAutoO2noff());
+                            } catch (Exception ignore) {
+                            }
+                            try {
+                                payload.put("timeInterval", info.getTimeInterval());
+                            } catch (Exception ignore) {
+                            }
+                            payload.put("raw", String.valueOf(info));
+                        }
+                        Log.d(TAG, "onHeartAutoSwitch " + payload);
+                        fireEvent("onHeartAutoSwitch", payload);
+                        return false;
+                    }
+                });
 
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_SPORT_HRV_FOR_SHOW,
                 (K6BleDataResult<ArrayList<K6_HrvStruct>>) list -> {

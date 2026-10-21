@@ -130,6 +130,7 @@
 									class="weekly-point-value"
 									:class="{ zero: !day.count, today: day.date === todayYmd }"
 									:style="weeklyPointStyle(index)"
+									@click="onWeeklyDayTap(day)"
 								>{{ day.count }}</text>
 							</view>
 							<view class="weekly-x">
@@ -137,17 +138,21 @@
 									v-for="(day, index) in weeklyDays"
 									:key="'l' + (day.date || index)"
 									class="weekly-label"
-									:class="{ today: day.date === todayYmd }"
-								>{{ day.label }}</text>
+									:class="{ today: day.date === todayYmd, selected: selectedWeeklyDate === day.date }"
+									@click="onWeeklyDayTap(day)"
+							>{{ day.label }}</text>
 							</view>
 						</view>
 						<view v-else class="empty-box">
 							<image class="empty-img" src="/static/empty.png" mode=""></image>
 						</view>
 
-						<view v-if="weeklyContents.length" class="weekly-list">
+						<view v-if="selectedWeeklyDate" class="weekly-day-heading">
+							<text>{{ selectedWeeklyDate }} 异常状态</text>
+						</view>
+						<view v-if="displayWeeklyContents.length" class="weekly-list">
 							<view
-								v-for="(item, index) in weeklyContents"
+								v-for="(item, index) in displayWeeklyContents"
 								:key="item.archiveType + '-' + item.text"
 								class="weekly-item"
 								:class="{ border: index < weeklyContents.length - 1 }"
@@ -158,6 +163,7 @@
 						</view>
 						<view v-else class="empty-box">
 							<image class="empty-img" src="/static/empty.png" mode=""></image>
+							<text v-if="selectedWeeklyDate" class="empty-text">当天暂无异常记录</text>
 						</view>
 					</view>
 
@@ -420,6 +426,7 @@ export default {
 			historyPopupDesc: '当前数据未发现明显异常变化',
 			weeklyContents: [],
 			weeklyDays: [],
+			selectedWeeklyDate: '',
 			weeklyRangeText: '',
 			weeklyChartW: 0,
 			weeklyChartH: 0,
@@ -457,9 +464,18 @@ export default {
 			const ed = pad2(end.getDate())
 			return `${y}年${sm}月${sd}日-${em}月${ed}日`
 		},
+		displayWeeklyContents() {
+			if (!this.selectedWeeklyDate) return this.weeklyContents
+			const day = this.weeklyDays.find((item) => item.date === this.selectedWeeklyDate)
+			return day ? asArray(day.items).map((item) => ({
+				text: pickText(item.name, item.optionName),
+				archiveType: item.archiveType,
+				archiveTypeName: pickText(item.archiveTypeName)
+			})).filter((item) => item.text) : []
+		},
 		weeklyMax() {
 			return this.weeklyDays.reduce((m, d) => Math.max(m, Number(d.count) || 0), 0)
-		},
+		}, 
 		weeklyTodayIndex() {
 			return this.weeklyDays.findIndex((d) => d.date === this.todayYmd)
 		},
@@ -739,12 +755,16 @@ export default {
 				}
 			})
 		},
+		onWeeklyDayTap(day) {
+			if (!day || !day.date) return
+			this.selectedWeeklyDate = day.date
+		},
 		weeklyPointStyle(index) {
 			const p = this.weeklyPoints[index]
 			if (!p || !this.weeklyChartW) return { display: 'none' }
 			return {
 				left: `${(p.x / this.weeklyChartW) * 100}%`,
-				top: `${p.y}px`
+				top: `${p.y-10}px`
 			}
 		},
 		measureWeeklyChart(retry = 0) {
@@ -786,6 +806,9 @@ export default {
 				count: Number(day.count) || 0,
 				items: asArray(day.items)
 			}))
+			if (!this.weeklyDays.some((day) => day.date === this.selectedWeeklyDate)) {
+				this.selectedWeeklyDate = ''
+			}
 			// 展示内容：本周有器官关联的档案项
 			const contents = []
 			const seen = {}
@@ -1604,6 +1627,18 @@ export default {
 
 	.weekly-label.today {
 		color: #FFFFFF;
+	}
+
+	.weekly-label.selected {
+		color: #7EA6FF;
+		font-weight: 600;
+	}
+
+	.weekly-day-heading {
+		margin-top: 24rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.55);
 	}
 
 	.weekly-list {

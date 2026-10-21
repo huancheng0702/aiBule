@@ -113,6 +113,7 @@ export default {
 				this.startCountdown()
 				uni.showToast({ title: '验证码已发送', icon: 'none' })
 			} catch (e) {
+				console.log(e)
 			} finally {
 				this.sending = false
 			}

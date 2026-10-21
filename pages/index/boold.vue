@@ -511,10 +511,15 @@
 				const day = String(d.getDate()).padStart(2, '0')
 				if (this.period === 'month') return `${y}年${m}月`
 				if (this.period === 'week') {
-					const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6)
-					const sm = String(start.getMonth() + 1).padStart(2, '0')
-					const sd = String(start.getDate()).padStart(2, '0')
-					return `${sm}月${sd}日 - ${d.getMonth() + 1}月${day}日`
+					const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+					weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+					const weekEnd = new Date(weekStart)
+					weekEnd.setDate(weekStart.getDate() + 6)
+					const fmtWeekDay = (dt) => String(dt.getMonth() + 1).padStart(2, '0') + '月' + String(dt.getDate()).padStart(2, '0') + '日'
+					if (weekStart.getFullYear() !== weekEnd.getFullYear()) {
+						return `${weekStart.getFullYear()}年${fmtWeekDay(weekStart)} - ${weekEnd.getFullYear()}年${fmtWeekDay(weekEnd)}`
+					}
+					return `${fmtWeekDay(weekStart)} - ${fmtWeekDay(weekEnd)}`
 				}
 				return `${y}年${m}月${day}日`
 			},
@@ -643,8 +648,10 @@
 				let rangeStart = 0
 				let rangeEnd = 0
 				if (this.period === 'week') {
-					rangeEnd = this.calSelectedDay
-					rangeStart = rangeEnd - 6
+					const selected = new Date(year, month, this.calSelectedDay)
+					const weekOffset = (selected.getDay() + 6) % 7
+					rangeStart = this.calSelectedDay - weekOffset
+					rangeEnd = rangeStart + 6
 				}
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
@@ -966,6 +973,7 @@
 			async startRealMeasure() {
 				if (this.measuring) return
 				this.measuring = true
+				BleService.beginManualMeasure()
 				this.showMeasuring = true
 				this.showCancelConfirm = false
 				this.liveSpo2 = 0
@@ -1020,6 +1028,7 @@
 				// 首个有效值直接结算
 			},
 			async stopRealMeasure(turnOffSwitch = true) {
+				if (this.measuring) BleService.endManualMeasure()
 				this.clearMeasureTimer()
 				this.unbindBloodOxygen()
 				this.measuring = false

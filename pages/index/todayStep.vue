@@ -123,8 +123,15 @@
 					<input class="goal-popup-input" type="number" v-model="goalInput"
 						:placeholder="editingGoal.placeholder" placeholder-class="goal-popup-placeholder" />
 					<view class="goal-popup-btns">
-						<view class="goal-popup-btn cancel" @click="closeGoalPopup">取消</view>
-						<view class="goal-popup-btn save" @click="saveGoalPopup">保存</view>
+						<view class="goal-popup-btn cancel" @click="closeGoalPopup">
+							<image class="goal-popup-btn-bg" src="" mode="aspectFill"></image>
+							取消
+						</view>
+						<view class="goal-popup-btn save" @click="saveGoalPopup">
+							<image class="goal-popup-btn-bg" src="/static/confirmBg.png" mode=""></image>
+							保存
+						</view>
+						
 					</view>
 				</view>
 			</view>
@@ -929,6 +936,7 @@
 	}
 
 	.goal-popup-btn {
+		position: relative;
 		flex: 1;
 		height: 88rpx;
 		line-height: 88rpx;
@@ -938,6 +946,14 @@
 		font-weight: 500;
 		color: #ffffff;
 		box-sizing: border-box;
+	}
+
+	.goal-popup-btn-bg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		z-index: -1;
 	}
 
 	.goal-popup-btn+.goal-popup-btn {
@@ -950,6 +966,5 @@
 	}
 
 	.goal-popup-btn.save {
-		background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
 	}
 </style>

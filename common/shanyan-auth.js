@@ -46,7 +46,7 @@ function init(callback) {
 	} else if (platform == 'ios') {
 		appid = SHANYAN_APPID.ios
 	}
-	shanYanSDKModule.setDebug(true)
+	// shanYanSDKModule.setDebug(true)
 	//闪验SDK 初始化
 	shanYanSDKModule.init({
 		appid: appid
@@ -86,7 +86,7 @@ function setAuthThemeConfig(hooks) {
 				setNumFieldOffsetBottomY: '220',
 				setSloganHidden: true,
 				setShanYanSloganHidden: true,
-				setLogBtnText: '本机号一键登录',
+				setLogBtnText: '本机号码一键登录',
 				setLogBtnTextColor: '#FFFFFF',
 				setLogBtnTextSize: '16',
 				setLogBtnTextBold: false,
@@ -353,7 +353,7 @@ function buildIosConfigure() {
 	let clLayoutLoginBtnHeight_Portrait = 48 * screenScale;
 	let clLayoutLoginBtnBottom_Portrait = -138 * screenScale;
 
-	let clLayoutAppPrivacyLeft_Portrait = 16 * screenScale;
+	let clLayoutAppPrivacyLeft_Portrait = 40 * screenScale;
 	let clLayoutAppPrivacyRight_Portrait = -16 * screenScale;
 	let clLayoutAppPrivacyHeight_Portrait = 56 * screenScale;
 	let clLayoutAppPrivacyBottom_Portrait = -18 * screenScale;
@@ -393,24 +393,26 @@ function buildIosConfigure() {
 		clLoginBtnTextFont: 15 * screenScale,
 		clLoginBtnCornerRadius: 16 * screenScale,
 
-		clSloganTextHidden: true,
 
 		clCheckBoxHidden: false,
 		clCheckBoxValue: false,
-		clCheckBoxSize: [18 * screenScale, 18 * screenScale], //2 item, width and height
+		clCheckBoxVerticalAlignmentToAppPrivacyCenterY:true,
+		clSloganTextHidden:false,
+		clCheckBoxSize: [30 * screenScale, 30 * screenScale], //2 item, width and height
+		// clCheckBoxSize: [40, 40],
 		clCheckBoxUncheckedImage: 'static/checkCircle.png',
 		clCheckBoxCheckedImage: 'static/celiangSuccess.png',
-
+		clCheckBoxImageEdgeInsets:[5,5,5,5],
 		clAppPrivacyColor: [
 			[0.4, 0.4, 0.4, 1.0],
 			[0.17, 0.54, 1.0, 1.0]
 		], //2 item,commomTextColor and appPrivacyTextColor
 		clAppPrivacyTextFont: 11 * screenScale,
-		clAppPrivacyTextAlignment: 1, //0: center 1: left 2: right
+		clAppPrivacyTextAlignment:1, //0: center 1: left 2: right
 		clAppPrivacyFirst: [PRIVACY_LINKS.privacyPolicy.title, PRIVACY_LINKS.privacyPolicy.url], // 2 item, name and url
 		clAppPrivacySecond: [PRIVACY_LINKS.userAgreement.title, PRIVACY_LINKS.userAgreement.url], // 2 item, name and url
 		clAppPrivacyNormalDesTextFirst: '我已阅读并同意',
-		clAppPrivacyNormalDesTextSecond: '及健康',
+		clAppPrivacyNormalDesTextSecond: '及',
 		clAppPrivacyNormalDesTextThird: '',
 		clAppPrivacyNormalDesTextFourth: '并授权获取本机号码',
 

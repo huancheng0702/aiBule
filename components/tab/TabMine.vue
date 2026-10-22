@@ -78,13 +78,14 @@
 								<text class="contact-meta">{{ item.relation }} · {{ maskPhone(item.phone) }}</text>
 							</view>
 							<view class="contact-card-actions">
-								<view class="contact-edit-btn" @click="openContactForm(item, index)">编辑</view>
+								<image class="contact-edit-btn" @click="openContactForm(item, index)" src="/static/bianjiImg.png" mode=""></image>
+								<!-- <view class="contact-edit-btn" @click="openContactForm(item, index)">编辑</view> -->
 								<view class="contact-del-btn" @click="confirmDeleteContact(item, index)">删除</view>
 							</view>
 						</view>
 					</view>
 					<view v-else class="contact-empty">
-						<text class="contact-empty-text">暂未添加紧急联系人</text>
+						<text class="contact-empty-text">请先添加紧急联系人</text>
 					</view>
 
 					<view class="contact-actions">
@@ -329,7 +330,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight || 20
+			this.statusBarHeight = sys.statusBarHeight + 20 || 20
 			this.nickName = uni.getStorageSync('nickName') || ''
 			this.avatar = uni.getStorageSync('avatar') || ''
 			this.unsub = BleService.subscribe((s) => {
@@ -793,7 +794,7 @@
 
 	.section-title {
 		display: block;
-		font-size: 32rpx;
+		font-size: 30rpx;
 		font-weight: 600;
 		line-height: 44rpx;
 		color: #ffffff;
@@ -959,16 +960,8 @@
 	}
 
 	.contact-edit-btn {
-		flex-shrink: 0;
-		height: 52rpx;
-		padding: 0 28rpx;
-		border-radius: 999rpx;
-		border: 2rpx solid #3b82f6;
-		font-size: 24rpx;
-		line-height: 48rpx;
-		color: #3b82f6;
-		text-align: center;
-		box-sizing: border-box;
+		width: 142rpx;
+		height: 64rpx;
 	}
 
 	.contact-card-actions {
@@ -986,11 +979,13 @@
 		flex-shrink: 0;
 		margin-left: 12rpx;
 		height: 52rpx;
+		width: 142rpx;
+		height: 64rpx;
 		padding: 0 28rpx;
 		border-radius: 999rpx;
 		border: 2rpx solid #ff4d4f;
 		font-size: 24rpx;
-		line-height: 48rpx;
+		line-height:64rpx;
 		color: #ff5a5a;
 		text-align: center;
 		box-sizing: border-box;

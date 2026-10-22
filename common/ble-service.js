@@ -26,13 +26,13 @@ const state = {
 	initing: false,
 	connectStatus: 0,
 	connected: false,
+	manualMeasure: false,
 	scanning: false,
 	device: null,
 	battery: null,
 	deviceInfo: null,
 	sport: null,
 	sleep: null,
-	autoMonitor: null,
 	devices: [],
 	pluginOk: false
 }
@@ -50,23 +50,6 @@ function throttledSendSyncInfo(force = false) {
 	if (!force && now - lastSyncInfoAt < 5000) return
 	lastSyncInfoAt = now
 	CoolWearBLE.sendSyncInfo().catch(() => {})
-}
-
-/**
- * 连接后主动多请求几次设备全量数据（sport/sleep/...）。
- * 睡眠只在戒指「判定入睡→醒来」后才会在同步中回传，且可能滞后，
- * 单次 sendSyncInfo 容易错过，这里多拉几次提高成功率。
- */
-function pullAllData(retry = 4, intervalMs = 2500) {
-	let n = 0
-	const tick = () => {
-		if (n >= retry || !state.connected) return
-		n++
-		console.log('[ble-service] pullAllData #' + n)
-		CoolWearBLE.sendSyncInfo().catch(() => {})
-		if (n < retry) setTimeout(tick, intervalMs)
-	}
-	setTimeout(tick, 600)
 }
 
 function cloneState() {
@@ -91,9 +74,6 @@ function cloneState() {
 		} : null,
 		sleep: state.sleep ? {
 			...state.sleep
-		} : null,
-		autoMonitor: state.autoMonitor ? {
-			...state.autoMonitor
 		} : null,
 		devices: state.devices.map((d) => ({
 			...d
@@ -517,133 +497,6 @@ function reportSleepToCloud(sleep) {
 	})
 }
 
-// ---------- 自动监测数据上报 ----------
-// 设备端自动采集的心率历史/血氧/HRV，只有在同步时才会回传（onHeartRateDaily 等），
-// 这里统一去重后上报服务端，供心率/血氧/HRV 趋势页展示。
-const AUTO_HEALTH_KEYS_MAX = 2000
-const uploadedAutoHealthKeys = new Set()
-let manualMeasureDepth = 0
-let lastAutoMonitorAt = 0
-
-function rememberAutoHealthKey(key) {
-	if (uploadedAutoHealthKeys.size >= AUTO_HEALTH_KEYS_MAX) {
-		const first = uploadedAutoHealthKeys.values().next().value
-		if (first) uploadedAutoHealthKeys.delete(first)
-	}
-	uploadedAutoHealthKeys.add(key)
-}
-
-function pickAutoValue(item) {
-	if (item == null) return 0
-	if (typeof item === 'number') return Number(item) || 0
-	if (typeof item !== 'object') return 0
-	const v = item.value != null ? item.value
-		: (item.heartNum != null ? item.heartNum
-		: (item.heart != null ? item.heart
-		: (item.hr != null ? item.hr
-		: (item.oxygen != null ? item.oxygen
-		: (item.o2 != null ? item.o2
-		: (item.hrv != null ? item.hrv : null))))))
-	return Number(v) || 0
-}
-
-function pickAutoTimeMs(item) {
-	if (!item || typeof item !== 'object') return Date.now()
-	const raw = item.time != null ? item.time : (item.timestamp != null ? item.timestamp : item.startSecs)
-	const n = Number(raw)
-	if (n > 0) return n < 1e12 ? n * 1000 : n
-	return Date.now()
-}
-
-function reportAutoHealthToCloud(dataType, raw) {
-	// 手动测量期间由页面自己上报（source=2），这里跳过避免重复
-	if (!hasLogin() || manualMeasureDepth > 0) return
-	const rows = Array.isArray(raw) ? raw : (raw ? [raw] : [])
-	const entries = []
-	rows.forEach((row) => {
-		const value = pickAutoValue(row)
-		if (!(value > 0)) return
-		const ms = pickAutoTimeMs(row)
-		const key = dataType + '|' + ms + '|' + value
-		if (uploadedAutoHealthKeys.has(key)) return
-		entries.push({
-			key,
-			ms,
-			value
-		})
-	})
-	if (!entries.length) return
-	entries.forEach((it) => rememberAutoHealthKey(it.key))
-	const device = state.device || {}
-	const chunkSize = 50
-	for (let i = 0; i < entries.length; i += chunkSize) {
-		const chunk = entries.slice(i, i + chunkSize)
-		const dataList = chunk.map((it) => {
-			const row = {
-				dataType,
-				measureTime: formatMeasureTime(it.ms),
-				source: '1'
-			}
-			if (dataType === 'blood_oxygen') row.oxygen = it.value
-			else row.heartNum = it.value
-			return row
-		})
-		uploadDeviceData({
-				deviceMac: device.mac || device.id || '',
-				deviceVersion: getFirmware() || '',
-				batteryLevel: getBatteryLevel(),
-				dataList
-			})
-			.then((res) => {
-				console.log('[ble-service] 自动监测数据上报成功', dataType, dataList.length, JSON.stringify(res))
-			})
-			.catch((e) => {
-				// 上报失败时移除去重标记，下次同步可重试
-				chunk.forEach((it) => uploadedAutoHealthKeys.delete(it.key))
-				console.log('[ble-service] 自动监测数据上报失败', dataType, (e && (e.msg || e.message)) || e)
-			})
-	}
-}
-
-/**
- * 重发自动监测相关开关（防抖）。
- * 手动测量结束会把心率/血氧/HRV 检测开关关掉，回前台/重连后必须重新打开，
- * 否则本次连接周期内设备的自动采集一直是关闭的。
- */
-function throttledEnableAutoMeasure(minIntervalMs = 5000) {
-	const now = Date.now()
-	if (now - lastAutoMonitorAt < minIntervalMs) return
-	lastAutoMonitorAt = now
-	CoolWearBLE.setHeartAutoSwitch({
-		heart: true,
-		o2: true,
-		hr24h: true,
-		intervalMin: 30
-	}).catch((e) => {
-		console.log('[ble-service] setHeartAutoSwitch failed', e && (e.msg || e.message))
-	})
-	CoolWearBLE.setHeartRateSwitch(true).catch((e) => {
-		console.log('[ble-service] setHeartRateSwitch failed', e && (e.msg || e.message))
-	})
-	CoolWearBLE.setHRVSwitch(true).catch((e) => {
-		console.log('[ble-service] setHRVSwitch failed', e && (e.msg || e.message))
-	})
-	CoolWearBLE.setBloodOxygenSwitch(true).catch((e) => {
-		console.log('[ble-service] setBloodOxygenSwitch failed', e && (e.msg || e.message))
-	})
-}
-
-// 连接状态下定时同步：自动监测数据只存在戒指里，不主动同步的话白天在线期间也不会进 App
-let autoSyncTimer = null
-
-function startAutoSyncTimer() {
-	if (autoSyncTimer) return
-	autoSyncTimer = setInterval(() => {
-		if (!state.connected || manualMeasureDepth > 0) return
-		CoolWearBLE.sendSyncInfo().catch(() => {})
-	}, 15 * 60 * 1000)
-}
-
 function emit() {
 	const snapshot = cloneState()
 	stateListeners.forEach((fn) => {
@@ -721,19 +574,26 @@ function pickBatteryField(o, keys) {
 			try {
 				return normalizeDeviceInfo(JSON.parse(data))
 			} catch (e) {
-				return {
+				return normalizeDeviceInfo({
 					raw: data
-				}
+				})
 			}
 		}
-		const firmware = data.firmware != null ?
-			String(data.firmware) :
-			(data.softwareVer != null ?
-				String(data.softwareVer) :
-				(data.softwareVersion != null ?
-					String(data.softwareVersion) :
-					(data.SoftwareVer != null ? String(data.SoftwareVer) : (data.version != null ? String(data
-						.version) : null))))
+		const raw = data.raw
+		const rawText = typeof raw === 'string' ? raw : ''
+		const rawSoftwareVer = raw && typeof raw === 'object'
+			? (raw.softwareVer != null ? raw.softwareVer : raw.softwareVersion)
+			: (rawText.match(/softwareVer\s*=\s*['"]?([^,'"\]\s]+)/i) || [])[1]
+		const firmwareValue = data.firmware != null
+			? data.firmware
+			: (data.softwareVer != null
+				? data.softwareVer
+				: (data.softwareVersion != null
+					? data.softwareVersion
+					: (data.SoftwareVer != null
+						? data.SoftwareVer
+						: (data.version != null ? data.version : rawSoftwareVer))))
+		const firmware = firmwareValue != null ? String(firmwareValue) : null
 		return {
 			...data,
 			firmware,
@@ -923,7 +783,10 @@ function pickBatteryField(o, keys) {
 			state.connectStatus = status
 			state.connected = status === 1
 			if (state.connected) {
-				throttledSendSyncInfo(true)
+				Promise.resolve()
+					.then(() => CoolWearBLE.syncTime().catch(() => {}))
+					.then(() => BleService.enableAutoMeasure().catch(() => {}))
+					.then(() => CoolWearBLE.sendSyncInfo().catch(() => {}))
 				setTimeout(() => {
 					if (state.connected) throttledSendSyncInfo(true)
 				}, 8000)
@@ -982,31 +845,6 @@ function pickBatteryField(o, keys) {
 				emit()
 				reportSleepToCloud(sleep)
 			}
-		})
-
-		// 设备端自动采集的历史数据（同步时回传，手动测量页不消费，必须由这里上报）
-		CoolWearBLE.on('onHeartRateDaily', (data) => {
-			console.log('[ble-service] onHeartRateDaily raw=', data)
-			reportAutoHealthToCloud('heart_rate', data)
-		})
-
-		CoolWearBLE.on('onBloodOxygen', (data) => {
-			console.log('[ble-service] onBloodOxygen raw=', data)
-			reportAutoHealthToCloud('blood_oxygen', data)
-		})
-
-		CoolWearBLE.on('onHRV', (data) => {
-			console.log('[ble-service] onHRV raw=', data)
-			reportAutoHealthToCloud('hrv', data)
-		})
-
-		// 设备回传的自动监测开关状态，用于确认 setHeartAutoSwitch 是否真正生效
-		CoolWearBLE.on('onHeartAutoSwitch', (data) => {
-			state.autoMonitor = data && typeof data === 'object' ? {
-				...data
-			} : null
-			console.log('[ble-service] 设备自动监测状态回传', JSON.stringify(data))
-			emit()
 		})
 	}
 
@@ -1093,8 +931,6 @@ function pickBatteryField(o, keys) {
 					state.connected = true
 					state.connectStatus = 1
 					emit()
-					// 先校准设备时间，再拉取历史数据
-					await CoolWearBLE.syncTime().catch(() => {})
 					throttledSendSyncInfo(true)
 					await CoolWearBLE.requestBattery().catch(() => {})
 					return true
@@ -1114,34 +950,24 @@ function pickBatteryField(o, keys) {
 			loadStoredDevice()
 			state.pluginOk = CoolWearBLE.isAvailable()
 			bindEvents()
-			startAutoSyncTimer()
 			emit()
 		},
 
 		/**
 		 * 有本地绑定设备且未解绑时自动重连；解绑会清 STORAGE，不会触发
-		 * @param {Object} [options]
-		 * @param {boolean} [options.force] 冷启动强制断开重连。进程被杀后系统可能残留“已连接”状态，
-		 *        但 GATT 通知并未重新订阅，会出现“显示已连接却收不到心率/步数”的问题，必须彻底重连一次。
 		 */
-		async tryAutoReconnect(options = {}) {
+		async tryAutoReconnect() {
 			// #ifndef APP-PLUS
 			return false
 			// #endif
 			// #ifdef APP-PLUS
-			const force = options.force === true
 			loadStoredDevice()
 			const device = state.device
 			if (!device || !(device.mac || device.identifier || device.id)) {
 				return false
 			}
-			if (state.connected && !force) {
-				// 已连接（例如从后台回前台）：手动测量结束后检测开关可能仍是关闭的，
-				// 这里补发自动监测开关，保证全天自动采集不中断。
-				throttledEnableAutoMeasure(30000)
-				return true
-			}
-			if (reconnecting || (state.connectStatus === 2 && !force)) return false
+			if (state.connected) return true
+			if (reconnecting || state.connectStatus === 2) return false
 
 			reconnecting = true
 			state.connectStatus = 2
@@ -1154,44 +980,34 @@ function pickBatteryField(o, keys) {
 				}
 				await BleService.ensureInit()
 
-				if (force) {
-					// 冷启动：先彻底断开残留连接，避免“假连接”（连上了但没订阅通知）
-					try {
-						await CoolWearBLE.disconnect()
-					} catch (e) {}
-					await sleep(300)
-				} else {
-					try {
-						const res = await CoolWearBLE.isConnected()
-						if (res && res.connected) {
-							state.connected = true
-							state.connectStatus = 1
-							emit()
-							await BleService.restoreAfterReconnect()
-							persistDevice()
-							return true
-						}
-					} catch (e) {
-						// ignore, continue reconnect
+				try {
+					const res = await CoolWearBLE.isConnected()
+					if (res && res.connected) {
+						state.connected = true
+						state.connectStatus = 1
+						emit()
+						await CoolWearBLE.sendSyncInfo().catch(() => {})
+						await CoolWearBLE.requestBattery().catch(() => {})
+						persistDevice()
+						return true
 					}
+				} catch (e) {
+					// ignore, continue reconnect
 				}
 
-				// 非冷启动时优先走 SDK 自动重连（依赖上次连接记录）
-				if (!force) {
-					try {
-						await CoolWearBLE.reconnect()
-						const ok = await pollConnected(20000)
-						if (ok) {
-							await BleService.restoreAfterReconnect()
-							persistDevice()
-							return true
-						}
-					} catch (e) {
-						console.log('[ble-service] reconnect() failed, fallback connect', e)
+				// 优先走 SDK 自动重连（依赖上次连接记录）
+				try {
+					await CoolWearBLE.reconnect()
+					const ok = await pollConnected(20000)
+					if (ok) {
+						persistDevice()
+						return true
 					}
+				} catch (e) {
+					console.log('[ble-service] reconnect() failed, fallback connect', e)
 				}
 
-				// 回退 / 冷启动：用本地缓存的 mac / identifier 主动连接
+				// 回退：用本地缓存的 mac / identifier 主动连接
 				await CoolWearBLE.connect({
 					mac: device.mac,
 					identifier: device.identifier,
@@ -1205,10 +1021,9 @@ function pickBatteryField(o, keys) {
 					emit()
 					return false
 				}
-				await BleService.restoreAfterReconnect()
+				await BleService.enableAutoMeasure().catch(() => {})
 				persistDevice()
-				// 冷启动重连说明设备此前已绑定成功，不再重复上报；非强制重连时保留兜底重试
-				if (!force) notifyBindToCloud()
+				notifyBindToCloud()
 				return true
 			} catch (e) {
 				console.error('[ble-service] tryAutoReconnect', e)
@@ -1220,22 +1035,6 @@ function pickBatteryField(o, keys) {
 				reconnecting = false
 			}
 			// #endif
-		},
-
-		/**
-		 * 连接/重连成功后恢复测量开关与数据同步。
-		 * 重连路径不会重新下发这些开关，若不恢复，戒指不会主动回传心率/血氧等数据。
-		 */
-		async restoreAfterReconnect() {
-			// 设备时间是睡眠/运动数据的时间基准，必须先同步
-			await CoolWearBLE.syncTime().catch((e) => {
-				console.log('[ble-service] syncTime failed', e)
-			})
-			await BleService.enableAutoMeasure().catch(() => {})
-			throttledSendSyncInfo(true)
-			CoolWearBLE.requestBattery().catch(() => {})
-			CoolWearBLE.requestDeviceInfo().catch(() => {})
-			pullAllData()
 		},
 
 		isAvailable() {
@@ -1376,29 +1175,34 @@ function pickBatteryField(o, keys) {
 				emit()
 				throw new Error('连接超时，请确认戒指在附近且未被其他手机占用')
 			}
-			// 设备时间决定睡眠/运动数据的日期归属，连接后必须先同步
-			await CoolWearBLE.syncTime().catch((e) => {
-				console.log('[ble-service] syncTime failed', e)
-			})
 			await BleService.enableAutoMeasure().catch(() => {})
 			persistDevice()
 			uni.setStorageSync('onboardingDone', true)
 			uni.setStorageSync('isFirstLogin', false)
 			emit()
 			notifyBindToCloud()
-			pullAllData()
 			return cloneState()
+		},
+
+		beginManualMeasure() {
+			state.manualMeasure = state.connected
+			return state.manualMeasure
+		},
+
+		endManualMeasure() {
+			state.manualMeasure = false
+			return true
+		},
+
+		async restoreAutoMonitor() {
+			if (!state.connected) return false
+			return BleService.enableAutoMeasure()
 		},
 
 		async enableAutoMeasure() {
 			if (!state.connected) return false
 			try {
-				await CoolWearBLE.setHeartAutoSwitch({
-					heart: true,
-					o2: true,
-					hr24h: true,
-					intervalMin: 30
-				})
+				await CoolWearBLE.setHeartAutoSwitch({ heart: true, o2: true, intervalMin: 30 })
 			} catch (e) {
 				console.log('[ble-service] setHeartAutoSwitch failed', e)
 			}
@@ -1413,32 +1217,6 @@ function pickBatteryField(o, keys) {
 			try {
 				await CoolWearBLE.setBloodOxygenSwitch(true)
 			} catch (e) {}
-			return true
-		},
-
-		/** 手动测量开始/结束标记：测量期间由页面负责上报（source=2），全局自动上报跳过，避免重复 */
-		beginManualMeasure() {
-			manualMeasureDepth++
-		},
-
-		endManualMeasure() {
-			manualMeasureDepth = Math.max(0, manualMeasureDepth - 1)
-		},
-
-		getAutoMonitor() {
-			return state.autoMonitor ? {
-				...state.autoMonitor
-			} : null
-		},
-
-		/**
-		 * 手动测量页退出/结束时调用：关闭实时推流后把后台自动监测重新下发，
-		 * 包括自动监测配置和心率/血氧/HRV 检测开关——只发 setHeartAutoSwitch 是不够的，
-		 * 因为测量结束已经把检测开关关掉了，本次连接内自动采集会一直停止。
-		 */
-		async restoreAutoMonitor() {
-			if (!state.connected) return false
-			throttledEnableAutoMeasure(3000)
 			return true
 		},
 

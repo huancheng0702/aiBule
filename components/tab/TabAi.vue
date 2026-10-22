@@ -190,7 +190,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight || 20
+			this.statusBarHeight = sys.statusBarHeight + 20 || 20
 			this.loadQuickQuestions()
 			this.loadHistory(true)
 		},
@@ -577,7 +577,7 @@
 
 	.ai-bubble {
 		padding: 24rpx 28rpx;
-		border-radius: 24rpx;
+		border-radius: 0rpx 24rpx 24rpx 24rpx;
 		background: #1c1c1e;
 	}
 
@@ -793,7 +793,7 @@
 	}
 
 	.history-filter-text {
-		font-size: 22rpx;
+		font-size: 28rpx;
 		line-height: 32rpx;
 		color: #fff;
 	}

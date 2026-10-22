@@ -96,8 +96,6 @@ function bindGlobalEvent() {
   plus.globalEvent.addEventListener(EVENT_CHANNEL, (payload) => {
     const event = payload && payload.event
     if (!event) return
-    // 诊断用：打印所有原生事件名，确认设备是否真的回传睡眠等数据
-    console.log('[CoolWear-BLE] event:', event)
     let data = payload && payload.data
     // 原生侧偶发把 data 序列化成 JSON 字符串
     if (typeof data === 'string') {
@@ -266,7 +264,6 @@ const CoolWearBLE = {
     return callNative('setHeartAutoSwitch', {
       heart: options.heart !== false,
       o2: options.o2 !== false,
-      hr24h: options.hr24h !== false,
       intervalMin: options.intervalMin || 30
     })
   },

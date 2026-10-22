@@ -183,7 +183,7 @@
 
 						<view class="advice-card">
 							<!-- 建议卡片背景图，自行补充 src -->
-							<image class="advice-bg" src="/static/heartCardBg.png" mode="aspectFill"></image>
+							<image class="advice-bg" src="/static/heartCardBg.png" mode=""></image>
 							<!-- 建议图标，自行补充 src -->
 							<image class="advice-icon" src="/static/qushijianyi.png" mode="aspectFit"></image>
 							<view class="advice-body">

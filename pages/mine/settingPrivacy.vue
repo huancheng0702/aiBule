@@ -53,8 +53,10 @@
 					<view class="info-grid">
 						<view v-for="(item,index) in securityCards" :key="indexy" class="info-card" @click="onSecurityCard(item)">
 							<!-- 图标，自行补充 src -->
-							<image class="info-icon" :src="item.icon" mode=""></image>
-							<text class="info-label">{{ item.label }}</text>
+							<view class="" style="display: flex;align-items: center;margin-bottom: 20rpx;">
+								<image class="info-icon" :src="item.icon" style="margin-right: 10rpx;" mode=""></image>
+								<text class="info-label">{{ item.label }}</text>
+							</view>
 							<text class="info-value">{{ item.value }}</text>
 						</view>
 					</view>
@@ -355,7 +357,7 @@
 		padding-left: 8rpx;
 		font-size: 24rpx;
 		line-height: 34rpx;
-		color: rgba(255, 255, 255, 0.45);
+		color: rgba(255, 255, 255, 0.8);
 	}
 
 	.menu-card {
@@ -508,19 +510,20 @@
 		margin-bottom: 16rpx;
 		padding: 28rpx 24rpx;
 		border-radius: 24rpx;
-		background: rgba(255, 255, 255, 0.06);
+		background: #1A1B25;
+		border-radius: 20rpx 20rpx 20rpx 20rpx;
+		border: 1rpx solid rgba(255,255,255,0.1);
 		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 	}
 
 	.info-icon {
-		width: 48rpx;
-		height: 48rpx;
+		width: 36rpx;
+		height: 36rpx;
 	}
 
 	.info-label {
-		margin-top: 20rpx;
 		font-size: 24rpx;
 		line-height: 34rpx;
 		color: rgba(255, 255, 255, 0.55);
@@ -593,8 +596,8 @@
 
 	.cancel-illust {
 		display: block;
-		width: 240rpx;
-		height: 240rpx;
+		width: 124rpx;
+		height: 121.88rpx;
 		margin: 48rpx auto 0;
 	}
 

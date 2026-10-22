@@ -637,7 +637,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight || 20
+			this.statusBarHeight = sys.statusBarHeight + 20 || 20
 			this.nickName = uni.getStorageSync('nickName') || ''
 			this.unsubBle = BleService.subscribe((s) => {
 				this.batteryLevel = s.batteryLevel

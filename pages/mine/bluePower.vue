@@ -34,12 +34,7 @@
 
 		<!-- 说明卡 -->
 		<view class="tip-card">
-			<!-- 勾选图标 -->
-			<image class="tip-icon" src="/static/check-circle-fil.png" mode="aspectFit"></image>
-			<view class="tip-info">
-				<text class="tip-title">仅申请这一项权限</text>
-				<text class="tip-desc">本步骤不会同时请求其他系统权限</text>
-			</view>
+			<image src="/static/jinshenqing.png" style="width: 100%;height: 142rpx;" mode=""></image>
 		</view>
 
 		<!-- 底部按钮 -->
@@ -311,12 +306,6 @@
 
 	.tip-card {
 		margin-top: 28rpx;
-		padding: 28rpx 24rpx;
-		border-radius: 24rpx;
-		background: #1a1b25;
-		display: flex;
-		align-items: center;
-		box-sizing: border-box;
 	}
 
 	.tip-icon {

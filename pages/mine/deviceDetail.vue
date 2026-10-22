@@ -67,7 +67,7 @@
 			<view class="unbind-popup" @click.stop>
 				<image class="unbind-popup-bg" src="/static/bushuPopBg.png" mode=""></image>
 				<view class="unbind-popup-body">
-					<image class="unbind-icon" src="/static/jinggao.png" mode="aspectFit"></image>
+					<image class="unbind-icon" src="/static/duankaiImg.png" mode=""></image>
 					<text class="unbind-popup-title">断开 {{ deviceName }}</text>
 					<text class="unbind-popup-desc">历史数据会保留，但无法继续测量</text>
 					<view class="unbind-btns">
@@ -88,6 +88,7 @@
 <script>
 	import BleService from '@/common/ble-service.js'
 	import CoolWearBLE from '@/common/coolwear-ble.js'
+	import { getDeviceList, unbindDevice } from '@/common/api/device.js'
 
 	const BLE_EVENT_NAMES = [
 		'onDeviceFound',
@@ -326,10 +327,23 @@
 			async confirmUnbind() {
 				this.showUnbindPopup = false
 				uni.showLoading({
-					title: '断开中...',
+					title: '解绑中...',
 					mask: true
 				})
 				try {
+					const response = await getDeviceList()
+					const list = Array.isArray(response)
+						? response
+						: (response && (response.list || response.records || response.data || response.rows)) || []
+					const current = BleService.getState().device || {}
+					const boundDevice = list.find((item) =>
+						(item.mac && current.mac && String(item.mac).toUpperCase() === String(current.mac).toUpperCase()) ||
+						(item.deviceId && current.id && String(item.deviceId) === String(current.id)) ||
+						(item.name && current.name && item.name === current.name)
+					) || (list.length === 1 ? list[0] : null)
+					const bindId = boundDevice && (boundDevice.bindId != null ? boundDevice.bindId : boundDevice.id)
+					if (bindId == null) throw new Error('未找到当前设备的绑定信息')
+					await unbindDevice(bindId)
 					await BleService.disconnect(true)
 					uni.hideLoading()
 					uni.showToast({
@@ -344,7 +358,7 @@
 				} catch (e) {
 					uni.hideLoading()
 					uni.showToast({
-						title: (e && e.message) || '断开失败',
+						title: (e && e.message) || '解绑失败',
 						icon: 'none'
 					})
 				}
@@ -586,7 +600,7 @@
 
 	.unbind-popup {
 		position: relative;
-		width: 100%;
+		width: 87%;
 		border-radius: 32rpx;
 		overflow: hidden;
 		background: #12131a;

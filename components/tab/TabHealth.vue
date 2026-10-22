@@ -8,9 +8,20 @@
 
 		<!-- 健康画像 -->
 		<view class="portrait-card" @click="navHealth">
-			<image src="/static/helthTopImg.png" class="cardImg" mode=""></image>
+			<image src="/static/helsNv.png" style="border-radius: 30rpx;" v-if="sex==2" class="cardImg" mode=""></image>
+			<image src="/static/helNan.png" v-else class="cardImg" mode=""></image>
 			<view class="porText">
-				<text class="porStatus">{{ portraitStatus }}</text>
+				<view class="porTop">
+					<image src="/static/heicon.png" class="porImg" mode=""></image>
+					<view class="porTopText">
+						健康画像
+					</view>
+				</view>
+				<view class="porStatus">{{ portraitStatus }}</view>
+				<view class="porWord">
+					查看身体系统解读与关联指标
+				</view>
+				<image src="/static/lijichakan.png" class="porNavDetail" mode=""></image>
 			</view>
 		</view>
 
@@ -46,6 +57,8 @@
 	import { getHealthCenterIndex } from '@/common/api/healthCenter.js'
 	import { getAbnormalList } from '@/common/api/healthAbnormal.js'
 	import { getWeeklyList } from '@/common/api/healthReport.js'
+	import { getUserInfo } from '@/common/api/user.js'
+	import { saveLoginSession } from '@/common/auth.js'
 
 	function asArray(data) {
 		if (!data) return []
@@ -73,19 +86,29 @@
 				portraitDesc: '',
 				portraitScore: '',
 				abnormalDesc: '暂无异常记录',
-				reportDesc: ''
+				reportDesc: '',
+				sex:0
 			}
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight || 20
+			this.statusBarHeight = sys.statusBarHeight + 20 || 20
 			this.loadData()
 		},
 		methods: {
+			async loadUser() {
+				try {
+					const info = await getUserInfo()
+					if (!info) return
+					saveLoginSession(info)
+					this.sex = info.gender
+				} catch (e) {}
+			},
 			onTabShow() {
 				this.loadData()
 			},
 			async loadData() {
+				this.loadUser()
 				this.loadPortrait()
 				this.loadAbnormal()
 				this.loadReport()
@@ -407,16 +430,42 @@
 		color: #FFFFFF;
 		font-size: 48rpx;
 		position: absolute;
-		top: 30%;
+		top: 8%;
 		left: 30rpx;
 		display: flex;
 		flex-direction: column;
+	}
+	.porTop{
+		display: flex;
+		justify-content: flex-start;
+		align-items: center;
+		
+	}
+	.porImg{
+		width: 53rpx;
+		height: 53rpx;
+		margin-right: 20rpx;
+	}
+	.porTopText{
+		font-size: 26rpx;
+		color: #fff;
 	}
 	.porStatus {
 		font-size: 48rpx;
 		font-weight: 700;
 		line-height: 60rpx;
 		color: #FFFFFF;
+		margin-top: 70rpx;
+	}
+	.porNavDetail{
+		margin-top: 55rpx;
+		width: 228rpx;
+		height: 96rpx;
+	}
+	.porWord{
+		color: #fff;
+		font-size: 20rpx;
+		margin-top: 30rpx;
 	}
 	.porDesc {
 		margin-top: 12rpx;

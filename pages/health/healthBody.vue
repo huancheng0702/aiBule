@@ -229,6 +229,7 @@
 					<text class="archive-popup-title">{{ archivePopup.title }}</text>
 					<text class="archive-popup-desc">{{ archivePopup.desc }}</text>
 					<view class="archive-other-btn" @click="onAddOtherTag">
+						<image src="/static/morejibing.png" class="arBg" mode=""></image>
 						<text class="archive-other-text">{{ archivePopup.otherLabel }}</text>
 					</view>
 				</view>
@@ -249,7 +250,30 @@
 
 				<view class="archive-confirm-wrap">
 					<view class="archive-confirm-btn" @click="confirmArchivePopup">
+						<image src="/static/btnBan.png" class="arBg" mode=""></image>
 						<text class="archive-confirm-text">确定</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 添加其他档案弹窗 -->
+		<view v-if="showOtherTagPopup" class="other-tag-mask" @click="closeOtherTagPopup">
+			<view class="other-tag-popup" @click.stop>
+				<image class="other-tag-popup-bg" src="/static/bushuPopBg.png" mode="aspectFill"></image>
+				<view class="other-tag-popup-body">
+					<text class="other-tag-popup-title">{{ archivePopup.otherLabel.replace(/\\s*\\+\\s*$/, '') }}</text>
+					<text class="other-tag-popup-desc">请输入要添加的内容</text>
+					<input class="other-tag-popup-input" v-model="otherTagInput" placeholder="请输入内容" placeholder-class="other-tag-placeholder" />
+					<view class="other-tag-popup-btns">
+						<view class="other-tag-popup-btn cancel" @click="closeOtherTagPopup">
+							<image class="other-tag-popup-btn-bg" src="" mode="aspectFill"></image>
+							<text class="other-tag-popup-btn-text">取消</text>
+						</view>
+						<view class="other-tag-popup-btn confirm" @click="confirmOtherTag">
+							<image class="other-tag-popup-btn-bg" src="/static/confirmBg.png" mode="aspectFill"></image>
+							<text class="other-tag-popup-btn-text">确定</text>
+						</view>
 					</view>
 				</view>
 			</view>
@@ -417,6 +441,8 @@ export default {
 				selected: []
 			})),
 			showArchivePopup: false,
+			showOtherTagPopup: false,
+			otherTagInput: '',
 			showHistoryPopup: false,
 			scanning: true,
 			showBubbles: false,
@@ -1031,22 +1057,23 @@ export default {
 			})
 		},
 		onAddOtherTag() {
-			uni.showModal({
-				title: this.archivePopup.otherLabel.replace(/\s*\+\s*$/, ''),
-				editable: true,
-				placeholderText: '请输入内容',
-				success: (res) => {
-					if (!res.confirm) return
-					const text = (res.content || '').trim()
-					if (!text) return
-					if (!this.archiveSelected.some((it) => it.name === text)) {
-						this.archiveSelected.push({
-							optionId: null,
-							name: text
-						})
-					}
-				}
-			})
+			this.otherTagInput = ''
+			this.showOtherTagPopup = true
+		},
+		closeOtherTagPopup() {
+			this.showOtherTagPopup = false
+			this.otherTagInput = ''
+		},
+		confirmOtherTag() {
+			const text = this.otherTagInput.trim()
+			if (!text) return
+			if (!this.archiveSelected.some((it) => it.name === text)) {
+				this.archiveSelected.push({
+					optionId: null,
+					name: text
+				})
+			}
+			this.closeOtherTagPopup()
 		},
 		async confirmArchivePopup() {
 			const index = this.archiveEditingIndex
@@ -1411,6 +1438,7 @@ export default {
 	.summary-title-row {
 		display: flex;
 		align-items: center;
+		margin-bottom: 20rpx;
 	}
 
 	.title-bar {
@@ -1428,12 +1456,14 @@ export default {
 	}
 
 	.summary-status {
-		display: block;
-		margin-top: 20rpx;
 		font-size: 36rpx;
 		font-weight: 700;
 		line-height: 50rpx;
-		color: #6eb6ff;
+		background-image: linear-gradient(to right, #FFFFFF 18%, #4EA1FF 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
 	}
 
 	.summary-desc {
@@ -1937,20 +1967,26 @@ export default {
 
 	.archive-other-btn {
 		margin-top: 28rpx;
-		width: 220rpx;
-		height: 64rpx;
-		border-radius: 32rpx;
-		border: 2rpx solid #2f6fe0;
+		width: 224rpx;
+		height: 72rpx;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		box-sizing: border-box;
+		position: relative;
 	}
 
 	.archive-other-text {
+		position: absolute;
+		top: 0;
+		left:0;
+		width: 100%;
+		height: 100%;
 		font-size: 26rpx;
 		line-height: 36rpx;
 		color: #4ea1ff;
+		text-align: center;
+		line-height: 72rpx;
 	}
 
 	.archive-tag-scroll {
@@ -1997,19 +2033,141 @@ export default {
 	}
 
 	.archive-confirm-btn {
+		width: 100%;
 		height: 96rpx;
 		border-radius: 48rpx;
-		background: linear-gradient(90deg, #1a6dff 0%, #3d9bff 50%, #1a6dff 100%);
-		box-shadow: 0 8rpx 28rpx rgba(40, 120, 255, 0.35);
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		position: relative;
+	}
+	.arBg{
+		width: 100%;
+		height: 100%;
 	}
 
 	.archive-confirm-text {
+		position: absolute;
+		top: 0;
+		left:0;
+		width: 100%;
+		height: 100%;
 		font-size: 32rpx;
 		font-weight: 600;
-		line-height: 44rpx;
 		color: #ffffff;
+		text-align: center;
+		line-height: 96rpx;
+	}
+
+	.other-tag-mask {
+		position: fixed;
+		inset: 0;
+		z-index: 2100;
+		background: rgba(0, 0, 0, 0.55);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 40rpx;
+		box-sizing: border-box;
+	}
+
+	.other-tag-popup {
+		position: relative;
+		width: 100%;
+		border-radius: 32rpx;
+		overflow: hidden;
+		background: #1a1b25;
+	}
+
+	.other-tag-popup-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.other-tag-popup-body {
+		position: relative;
+		z-index: 1;
+		padding: 40rpx 32rpx 36rpx;
+		box-sizing: border-box;
+	}
+
+	.other-tag-popup-title {
+		display: block;
+		font-size: 36rpx;
+		font-weight: 700;
+		line-height: 50rpx;
+		color: #ffffff;
+	}
+
+	.other-tag-popup-desc {
+		display: block;
+		margin-top: 12rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.45);
+	}
+
+	.other-tag-popup-input {
+		margin-top: 28rpx;
+		width: 100%;
+		height: 88rpx;
+		padding: 0 24rpx;
+		border-radius: 16rpx;
+		background: rgba(42, 42, 46, 0.9);
+		font-size: 28rpx;
+		color: #ffffff;
+		box-sizing: border-box;
+	}
+
+	.other-tag-placeholder {
+		color: rgba(255, 255, 255, 0.35);
+	}
+
+	.other-tag-popup-btns {
+		margin-top: 36rpx;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.other-tag-popup-btn {
+		position: relative;
+		flex: 1;
+		height: 88rpx;
+		line-height: 88rpx;
+		text-align: center;
+		border-radius: 26rpx;
+		font-size: 30rpx;
+		font-weight: 500;
+		color: #ffffff;
+		overflow: hidden;
+	}
+
+	.other-tag-popup-btn-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.other-tag-popup-btn-text {
+		position: relative;
+		z-index: 1;
+	}
+
+	.other-tag-popup-btn + .other-tag-popup-btn {
+		margin-left: 24rpx;
+	}
+
+	.other-tag-popup-btn.cancel {
+		border: 2rpx solid #3b82f6;
+	}
+
+	.other-tag-popup-btn.confirm {
+		background: linear-gradient(90deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
 	}
 </style>

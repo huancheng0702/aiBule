@@ -87,8 +87,11 @@
 				</view>
 
 				<view class="structure-block">
-					<text class="structure-title">睡眠结构</text>
-					<text class="structure-link">各睡眠区间</text>
+					<view class="" style="display: flex;align-items: center;margin-bottom: 30rpx;">
+						<text class="structure-title">睡眠结构</text>
+						<text class="structure-link" style="margin-left: 20rpx;">各睡眠区间</text>
+					</view>
+			
 					<view v-for="(item, index) in structureList" :key="item.key" class="structure-row"
 						:class="{ 'structure-row-last': index === structureList.length - 1 }">
 						<text class="structure-name">{{ item.name }}</text>
@@ -1402,6 +1405,11 @@
 	.score-label {
 		font-size: 28rpx;
 		color: #ffffff;
+		background-image: linear-gradient(to right, #FFFFFF 18%, #4EA1FF 100%);
+			-webkit-background-clip: text;
+			background-clip: text;
+			-webkit-text-fill-color: transparent;
+			color: transparent;
 	}
 
 	.score-row {
@@ -1484,11 +1492,8 @@
 
 	.structure-link {
 		display: block;
-		margin-top: 8rpx;
-		margin-bottom: 24rpx;
 		font-size: 24rpx;
 		color: #0A84FF;
-		line-height: 34rpx;
 	}
 
 	.structure-row {

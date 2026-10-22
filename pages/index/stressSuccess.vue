@@ -24,25 +24,31 @@
 				<image class="info-card-bg" src="/static/heartCardBg.png" mode=""></image>
 				<image class="card-icon" src="/static/jiancejieguo.png" mode=""></image>
 				<view class="card-main">
-					<image class="card-title" style="width: 148rpx;" src="/static/jianceText.png" mode=""></image>
+					<text class="card-title">
+						检测结果
+					</text>
 					<text class="card-text">{{ resultText }}</text>
 				</view>
 			</view>
-
+			
 			<view class="info-card">
 				<image class="info-card-bg" src="/static/heartCardBg.png" mode=""></image>
 				<image class="card-icon" src="/static/cankaofanwei.png" mode=""></image>
 				<view class="card-main">
-					<image class="card-title" style="width: 208rpx;" src="/static/cankaoText.png" mode=""></image>
+					<text class="card-title">
+						正常参考范围
+					</text>
 					<text v-for="(line, index) in referenceList" :key="index" class="card-text">{{ line }}</text>
 				</view>
 			</view>
-
+			
 			<view class="info-card">
 				<image class="info-card-bg" src="/static/heartCardBg.png" mode=""></image>
 				<image class="card-icon" src="/static/qushijianyi.png" mode=""></image>
 				<view class="card-main">
-					<image class="card-title" style="width: 148rpx;" src="/static/qushiText.png" mode=""></image>
+					<text class="card-title">
+						趋势建议
+					</text>
 					<text v-for="(line, index) in adviceList" :key="index" class="card-text">{{ line }}</text>
 				</view>
 			</view>
@@ -329,18 +335,22 @@
 	}
 
 	.card-title {
-		display: block;
-		width: 200rpx;
-		height: 30rpx;
-		margin-bottom: 18rpx;
+		font-size: 32rpx;
+		font-weight: 700;
+		background-image: linear-gradient(to right, #FFFFFF 18%, #4EA1FF 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
 	}
-
+	
 	.card-text {
 		display: block;
 		font-size: 26rpx;
 		color: #ffffff;
-		line-height: 40rpx;
+		margin-top: 18rpx;
 	}
+	
 
 	.retry-btn {
 		position: relative;

@@ -230,7 +230,10 @@ export function openOneKeyLogin(hooks = {}) {
 						}
 					} else {
 						//SDK获取Token成功
-						let data = oneKeyLoginListenerResult.result
+						// let data = oneKeyLoginListenerResult.result
+						let data = oneKeyLoginListenerResult.data
+						console.log(oneKeyLoginListenerResult)
+						console.log(123,data)
 						if (typeof data == 'string') {
 							try {
 								data = JSON.parse(data)

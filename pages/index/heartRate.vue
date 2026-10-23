@@ -1170,8 +1170,6 @@
 					} catch (e) {
 						console.log('[heartRate] 关闭心率失败', e)
 					}
-					// 实时推流关闭后立刻恢复后台自动监测，避免影响夜间心率与睡眠采集
-					BleService.restoreAutoMonitor().catch(() => {})
 				}
 			},
 			async finishMeasure(bpm) {

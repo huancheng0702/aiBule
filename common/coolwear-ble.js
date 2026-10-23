@@ -13,7 +13,9 @@ const METHODS_WITH_OPTIONS = new Set([
   'setHRVSwitch',
   'setBloodOxygenSwitch',
   'setHeartAutoSwitch',
-  'setDeviceName'
+  'setDeviceName',
+  'setSensorOn',
+  'syncUserInfo'
 ])
 
 let nativeModule = null
@@ -271,6 +273,57 @@ const CoolWearBLE = {
   /** 修改设备蓝牙名称，写入戒指硬件（修改后通常需断开重连生效） */
   setDeviceName(name) {
     return callNative('setDeviceName', { name })
+  },
+
+  /**
+   * sensor 数据上传开关：官方要求 App 进前台开、进后台关。
+   * 关闭后设备停止向 App 推送数据（数据会在设备侧缓存，重新打开/重连后补发），可省电。
+   */
+  setSensorOn(options = {}) {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (!mod || typeof mod.setSensorOn !== 'function') {
+        return Promise.resolve({ fallback: true })
+      }
+    } catch (e) {}
+    return callNative('setSensorOn', { open: options.open !== false }, 8000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({ fallback: true })
+    // #endif
+  },
+
+  /** 同步用户信息（性别/年龄/身高/体重/左右手），睡眠与自动监测判定依赖设备端用户信息 */
+  syncUserInfo(options = {}) {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (!mod || typeof mod.syncUserInfo !== 'function') {
+        return Promise.resolve({ fallback: true })
+      }
+    } catch (e) {}
+    return callNative('syncUserInfo', options || {}, 8000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({ fallback: true })
+    // #endif
+  },
+
+  /** 拉取原生侧缓存的健康事件（App 在后台/JS 未就绪时收到的睡眠、自动心率等），拉取后原生会清空 */
+  pullCachedHealthEvents() {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (!mod || typeof mod.pullCachedHealthEvents !== 'function') {
+        return Promise.resolve({ events: [] })
+      }
+    } catch (e) {}
+    return callNative('pullCachedHealthEvents', {}, 8000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({ events: [] })
+    // #endif
   },
 
   requestBattery() {

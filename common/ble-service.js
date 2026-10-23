@@ -42,7 +42,6 @@ let eventsBound = false
 let scanTimer = null
 let reconnecting = false
 let lastUploadedSportKey = ''
-let lastUploadedSleepKey = ''
 let lastSyncInfoAt = 0
 
 function throttledSendSyncInfo(force = false) {
@@ -50,6 +49,559 @@ function throttledSendSyncInfo(force = false) {
 	if (!force && now - lastSyncInfoAt < 5000) return
 	lastSyncInfoAt = now
 	CoolWearBLE.sendSyncInfo().catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
+// 自动监测数据上报 / 失败补报 / 睡眠事件聚合
+// ---------------------------------------------------------------------------
+
+const PENDING_UPLOAD_KEY = 'blePendingUploads'
+const SLEEP_STATE_KEY = 'bleSleepAccumulator'
+const SLEEP_DONE_KEY = 'bleSleepUploadedKeys'
+const MAX_PENDING_UPLOADS = 30
+const SLEEP_MAX_EVENTS = 600
+const AUTO_KEY_CACHE = new Set()
+
+// 睡眠状态映射：以厂商文档为准（1开始/2深睡/3浅睡/4苏醒），5 兼容部分固件的体动
+const SLEEP_STAGE_MAP = {
+	1: 'light',
+	2: 'deep',
+	3: 'light',
+	4: 'awake',
+	5: 'awake'
+}
+
+function pad2(n) {
+	return n < 10 ? '0' + n : String(n)
+}
+
+function formatMs(ms) {
+	const d = new Date(ms)
+	if (isNaN(d.getTime())) return ''
+	return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
+		pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds())
+}
+
+/** 秒/毫秒统一成毫秒；过小的数值（分钟偏移等）返回 0 表示无法当作绝对时间 */
+function toTimeMs(value) {
+	const n = Number(value)
+	if (!n || Number.isNaN(n)) return 0
+	if (n > 1e12) return n
+	if (n > 1e9) return n * 1000
+	return 0
+}
+
+function loadPendingUploads() {
+	try {
+		const arr = uni.getStorageSync(PENDING_UPLOAD_KEY)
+		return Array.isArray(arr) ? arr : []
+	} catch (e) {
+		return []
+	}
+}
+
+let pendingUploads = loadPendingUploads()
+
+function savePendingUploads() {
+	try {
+		uni.setStorageSync(PENDING_UPLOAD_KEY, pendingUploads.slice(-MAX_PENDING_UPLOADS))
+	} catch (e) {
+		// ignore
+	}
+}
+
+function enqueueUpload(payload) {
+	if (!payload || !Array.isArray(payload.dataList) || !payload.dataList.length) return
+	pendingUploads.push(payload)
+	savePendingUploads()
+}
+
+/** 统一上报入口：未登录或失败时进补报队列，连接/回前台/登录后重放 */
+function submitDeviceData(dataList, label) {
+	const items = (dataList || []).filter(Boolean)
+	if (!items.length) return
+	const device = state.device || {}
+	const payload = {
+		deviceMac: device.mac || device.id || '',
+		deviceVersion: getFirmware() || '',
+		batteryLevel: getBatteryLevel(),
+		dataList: items
+	}
+	if (!hasLogin()) {
+		console.log(`[ble-service] 未登录，${label}数据先缓存，登录后补报`, items.length)
+		enqueueUpload(payload)
+		return
+	}
+	console.log(`[ble-service] 上报${label}:`, JSON.stringify(payload))
+	uploadDeviceData(payload)
+		.then((res) => {
+			console.log(`[ble-service] 上报${label}成功:`, JSON.stringify(res))
+		})
+		.catch((e) => {
+			console.log(`[ble-service] 上报${label}失败，进入补报队列:`, JSON.stringify({
+				msg: e && (e.msg || e.message),
+				err: e && (e.errMsg || String(e))
+			}))
+			enqueueUpload(payload)
+		})
+}
+
+async function flushPendingUploads() {
+	if (!pendingUploads.length || !hasLogin()) return
+	const batch = pendingUploads.slice(0, 10)
+	pendingUploads = pendingUploads.slice(10)
+	savePendingUploads()
+	for (const payload of batch) {
+		try {
+			await uploadDeviceData(payload)
+			console.log('[ble-service] 补报成功:', payload.dataList.length)
+		} catch (e) {
+			enqueueUpload(payload)
+			console.log('[ble-service] 补报失败，留待下次:', (e && (e.msg || e.message)) || e)
+			break
+		}
+	}
+}
+
+function markAutoKey(key) {
+	if (AUTO_KEY_CACHE.size > 4000) AUTO_KEY_CACHE.clear()
+	if (AUTO_KEY_CACHE.has(key)) return false
+	AUTO_KEY_CACHE.add(key)
+	return true
+}
+
+/** 把 iOS 包装结构 / 单条对象 / 数组统一拍平成数据条目列表 */
+function extractSeries(data) {
+	const out = []
+	const pushItem = (it) => {
+		if (!it || typeof it !== 'object' || Array.isArray(it)) return
+		out.push(it)
+	}
+	const walk = (it) => {
+		if (!it) return
+		if (Array.isArray(it)) {
+			it.forEach(walk)
+			return
+		}
+		if (typeof it !== 'object') return
+		const inner = it.heartInfos || it.sportInfos || it.data || it.list || it.items
+		if (Array.isArray(inner)) {
+			inner.forEach(pushItem)
+			return
+		}
+		pushItem(it)
+	}
+	walk(data)
+	return out
+}
+
+function pickNumber(item, keys) {
+	for (let i = 0; i < keys.length; i++) {
+		const k = keys[i]
+		if (item[k] != null) {
+			const n = Number(item[k])
+			if (!Number.isNaN(n)) return n
+		}
+	}
+	return null
+}
+
+function buildSeriesItems(series, dataType, valueKeys, range) {
+	const items = []
+	;(series || []).forEach((it) => {
+		if (!it || typeof it !== 'object') return
+		const v = pickNumber(it, valueKeys)
+		if (v == null || v <= 0) return
+		if (range && (v < range[0] || v > range[1])) return
+		const ms = toTimeMs(it.time != null ? it.time : it.measureTime)
+		const measureTime = formatMs(ms || Date.now())
+		const key = `${dataType}|${measureTime}|${v}`
+		if (!markAutoKey(key)) return
+		if (dataType === 'blood_oxygen') {
+			items.push({
+				dataType: 'blood_oxygen',
+				oxygen: v,
+				measureTime,
+				source: '1'
+			})
+		} else {
+			items.push({
+				dataType,
+				heartNum: v,
+				measureTime,
+				source: '1'
+			})
+		}
+	})
+	return items
+}
+
+/** 自动心率（戒指按间隔自动记录的历史心率） */
+function reportDailyHeart(data) {
+	console.log('[ble-service] onHeartRateDaily raw=', data)
+	const items = buildSeriesItems(extractSeries(data), 'heart_rate', ['heartNums', 'heartNum', 'heart', 'hr', 'bpm', 'value'], [25, 220])
+	if (items.length) submitDeviceData(items, '自动心率')
+}
+
+let lastRealtimeHeartAt = 0
+/** 实时心率流（onHeartRate，心率检测开关打开后设备持续推送）；手动测量期间由测量页处理，这里节流上报 */
+function reportRealtimeHeart(data) {
+	if (state.manualMeasure) return
+	const now = Date.now()
+	if (now - lastRealtimeHeartAt < 60000) return
+	lastRealtimeHeartAt = now
+	const items = buildSeriesItems(extractSeries(data), 'heart_rate', ['heartNums', 'heartNum', 'heart', 'hr', 'bpm', 'value'], [25, 220])
+	if (items.length) submitDeviceData(items, '实时心率')
+}
+
+/** 自动血氧（历史血氧；手动测量期间由页面自行上报，避免重复） */
+function reportAutoOxygen(data) {
+	if (state.manualMeasure) return
+	const items = buildSeriesItems(extractSeries(data), 'blood_oxygen', ['o2', 'oxygen', 'spo2', 'bloodOxygen', 'oxygenValue', 'o2Value', 'value'], [70, 100])
+	if (items.length) submitDeviceData(items, '自动血氧')
+}
+
+/** 自动 HRV / 压力 */
+function reportAutoHrv(data) {
+	if (state.manualMeasure) return
+	const series = extractSeries(data)
+	const hrvItems = buildSeriesItems(series, 'hrv', ['hrvNums', 'hrv', 'hrvValue', 'rmssd', 'sdnn', 'value'], [1, 300])
+	if (hrvItems.length) submitDeviceData(hrvItems, '自动HRV')
+	const stressItems = []
+	series.forEach((it) => {
+		const sv = pickNumber(it, ['stress', 'pressure', 'stressValue', 'press'])
+		if (sv == null || sv < 0 || sv > 100) return
+		const ms = toTimeMs(it.time)
+		const measureTime = formatMs(ms || Date.now())
+		const key = `stress|${measureTime}|${sv}`
+		if (!markAutoKey(key)) return
+		stressItems.push({
+			dataType: 'stress',
+			heartNum: sv,
+			measureTime,
+			source: '1'
+		})
+	})
+	if (stressItems.length) submitDeviceData(stressItems, '自动压力')
+}
+
+/** 从 iOS 原始睡眠事件流 / Android 聚合结构里提取睡眠事件 {type,time} */
+function extractSleepEvents(data) {
+	const events = []
+	const addEvent = (ev) => {
+		if (!ev || typeof ev !== 'object') return
+		const type = pickNumber(ev, ['SleepType', 'sleepType', 'type'])
+		const time = pickNumber(ev, ['SleepStartTime', 'sleepStartTime', 'sleepTime', 'time'])
+		if (type == null || time == null) return
+		events.push({
+			type,
+			time
+		})
+	}
+	const handle = (it) => {
+		if (!it) return
+		if (Array.isArray(it)) {
+			it.forEach(handle)
+			return
+		}
+		if (typeof it !== 'object') return
+		if (Array.isArray(it.sleepInfos)) it.sleepInfos.forEach(addEvent)
+		else if (it.sleepInfos && typeof it.sleepInfos === 'object') addEvent(it.sleepInfos)
+		if (Array.isArray(it.sleeps)) it.sleeps.forEach(addEvent)
+		if (it.SleepType != null || it.SleepStartTime != null) addEvent(it)
+	}
+	handle(data)
+	if (data && Array.isArray(data.sessions)) data.sessions.forEach(handle)
+	if (data && data.raw && typeof data.raw === 'object') handle(data.raw)
+	return events
+}
+
+function loadSleepAccumulator() {
+	try {
+		const v = uni.getStorageSync(SLEEP_STATE_KEY)
+		return v && typeof v === 'object' && Array.isArray(v.events) ? v : null
+	} catch (e) {
+		return null
+	}
+}
+
+function saveSleepAccumulator(acc) {
+	try {
+		uni.setStorageSync(SLEEP_STATE_KEY, acc)
+	} catch (e) {
+		// ignore
+	}
+}
+
+function loadUploadedSleepKeys() {
+	try {
+		const arr = uni.getStorageSync(SLEEP_DONE_KEY)
+		return Array.isArray(arr) ? arr : []
+	} catch (e) {
+		return []
+	}
+}
+
+function markSleepKey(key) {
+	const keys = loadUploadedSleepKeys()
+	if (keys.indexOf(key) !== -1) return false
+	keys.push(key)
+	try {
+		uni.setStorageSync(SLEEP_DONE_KEY, keys.slice(-60))
+	} catch (e) {
+		// ignore
+	}
+	return true
+}
+
+/** 把累计的睡眠事件收尾成一个完整会话（分钟数由相邻事件时间差计算） */
+function closeSleepAccumulator(acc) {
+	const events = (acc && acc.events ? acc.events : []).slice()
+	if (events.length < 2) return null
+	events.sort((a, b) => a.t - b.t)
+	const startMs = events[0].t
+	const endMs = events[events.length - 1].t
+	const totalMin = Math.round((endMs - startMs) / 60000)
+	if (totalMin <= 0) return null
+	const sums = {
+		deep: 0,
+		light: 0,
+		rem: 0,
+		awake: 0
+	}
+	const segments = []
+	for (let i = 0; i < events.length - 1; i++) {
+		const cur = events[i]
+		const next = events[i + 1]
+		const dur = Math.max(1, Math.round((next.t - cur.t) / 60000))
+		if (sums[cur.stage] == null) continue
+		sums[cur.stage] += dur
+		segments.push({
+			stage: cur.stage,
+			dur
+		})
+	}
+	const segTotal = segments.reduce((s, x) => s + x.dur, 0)
+	if (totalMin > segTotal) {
+		const lastStage = events[events.length - 1].stage
+		if (sums[lastStage] != null) sums[lastStage] += totalMin - segTotal
+		segments.push({
+			stage: lastStage,
+			dur: totalMin - segTotal
+		})
+	}
+	return {
+		startMs,
+		endMs,
+		totalMin,
+		deepMin: sums.deep,
+		lightMin: sums.light,
+		remMin: sums.rem,
+		awakeMin: sums.awake,
+		segments
+	}
+}
+
+/**
+ * iOS 原始睡眠事件流聚合：
+ * 固件发的是 { SleepStartTime, SleepType } 事件（同一段只发一次），
+ * 这里跨推送累计事件、按相邻事件时间差算分段时长，收到苏醒事件后结算一晚睡眠。
+ */
+function ingestSleepEvents(events) {
+	const GAP_MS = 3 * 3600 * 1000
+	const completed = []
+	let acc = loadSleepAccumulator()
+	if (!acc) acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
+	events.forEach((ev) => {
+		const nowAt = Date.now()
+		// 距上一条事件超过 3 小时（跨天/长时间未连上）先结算上一段，避免跨夜时长被合并
+		if (acc.events.length > 1 && acc.lastAt && nowAt - acc.lastAt > GAP_MS) {
+			const session = closeSleepAccumulator(acc)
+			if (session) completed.push(session)
+			acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
+		}
+		const stage = SLEEP_STAGE_MAP[ev.type] || 'light'
+		let ms = toTimeMs(ev.time)
+		if (!ms) {
+			// 非绝对时间时用递推兜底，保证事件可累计
+			ms = (acc.lastMs || nowAt - 60000) + 60000
+		}
+		if (acc.lastMs && ms <= acc.lastMs) ms = acc.lastMs + 60000
+		if (!acc.startMs || ev.type === 1) {
+			if (acc.events.length > 1 && acc.startMs) {
+				const session = closeSleepAccumulator(acc)
+				if (session) completed.push(session)
+				acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
+			}
+			acc.startMs = ms
+		}
+		acc.lastMs = ms
+		acc.lastAt = nowAt
+		const key = ms + '|' + stage
+		if (!acc.events.some((e) => e.key === key)) {
+			acc.events.push({
+				key,
+				t: ms,
+				stage,
+				type: ev.type
+			})
+		}
+		if (acc.events.length > SLEEP_MAX_EVENTS) acc.events = acc.events.slice(-SLEEP_MAX_EVENTS)
+		if (ev.type === 4 || ev.type === 5) {
+			const session = closeSleepAccumulator(acc)
+			if (session) completed.push(session)
+			acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
+		}
+	})
+	saveSleepAccumulator(acc)
+	return completed
+}
+
+function sleepTypeOfStage(stage) {
+	if (stage === 'deep') return 2
+	if (stage === 'awake') return 4
+	return 3
+}
+
+function buildSleepDataList(session) {
+	const startMs = Number(session.startMs) || 0
+	const totalMin = Number(session.totalMin) || 0
+	if (!startMs || totalMin <= 0) return []
+	const endMs = Number(session.endMs) || startMs + totalMin * 60000
+	if (endMs <= startMs) return []
+	const list = [{
+		dataType: 'sleep',
+		sleepType: 1,
+		measureTime: formatMs(startMs),
+		endTime: formatMs(endMs),
+		source: '1'
+	}]
+	let cursor = startMs
+	;(session.segments || []).forEach((seg) => {
+		const durMs = Math.max(0, Math.round(Number(seg.dur) || 0) * 60000)
+		if (!durMs) return
+		const from = cursor
+		const to = Math.min(endMs, cursor + durMs)
+		list.push({
+			dataType: 'sleep',
+			sleepType: sleepTypeOfStage(seg.stage),
+			measureTime: formatMs(from),
+			endTime: formatMs(to),
+			source: '1'
+		})
+		cursor = to
+	})
+	return list
+}
+
+/** 上报一晚完整的睡眠会话（按开始时间+总时长去重，持久化到本地避免重复上报） */
+function uploadSleepSession(session) {
+	if (!session) return
+	const startMs = Number(session.startMs) || 0
+	const totalMin = Number(session.totalMin) || 0
+	if (!startMs || totalMin <= 0) return
+	const key = `${formatMs(startMs)}|${totalMin}`
+	if (!markSleepKey(key)) {
+		console.log('[ble-service] 睡眠会话已上报过，跳过:', key)
+		return
+	}
+	const dataList = buildSleepDataList(session)
+	if (!dataList.length) return
+	submitDeviceData(dataList, '睡眠')
+}
+
+/** 判断某条睡眠 payload 是否是聚合结构（Android 正常路径），否则按 iOS 原始事件流处理 */
+function sleepPayloadHasAggregate(data) {
+	const sessions = Array.isArray(data && data.sessions) ? data.sessions : (data ? [data] : [])
+	return sessions.some((s) => s && typeof s === 'object' && (
+		s.deepTime != null || s.lightTime != null || s.sleepTime != null ||
+		s.sleepDetail != null || s.startTime != null || s.endTime != null
+	))
+}
+
+function handleSleepPayload(data) {
+	if (!data) return
+	if (!sleepPayloadHasAggregate(data)) {
+		const events = extractSleepEvents(data)
+		if (events.length) {
+			const completed = ingestSleepEvents(events)
+			console.log('[ble-service] 睡眠事件聚合：收到事件', events.length, '条，结算会话', completed.length, '个')
+			completed.forEach(uploadSleepSession)
+			return
+		}
+	}
+	const sessions = Array.isArray(data.sessions) && data.sessions.length ? data.sessions : [data]
+	let latest = null
+	sessions.forEach((s) => {
+		const sleep = normalizeSleep({
+			...s,
+			typeMap: data.typeMap,
+			sessions: []
+		})
+		if (!sleep) return
+		latest = sleep
+		reportSleepToCloud(sleep)
+	})
+	if (latest) {
+		state.sleep = latest
+		emit()
+	}
+}
+
+async function pullCachedHealthEvents() {
+	try {
+		const res = await CoolWearBLE.pullCachedHealthEvents()
+		const events = res && Array.isArray(res.events) ? res.events : []
+		if (!events.length) return
+		console.log('[ble-service] 回放原生缓存健康事件:', events.length)
+		events.forEach((ev) => {
+			console.log(121131312,ev)
+			const type = ev && ev.type
+			const data = ev && ev.data
+			if (type === 'sleep') handleSleepPayload(data)
+			else if (type === 'dailyHeart') reportDailyHeart(data)
+			else if (type === 'hrv') reportAutoHrv(data)
+			else if (type === 'spo2') reportAutoOxygen(data)
+		})
+	} catch (e) {
+		console.log('[ble-service] 拉取原生缓存事件失败', e && (e.message || e))
+	}
+}
+
+let postConnectTimer = null
+
+function cancelPostConnectInit() {
+	if (postConnectTimer) {
+		clearTimeout(postConnectTimer)
+		postConnectTimer = null
+	}
+}
+
+/**
+ * 连接就绪后统一下发初始化（延迟 1.5s 等设备配对完成）：
+ * 同步时间 -> 打开 sensor 上传开关 -> 同步用户信息 -> 开启自动监测 -> 拉基础信息
+ * iOS connected/completed 双回调、重连重复回调都通过这里去重，只执行一次。
+ */
+function schedulePostConnectInit() {
+	if (postConnectTimer) return
+	postConnectTimer = setTimeout(async () => {
+		postConnectTimer = null
+		if (!state.connected) return
+		console.log('[ble-service] 连接初始化：同步时间/传感器开关/用户信息/自动监测')
+		try {
+			await CoolWearBLE.syncTime()
+		} catch (e) {}
+		try {
+			await CoolWearBLE.setSensorOn({ open: true })
+		} catch (e) {}
+		try {
+			await BleService.syncUserInfo()
+		} catch (e) {}
+		await BleService.enableAutoMeasure().catch(() => {})
+		await CoolWearBLE.sendSyncInfo().catch(() => {})
+		flushPendingUploads()
+		pullCachedHealthEvents()
+	}, 1500)
 }
 
 function cloneState() {
@@ -249,8 +801,10 @@ function normalizeSleep(data) {
 	let remMin = toMinutes(session.remTime)
 	let awakeMin = toMinutes(session.movementTime)
 	let totalMin = toMinutes(session.sleepTime)
-	const startSec = Number(session.startTime) || 0
-	const endSec = Number(session.endTime) || 0
+	let startMs = toTimeMs(session.startTime)
+	let endMs = toTimeMs(session.endTime)
+	let startSec = startMs ? Math.round(startMs / 1000) : 0
+	let endSec = endMs ? Math.round(endMs / 1000) : 0
 	const sleepDay = Number(session.sleepDay) || 0
 
 	let segments = parseSleepDetail(session.sleepDetail || data.sleepDetail, typeMap)
@@ -290,6 +844,16 @@ function normalizeSleep(data) {
 		totalMin = Math.round((endSec - startSec) / 60)
 	}
 	if (!totalMin) totalMin = deepMin + lightMin + remMin + awakeMin
+
+	// 设备偶发不带上/下半段绝对时间：用总时长补算，避免上报到 1970 或“当前时间”
+	if (!startMs && endMs && totalMin > 0) {
+		startMs = endMs - totalMin * 60000
+		startSec = Math.round(startMs / 1000)
+	}
+	if (!endMs && startMs && totalMin > 0) {
+		endMs = startMs + totalMin * 60000
+		endSec = Math.round(endMs / 1000)
+	}
 
 	if (!segments.length && totalMin > 0) {
 		const parts = [{
@@ -372,6 +936,8 @@ function normalizeSleep(data) {
 		lightMin,
 		remMin,
 		awakeMin,
+		startMs,
+		endMs,
 		startTime: startSec,
 		endTime: endSec,
 		sleepDay,
@@ -409,7 +975,7 @@ function formatMeasureTime(value) {
 }
 
 function reportSportToCloud(sport) {
-	if (!sport || !hasLogin()) return
+	if (!sport) return
 	const key = [sport.steps, sport.distanceM, sport.calories].join('|')
 	if (key === lastUploadedSportKey) {
 		console.log('[reportSportToCloud] 数据未变化，跳过上报:', key)
@@ -430,6 +996,10 @@ function reportSportToCloud(sport) {
 			source: '1'
 		}]
 	}
+	if (!hasLogin()) {
+		enqueueUpload(payload)
+		return
+	}
 	console.log('[reportSportToCloud] 上报步数请求:', JSON.stringify(payload))
 	uploadDeviceData(payload)
 		.then((res) => {
@@ -437,63 +1007,30 @@ function reportSportToCloud(sport) {
 		})
 		.catch((e) => {
 			if (lastUploadedSportKey === key) lastUploadedSportKey = ''
-			console.log('[reportSportToCloud] 上报步数失败:', JSON.stringify({
+			enqueueUpload(payload)
+			console.log('[reportSportToCloud] 上报步数失败，进入补报队列:', JSON.stringify({
 				msg: e && (e.msg || e.message),
 				err: e && (e.errMsg || String(e))
 			}))
 		})
 }
 
-function sleepTypeOfStage(stage) {
-	if (stage === 'deep') return 2
-	if (stage === 'awake') return 4
-	return 3
-}
-
-function buildSleepUploadList(sleep) {
-	const list = []
-	const start = formatMeasureTime(sleep.startTime || sleep.updatedAt)
-	const end = formatMeasureTime(sleep.endTime || sleep.updatedAt)
-	list.push({
-		dataType: 'sleep',
-		sleepType: 1,
-		measureTime: start,
-		endTime: end,
-		source: '1'
-	})
-	let cursor = Number(sleep.startTime) || 0;
-	(sleep.segments || []).forEach((seg) => {
-		const durSec = Math.max(0, Math.round(Number(seg.dur) || 0) * 60)
-		if (!durSec) return
-		const from = cursor
-		const to = cursor + durSec
-		list.push({
-			dataType: 'sleep',
-			sleepType: sleepTypeOfStage(seg.stage),
-			measureTime: formatMeasureTime(from),
-			endTime: formatMeasureTime(to),
-			source: '1'
-		})
-		cursor = to
-	})
-	return list
-}
-
 function reportSleepToCloud(sleep) {
-	if (!sleep || !hasLogin()) return
-	if (!(Number(sleep.totalMin) > 0) && !sleep.startTime) return
-	const key = [sleep.startTime, sleep.endTime, sleep.totalMin].join('|')
-	if (key === lastUploadedSleepKey) return
-	lastUploadedSleepKey = key
-	const device = state.device || {}
-	uploadDeviceData({
-		deviceMac: device.mac || device.id || '',
-		deviceVersion: getFirmware() || '',
-		batteryLevel: getBatteryLevel(),
-		dataList: buildSleepUploadList(sleep)
-	}).catch((e) => {
-		if (lastUploadedSleepKey === key) lastUploadedSleepKey = ''
-		console.log('[ble-service] upload sleep failed', e && (e.msg || e.message))
+	if (!sleep) return
+	const startMs = Number(sleep.startMs) || 0
+	const totalMin = Number(sleep.totalMin) || 0
+	if (!startMs || totalMin <= 0) {
+		console.log('[ble-service] 睡眠数据不完整，跳过上报:', JSON.stringify({
+			startMs,
+			totalMin
+		}))
+		return
+	}
+	uploadSleepSession({
+		startMs,
+		endMs: Number(sleep.endMs) || startMs + totalMin * 60000,
+		totalMin,
+		segments: sleep.segments || []
 	})
 }
 
@@ -781,18 +1318,17 @@ function pickBatteryField(o, keys) {
 		CoolWearBLE.on('onConnectStateChange', (data) => {
 			const status = data && data.status != null ? Number(data.status) : 0
 			state.connectStatus = status
-			state.connected = status === 1
-			if (state.connected) {
-				Promise.resolve()
-					.then(() => CoolWearBLE.syncTime().catch(() => {}))
-					.then(() => BleService.enableAutoMeasure().catch(() => {}))
-					.then(() => CoolWearBLE.sendSyncInfo().catch(() => {}))
-				setTimeout(() => {
-					if (state.connected) throttledSendSyncInfo(true)
-				}, 8000)
+			if (status === 1) {
+				state.connected = true
+				// 连接就绪后统一下发初始化（内含去重：iOS connected/completed 双回调只执行一次）
+				schedulePostConnectInit()
 				CoolWearBLE.requestBattery().catch(() => {})
 				CoolWearBLE.requestDeviceInfo().catch(() => {})
 				persistDevice()
+			} else if (status === 0) {
+				// 只有明确的“断开”状态才重置连接态，避免“连接中(2)”误杀已建立的连接
+				state.connected = false
+				cancelPostConnectInit()
 			}
 			emit()
 		})
@@ -838,13 +1374,25 @@ function pickBatteryField(o, keys) {
 		})
 
 		CoolWearBLE.on('onSleep', (data) => {
-			const sleep = normalizeSleep(data)
-			console.log('[ble-service] onSleep raw=', data, 'normalized=', sleep)
-			if (sleep) {
-				state.sleep = sleep
-				emit()
-				reportSleepToCloud(sleep)
-			}
+			console.log('[ble-service] onSleep raw=', data)
+			handleSleepPayload(data)
+		})
+
+		// 自动监测数据上报（此前只上报了步数和睡眠，心率/血氧/HRV 收到后直接丢了）
+		CoolWearBLE.on('onHeartRate', (data) => {
+			reportRealtimeHeart(data)
+		})
+
+		CoolWearBLE.on('onHeartRateDaily', (data) => {
+			reportDailyHeart(data)
+		})
+
+		CoolWearBLE.on('onBloodOxygen', (data) => {
+			reportAutoOxygen(data)
+		})
+
+		CoolWearBLE.on('onHRV', (data) => {
+			reportAutoHrv(data)
 		})
 	}
 
@@ -931,7 +1479,7 @@ function pickBatteryField(o, keys) {
 					state.connected = true
 					state.connectStatus = 1
 					emit()
-					throttledSendSyncInfo(true)
+					schedulePostConnectInit()
 					await CoolWearBLE.requestBattery().catch(() => {})
 					return true
 				}
@@ -986,7 +1534,7 @@ function pickBatteryField(o, keys) {
 						state.connected = true
 						state.connectStatus = 1
 						emit()
-						await CoolWearBLE.sendSyncInfo().catch(() => {})
+						schedulePostConnectInit()
 						await CoolWearBLE.requestBattery().catch(() => {})
 						persistDevice()
 						return true
@@ -1021,7 +1569,7 @@ function pickBatteryField(o, keys) {
 					emit()
 					return false
 				}
-				await BleService.enableAutoMeasure().catch(() => {})
+				schedulePostConnectInit()
 				persistDevice()
 				notifyBindToCloud()
 				return true
@@ -1175,7 +1723,7 @@ function pickBatteryField(o, keys) {
 				emit()
 				throw new Error('连接超时，请确认戒指在附近且未被其他手机占用')
 			}
-			await BleService.enableAutoMeasure().catch(() => {})
+			schedulePostConnectInit()
 			persistDevice()
 			uni.setStorageSync('onboardingDone', true)
 			uni.setStorageSync('isFirstLogin', false)
@@ -1201,28 +1749,84 @@ function pickBatteryField(o, keys) {
 
 		async enableAutoMeasure() {
 			if (!state.connected) return false
+			// 仅配置设备的自动监测计划；实时心率、HRV、血氧开关只由对应手动测量页面控制。
 			try {
-				await CoolWearBLE.setHeartAutoSwitch({ heart: true, o2: true, intervalMin: 30 })
+				await CoolWearBLE.setHeartAutoSwitch({
+					heart: true,
+					o2: true,
+					intervalMin: 30
+				})
+				return true
 			} catch (e) {
 				console.log('[ble-service] setHeartAutoSwitch failed', e)
+				return false
+			}
+		},
+
+		/** 同步用户信息到设备（睡眠/自动监测判定依赖设备端用户信息，官方连接流程要求） */
+		async syncUserInfo() {
+			if (!state.connected) return false
+			let profile = {}
+			try {
+				profile = uni.getStorageSync('userBasicInfo') || {}
+			} catch (e) {}
+			let userId = 0
+			try {
+				userId = Number(uni.getStorageSync('userId')) || 0
+			} catch (e) {}
+			const toInt = (v, def) => {
+				const n = Number(v)
+				return Number.isNaN(n) || !n ? def : Math.round(n)
+			}
+			let age = 30
+			if (profile.birthday) {
+				const d = new Date(String(profile.birthday).replace(/-/g, '/'))
+				if (!isNaN(d.getTime())) {
+					const now = new Date()
+					age = Math.max(1, now.getFullYear() - d.getFullYear())
+				}
+			}
+			const params = {
+				userId,
+				sex: profile.gender === 'female' ? 1 : 0, // 设备协议：1 女，0 男
+				age,
+				height: toInt(profile.height, 170),
+				weight: toInt(profile.weight, 60),
+				lrHand: 1
 			}
 			try {
-				await CoolWearBLE.setHeartRateSwitch(true)
+				await CoolWearBLE.syncUserInfo(params)
+				console.log('[ble-service] syncUserInfo 已发送', params)
+				return true
 			} catch (e) {
-				console.log('[ble-service] setHeartRateSwitch failed', e)
+				console.log('[ble-service] syncUserInfo skipped', e && (e.message || e))
+				return false
 			}
+		},
+
+		/** App 回前台：重开 sensor 上传开关、补报队列、回放原生缓存事件 */
+		async onAppShow() {
+			if (state.connected) {
+				try {
+					await CoolWearBLE.setSensorOn({ open: true })
+				} catch (e) {}
+			}
+			flushPendingUploads()
+			pullCachedHealthEvents()
+		},
+
+		/** App 进后台：按官方建议关闭 sensor 上传开关（设备会缓存数据，前台/重连后补发） */
+		async onAppHide() {
+			if (!state.connected) return
 			try {
-				await CoolWearBLE.setHRVSwitch(true)
+				await CoolWearBLE.setSensorOn({ open: false })
 			} catch (e) {}
-			try {
-				await CoolWearBLE.setBloodOxygenSwitch(true)
-			} catch (e) {}
-			return true
 		},
 
 		async disconnect(unbind = false) {
 			let bindId = ''
 			if (unbind) bindId = await resolveBindId()
+			cancelPostConnectInit()
 			try {
 				if (state.inited) {
 					await CoolWearBLE.disconnect()

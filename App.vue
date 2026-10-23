@@ -23,9 +23,17 @@
 			BleService.tryAutoReconnect().catch((e) => {
 				console.log('[App] auto reconnect on show', e && e.message)
 			})
+			// 重开 sensor 上传开关、补报离线缓存、回放原生缓存的健康事件
+			BleService.onAppShow().catch((e) => {
+				console.log('[App] ble onAppShow', e && e.message)
+			})
 		},
 		onHide: function() {
 			console.log('App Hide')
+			// 官方建议：进后台关闭 sensor 数据上传开关（设备侧会缓存，回前台/重连后补发）
+			BleService.onAppHide().catch((e) => {
+				console.log('[App] ble onAppHide', e && e.message)
+			})
 		}
 	}
 </script>

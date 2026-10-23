@@ -599,6 +599,7 @@ UNI_EXPORT_METHOD(@selector(setHeartAutoSwitch:callback:))
         }
         YD_SyncAutoHeartCmd *cmd = [[YD_SyncAutoHeartCmd alloc] init];
         cmd.onoff = heart ? 1 : 0;
+        cmd.hr24hOnoff = heart ? 1 : 0;
         cmd.O2_onoff = o2 ? 1 : 0;
         cmd.time = (Byte)interval;
         [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];

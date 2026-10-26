@@ -343,7 +343,7 @@
 					) || (list.length === 1 ? list[0] : null)
 					const bindId = boundDevice && (boundDevice.bindId != null ? boundDevice.bindId : boundDevice.id)
 					if (bindId == null) throw new Error('未找到当前设备的绑定信息')
-					// await unbindDevice(bindId)
+					await unbindDevice(bindId)
 				
 					await BleService.disconnect(true)
 					uni.hideLoading()

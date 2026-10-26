@@ -4,6 +4,7 @@
 
 @interface CoolWearBLEModule () <CBCentralManagerDelegate>
 @property (nonatomic, strong) CBCentralManager *permCentral;
+@property (nonatomic, strong) CBCentralManager *stateCentral;
 @property (nonatomic, copy) UniModuleKeepAliveCallback permCallback;
 @end
 
@@ -794,7 +795,14 @@ UNI_EXPORT_METHOD(@selector(checkBluetoothPermission:))
     if (@available(iOS 13.1, *)) {
         authStr = [self btAuthString:CBCentralManager.authorization];
     }
-    CBManagerState st = self.permCentral ? self.permCentral.state : CBManagerStateUnknown;
+    // 用一个常驻的 central 读取真实 state。之前依赖 permCentral，
+    // 但它在 finishPerm 里会被置 nil，导致这里永远返回 Unknown(0)，
+    // 被 JS 误判成“蓝牙未开启”。
+    if (!self.stateCentral) {
+        NSDictionary *opts = @{CBCentralManagerOptionShowPowerAlertKey: @NO};
+        self.stateCentral = [[CBCentralManager alloc] initWithDelegate:self queue:dispatch_get_main_queue() options:opts];
+    }
+    CBManagerState st = self.stateCentral.state;
     if (callback) {
         callback([self okResult:@{@"authorization": authStr, @"state": @(st)}], NO);
     }

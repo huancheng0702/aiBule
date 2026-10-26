@@ -1507,9 +1507,18 @@ function pickBatteryField(o, keys) {
 			try {
 				const res = await CoolWearBLE.checkBluetoothPermission()
 				const s = res && (res.state ?? res.status)
+				const auth = res && res.authorization
+				// 明确的“关/拒绝”才判失败，别把 Unknown(0) 当没开
+				if (s === 4 || s === '4' || s === 'poweredOff') return false
+				if (s === 3 || s === '3' || s === 'unauthorized') return false
+				if (auth === 'denied' || auth === 'restricted') return false
+				// 已就绪
 				if (s === 5 || s === '5' || s === 'poweredOn' || s === 'on' || (res && res.poweredOn === true)) {
 					return true
 				}
+				// 权限已授予，只是 state 还在 unknown（刚初始化）→ 视为就绪
+				if (auth === 'allowedAlways') return true
+				// 老基座没有该方法，走 fallback
 				if (res && res.fallback) {
 					await sleep(1200)
 					return true

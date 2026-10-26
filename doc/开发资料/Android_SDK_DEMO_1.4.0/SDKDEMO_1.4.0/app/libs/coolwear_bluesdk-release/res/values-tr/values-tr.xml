@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Üzgünüm, telefona cevap veremiyorum.</string>
+    <string name="call_me_later">Şimdi cevap veremem, beni daha sonra arayabilir misin?</string>
+    <string name="call_you_later">Seni sonra ararım, tamam mı?</string>
+    <string name="will_arrive_soon">Yakında gelecek.</string>
+    <string name="will_contact_you_later">Şimdi buluşuyoruz, daha sonra sizinle iletişime geçeceğiz.</string>
+</resources>

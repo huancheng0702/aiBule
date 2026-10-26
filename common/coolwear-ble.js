@@ -145,7 +145,11 @@ function callNative(method, args = {}, timeoutMs = 15000) {
       return
     }
     if (typeof mod[method] !== 'function') {
-      reject(new Error(`原生方法不存在: ${method}，请重新制作自定义基座`))
+      const available = Object.keys(mod || {})
+        .filter((k) => typeof mod[k] === 'function')
+        .sort()
+      console.error('[CoolWear-BLE] 原生模块缺少方法', method, '当前可用方法:', available)
+      reject(new Error(`原生方法不存在: ${method}，当前基座可用方法: ${available.join(',') || '(空)'}`))
       return
     }
 
@@ -167,7 +171,9 @@ function callNative(method, args = {}, timeoutMs = 15000) {
       if (res.code === 0 || res.code === '0') {
         resolve(res.data !== undefined ? res.data : res)
       } else {
-        reject(new Error(res.message || `Native call ${method} failed`))
+        const err = new Error(res.message || `Native call ${method} failed`)
+        err.code = res.code
+        reject(err)
       }
     }
 
@@ -231,6 +237,11 @@ const CoolWearBLE = {
 
   disconnect() {
     return callNative('disconnect')
+  },
+
+  /** 解绑：清除设备侧的自动重连信息（Android unbindDevice / iOS releaseBind） */
+  unbind() {
+    return callNative('unbind')
   },
 
   isConnected() {
@@ -367,6 +378,21 @@ const CoolWearBLE = {
     // #endif
     // #ifndef APP-PLUS
     return Promise.resolve({ granted: true, fallback: true })
+    // #endif
+  },
+
+  openBluetoothSettings() {
+    // #ifdef APP-PLUS
+    try {
+      const mod = getNativeModule()
+      if (!mod || typeof mod.openBluetoothSettings !== 'function') {
+        return this.openAppSettings()
+      }
+    } catch (e) {}
+    return callNative('openBluetoothSettings', {}, 8000)
+    // #endif
+    // #ifndef APP-PLUS
+    return Promise.resolve({})
     // #endif
   },
 

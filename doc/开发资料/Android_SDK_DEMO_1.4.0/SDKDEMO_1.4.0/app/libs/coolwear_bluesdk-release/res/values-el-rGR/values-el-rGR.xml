@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Συγγνώμη, δεν μπορώ να απαντήσω στο τηλέφωνο.</string>
+    <string name="call_me_later">Δεν μπορώ να απαντήσω τώρα, μπορείτε να με καλέσετε αργότερα;</string>
+    <string name="call_you_later">Σε πάρω τηλέφωνο αργότερα, εντάξει;</string>
+    <string name="will_arrive_soon">Θα φτάσει σύντομα.</string>
+    <string name="will_contact_you_later">Συνάντηση τώρα, θα επικοινωνήσουμε μαζί σας αργότερα.</string>
+</resources>

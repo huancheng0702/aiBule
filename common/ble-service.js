@@ -453,6 +453,13 @@ function ingestSleepEvents(events) {
 			acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
 		}
 	})
+	// 历史数据补报时，最后一条事件可能不是 WAKEUP（固件只发到 LIGHT/DEEP）。
+	// 事件时间已经过去 4 小时以上，说明这一晚已经结束，直接结算，避免永远等不到结束事件。
+	if (acc.events.length > 1 && acc.lastMs && Date.now() - acc.lastMs > 4 * 3600 * 1000) {
+		const session = closeSleepAccumulator(acc)
+		if (session) completed.push(session)
+		acc = { events: [], startMs: 0, lastMs: 0, lastAt: 0 }
+	}
 	saveSleepAccumulator(acc)
 	return completed
 }
@@ -594,11 +601,12 @@ function schedulePostConnectInit() {
 		try {
 			await CoolWearBLE.setSensorOn({ open: true })
 		} catch (e) {}
+		// 先同步设备基础信息/时间，再写用户信息，避免设备侧用默认用户信息覆盖真实资料
+		await CoolWearBLE.sendSyncInfo().catch(() => {})
 		try {
 			await BleService.syncUserInfo()
 		} catch (e) {}
 		await BleService.enableAutoMeasure().catch(() => {})
-		await CoolWearBLE.sendSyncInfo().catch(() => {})
 		flushPendingUploads()
 		pullCachedHealthEvents()
 	}, 1500)
@@ -1317,6 +1325,10 @@ function pickBatteryField(o, keys) {
 
 		CoolWearBLE.on('onConnectStateChange', (data) => {
 			const status = data && data.status != null ? Number(data.status) : 0
+			// 用户主动断开后，SDK 可能还会补发一次 connected/completed；直接忽略，避免状态被改回去
+			if (status === 1 && userDisconnecting) {
+				return
+			}
 			state.connectStatus = status
 			if (status === 1) {
 				state.connected = true
@@ -1448,6 +1460,44 @@ function pickBatteryField(o, keys) {
 		// #ifndef APP-PLUS
 		return false
 		// #endif
+	}
+
+	let userDisconnecting = false
+	let userDisconnectingTimer = null
+
+	function setUserDisconnecting(value, holdMs = 8000) {
+		userDisconnecting = value
+		if (userDisconnectingTimer) {
+			clearTimeout(userDisconnectingTimer)
+			userDisconnectingTimer = null
+		}
+		if (value && holdMs > 0) {
+			userDisconnectingTimer = setTimeout(() => {
+				userDisconnecting = false
+				userDisconnectingTimer = null
+			}, holdMs)
+		}
+	}
+
+	function isBluetoothOffError(e) {
+		if (!e) return false
+		if (e.code === -100 || e.code === '-100') return true
+		const msg = String(e.message || e.msg || '')
+		return msg === 'bluetooth_off' || /bluetooth_off|蓝牙.*(未开启|没有打开|已关闭)/i.test(msg)
+	}
+
+	function promptEnableBluetooth() {
+		uni.showModal({
+			title: '蓝牙未开启',
+			content: '请先打开手机蓝牙，再搜索/连接设备',
+			confirmText: '去开启',
+			cancelText: '知道了',
+			success: (res) => {
+				if (res.confirm) {
+					CoolWearBLE.openBluetoothSettings().catch(() => {})
+				}
+			}
+		})
 	}
 
 	async function waitForIosBluetoothReady(timeoutMs = 4000) {
@@ -1644,6 +1694,7 @@ function pickBatteryField(o, keys) {
 				await BleService.requestPermissions()
 				await CoolWearBLE.init()
 				state.inited = true
+				pullCachedHealthEvents()
 			} finally {
 				state.initing = false
 				emit()
@@ -1654,7 +1705,11 @@ function pickBatteryField(o, keys) {
 			const timeoutMs = options.timeoutMs != null ? options.timeoutMs : 10000
 			await BleService.ensureInit()
 			if (isIos()) {
-				await waitForIosBluetoothReady(4000)
+				const ready = await waitForIosBluetoothReady(4000)
+				if (!ready) {
+					promptEnableBluetooth()
+					throw new Error('蓝牙未开启，请打开手机蓝牙后重试')
+				}
 			}
 			if (scanTimer) {
 				clearTimeout(scanTimer)
@@ -1663,7 +1718,16 @@ function pickBatteryField(o, keys) {
 			state.devices = []
 			state.scanning = true
 			emit()
-			await CoolWearBLE.startScan()
+			try {
+				await CoolWearBLE.startScan()
+			} catch (e) {
+				state.scanning = false
+				emit()
+				if (isBluetoothOffError(e)) {
+					promptEnableBluetooth()
+				}
+				throw e
+			}
 			if (isIos()) {
 				setTimeout(async () => {
 					if (!state.scanning) return
@@ -1700,6 +1764,7 @@ function pickBatteryField(o, keys) {
 			if (!device) throw new Error('请先选择设备')
 			await BleService.ensureInit()
 			await BleService.stopScan()
+			setUserDisconnecting(false)
 			state.connectStatus = 2
 			state.connected = false
 			state.device = {
@@ -1710,12 +1775,22 @@ function pickBatteryField(o, keys) {
 				battery: device.battery != null ? Number(device.battery) : null
 			}
 			emit()
-			await CoolWearBLE.connect({
-				mac: device.mac,
-				identifier: device.identifier,
-				name: device.name,
-				deviceId: device.deviceId
-			})
+			try {
+				await CoolWearBLE.connect({
+					mac: device.mac,
+					identifier: device.identifier,
+					name: device.name,
+					deviceId: device.deviceId
+				})
+			} catch (e) {
+				state.connectStatus = 0
+				state.connected = false
+				emit()
+				if (isBluetoothOffError(e)) {
+					promptEnableBluetooth()
+				}
+				throw e
+			}
 			const ok = await pollConnected(30000)
 			if (!ok) {
 				state.connectStatus = 0
@@ -1827,13 +1902,20 @@ function pickBatteryField(o, keys) {
 			let bindId = ''
 			if (unbind) bindId = await resolveBindId()
 			cancelPostConnectInit()
+			setUserDisconnecting(true)
 			try {
 				if (state.inited) {
-					await CoolWearBLE.disconnect()
+					await BleService.stopScan().catch(() => {})
+					if (unbind) {
+						await CoolWearBLE.unbind()
+					} else {
+						await CoolWearBLE.disconnect()
+					}
 				}
 			} finally {
 				state.connected = false
 				state.connectStatus = 0
+				state.manualMeasure = false
 				if (unbind) {
 					clearStoredDevice()
 				}

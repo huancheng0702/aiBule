@@ -15,8 +15,11 @@ static NSString * const kEventChannel = @"CoolWearBLE";
 @property (nonatomic, assign) BOOL observersRegistered;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CBPeripheral *> *peripheralMap;
 @property (nonatomic, strong) NSMutableSet<NSString *> *emittedDevices;
+@property (nonatomic, strong) NSMutableArray<NSDictionary *> *healthCache;
 
 @end
+
+static const NSUInteger kHealthCacheLimit = 300;
 
 @implementation CoolWearBLEModule
 
@@ -28,6 +31,7 @@ static NSString * const kEventChannel = @"CoolWearBLE";
     if (self) {
         _peripheralMap = [NSMutableDictionary dictionary];
         _emittedDevices = [NSMutableSet set];
+        _healthCache = [NSMutableArray array];
     }
     return self;
 }
@@ -47,6 +51,20 @@ static NSString * const kEventChannel = @"CoolWearBLE";
 
 - (NSDictionary *)errResult:(NSString *)message {
     return @{@"code": @(-1), @"message": message ?: @"error"};
+}
+
+- (NSDictionary *)errResultCode:(NSInteger)code message:(NSString *)message {
+    return @{@"code": @(code), @"message": message ?: @"error"};
+}
+
+- (void)cacheHealthEvent:(NSString *)type data:(id)data {
+    if (!type || !data) return;
+    @synchronized (self.healthCache) {
+        [self.healthCache addObject:@{@"type": type, @"data": data, @"at": @((long long)([[NSDate date] timeIntervalSince1970] * 1000))}];
+        if (self.healthCache.count > kHealthCacheLimit) {
+            [self.healthCache removeObjectsInRange:NSMakeRange(0, self.healthCache.count - kHealthCacheLimit)];
+        }
+    }
 }
 
 - (void)fireEvent:(NSString *)event data:(id)data {
@@ -240,8 +258,6 @@ static NSString * const kEventChannel = @"CoolWearBLE";
             [self fireEvent:@"onBattery" data:payload];
             break;
         }
-            break;
-        }
         case DATA_TYPE_REAL_HEART:
         case DATA_TYPE_EXERCISE_HEART:
         case DATA_TYPE_REAL_HR: {
@@ -251,6 +267,7 @@ static NSString * const kEventChannel = @"CoolWearBLE";
         }
         case DATA_TYPE_HISTORY_HEART: {
             NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"heart", @"heartNums", @"heartNum", @"hr", @"bpm", @"heartRate"] extra:nil];
+            [self cacheHealthEvent:@"dailyHeart" data:arr];
             [self fireEvent:@"onHeartRateDaily" data:arr];
             break;
         }
@@ -261,6 +278,7 @@ static NSString * const kEventChannel = @"CoolWearBLE";
                 if (s != nil) return @{@"stress": s, @"pressure": s};
                 return nil;
             }];
+            [self cacheHealthEvent:@"hrv" data:arr];
             [self fireEvent:@"onHRV" data:arr];
             break;
         }
@@ -270,24 +288,29 @@ static NSString * const kEventChannel = @"CoolWearBLE";
             break;
         }
         case DATA_TYPE_SLEEP: {
+            NSDictionary *payload = nil;
             if ([data isKindOfClass:[NSDictionary class]]) {
                 NSMutableDictionary *p = [NSMutableDictionary dictionaryWithDictionary:data];
-                if (!p[@"typeMap"]) p[@"typeMap"] = @{@"start": @0, @"light": @1, @"deep": @2, @"movement": @3, @"wakeup": @4};
+                // SLEEP_NONE=0, SLEEP_START=1, SLEEP_DEEP=2, SLEEP_LIGHT=3, SLEEP_WAKEUP=4
+                if (!p[@"typeMap"]) p[@"typeMap"] = @{@"start": @1, @"deep": @2, @"light": @3, @"movement": @3, @"wakeup": @4};
                 if (!p[@"sessions"] && !p[@"sleeps"]) p[@"sessions"] = @[data];
                 p[@"raw"] = data;
-                [self fireEvent:@"onSleep" data:p];
+                payload = p;
             } else {
-                [self fireEvent:@"onSleep" data:@{@"sessions": data ?: @[], @"raw": data ?: @[]}];
+                payload = @{@"sessions": data ?: @[], @"raw": data ?: @[]};
             }
+            [self cacheHealthEvent:@"sleep" data:payload];
+            [self fireEvent:@"onSleep" data:payload];
             break;
         }
         case DATA_TYPE_REAL_O2:
         case DATA_TYPE_HISTORY_O2: {
-            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"o2", @"oxygen", @"spo2", @"bloodOxygen", @"oxygenValue", @"o2Value"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"o2", @"oxygen", @"spo2", @"bloodOxygen", @"oxygenValue", @"o2Value", @"O2", @"O2Value"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
                 id v = out[@"value"];
                 if (v != nil) return @{@"o2": v};
                 return nil;
             }];
+            [self cacheHealthEvent:@"spo2" data:arr];
             [self fireEvent:@"onBloodOxygen" data:arr];
             break;
         }
@@ -398,6 +421,15 @@ UNI_EXPORT_METHOD(@selector(init:))
 UNI_EXPORT_METHOD(@selector(startScan:))
 - (void)startScan:(UniModuleKeepAliveCallback)callback {
     @try {
+        CBManagerState state = [CEProductK6 shareInstance].state;
+        if (state == CBManagerStatePoweredOff) {
+            if (callback) callback([self errResultCode:-100 message:@"bluetooth_off"], NO);
+            return;
+        }
+        if (state == CBManagerStateUnauthorized) {
+            if (callback) callback([self errResultCode:-101 message:@"bluetooth_denied"], NO);
+            return;
+        }
         [self.emittedDevices removeAllObjects];
         [[CEProductK6 shareInstance] startScan];
         if (callback) {
@@ -427,6 +459,11 @@ UNI_EXPORT_METHOD(@selector(stopScan:))
 UNI_EXPORT_METHOD(@selector(connect:callback:))
 - (void)connect:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
     @try {
+        CBManagerState state = [CEProductK6 shareInstance].state;
+        if (state == CBManagerStatePoweredOff) {
+            if (callback) callback([self errResultCode:-100 message:@"bluetooth_off"], NO);
+            return;
+        }
         NSString *identifier = options[@"identifier"];
         if (!identifier || identifier.length == 0) {
             identifier = options[@"mac"];
@@ -460,6 +497,25 @@ UNI_EXPORT_METHOD(@selector(disconnect:))
 - (void)disconnect:(UniModuleKeepAliveCallback)callback {
     @try {
         [CE_SensorCmd close];
+        [[CEProductK6 shareInstance] stopScan];
+        [[CEProductK6 shareInstance] cleanCmdQueue];
+        [[CEProductK6 shareInstance].connect cancel];
+        if (callback) {
+            callback([self okResult:nil], NO);
+        }
+    } @catch (NSException *exception) {
+        if (callback) {
+            callback([self errResult:exception.reason], NO);
+        }
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(unbind:))
+- (void)unbind:(UniModuleKeepAliveCallback)callback {
+    @try {
+        [CE_SensorCmd close];
+        [[CEProductK6 shareInstance] stopScan];
+        [[CEProductK6 shareInstance] cleanCmdQueue];
         [[CEProductK6 shareInstance] releaseBind];
         if (callback) {
             callback([self okResult:nil], NO);
@@ -504,8 +560,13 @@ UNI_EXPORT_METHOD(@selector(devicePairFinish:callback:))
 UNI_EXPORT_METHOD(@selector(sendSyncInfo:))
 - (void)sendSyncInfo:(UniModuleKeepAliveCallback)callback {
     @try {
-        CE_RequestAllInfoCmd *cmd = [[CE_RequestAllInfoCmd alloc] init];
-        [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
+        CE_SyncPairOKCmd *pairCmd = [[CE_SyncPairOKCmd alloc] init];
+        CE_SyncGoalCmd *goalCmd = [[CE_SyncGoalCmd alloc] initWithStep:8000 distance:5000 calories:300 sleeptime:480 sportTime:30];
+        YD_SyncLanguageCmd *langCmd = [[YD_SyncLanguageCmd alloc] initWithLanguage:0];
+        CE_SyncHybridCmd *hybrid = [[CE_SyncHybridCmd alloc] initWithItems:@[pairCmd, goalCmd, langCmd]];
+        [[CEProductK6 shareInstance] sendCmdToDevice:hybrid complete:nil];
+        CE_RequestAllInfoCmd *requestCmd = [[CE_RequestAllInfoCmd alloc] init];
+        [[CEProductK6 shareInstance] sendCmdToDevice:requestCmd complete:nil];
         if (callback) {
             callback([self okResult:nil], NO);
         }
@@ -525,7 +586,7 @@ UNI_EXPORT_METHOD(@selector(syncTime:))
         CE_SyncTimeCmd *cmd = [[CE_SyncTimeCmd alloc] initWithAbsTime:absTime
                                                                offset:offset
                                                                format:1
-                                                             mdFormat:0];
+                                                             mdFormat:1];
         [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
         if (callback) {
             callback([self okResult:@{@"absTime": @((long long)absTime)}], NO);
@@ -593,15 +654,13 @@ UNI_EXPORT_METHOD(@selector(setHeartAutoSwitch:callback:))
     @try {
         BOOL heart = options[@"heart"] == nil ? YES : [options[@"heart"] boolValue];
         BOOL o2 = options[@"o2"] == nil ? YES : [options[@"o2"] boolValue];
-        NSInteger interval = options[@"intervalMin"] ? [options[@"intervalMin"] integerValue] : 30;
-        if (interval <= 0) {
-            interval = 30;
-        }
         YD_SyncAutoHeartCmd *cmd = [[YD_SyncAutoHeartCmd alloc] init];
         cmd.onoff = heart ? 1 : 0;
-        cmd.hr24hOnoff = heart ? 1 : 0;
+        // 官方 Demo 只下发 onoff。戒指不支持 24 小时心率时，把 hr24hOnoff/time 置 1
+        // 会让设备侧关闭普通自动心率，导致 iOS 只有血氧/HRV、没有心率。
+        cmd.hr24hOnoff = 0;
+        cmd.time = 0;
         cmd.O2_onoff = o2 ? 1 : 0;
-        cmd.time = (Byte)interval;
         [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
         if (callback) {
             callback([self okResult:nil], NO);
@@ -610,6 +669,55 @@ UNI_EXPORT_METHOD(@selector(setHeartAutoSwitch:callback:))
         if (callback) {
             callback([self errResult:exception.reason], NO);
         }
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(setSensorOn:callback:))
+- (void)setSensorOn:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
+    @try {
+        BOOL open = options[@"open"] == nil ? YES : [options[@"open"] boolValue];
+        CE_SensorCmd *cmd = [[CE_SensorCmd alloc] initWith:open ? 1 : 0];
+        [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
+        if (callback) {
+            callback([self okResult:nil], NO);
+        }
+    } @catch (NSException *exception) {
+        if (callback) {
+            callback([self errResult:exception.reason], NO);
+        }
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(syncUserInfo:callback:))
+- (void)syncUserInfo:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
+    @try {
+        CE_SyncUserInfoCmd *cmd = [[CE_SyncUserInfoCmd alloc] init];
+        cmd.userId = (uint32_t)MAX(0, [options[@"userId"] longLongValue]);
+        cmd.sex = (uint8_t)([options[@"sex"] integerValue] == 1 ? 1 : 0);
+        cmd.age = (uint8_t)MIN(120, MAX(1, [options[@"age"] integerValue]));
+        cmd.height = (uint8_t)MIN(250, MAX(50, [options[@"height"] integerValue]));
+        cmd.weight = (uint8_t)MIN(250, MAX(20, [options[@"weight"] integerValue]));
+        cmd.lrHand = (uint8_t)([options[@"lrHand"] integerValue] == 0 ? 0 : 1);
+        [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
+        if (callback) {
+            callback([self okResult:nil], NO);
+        }
+    } @catch (NSException *exception) {
+        if (callback) {
+            callback([self errResult:exception.reason], NO);
+        }
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(pullCachedHealthEvents:))
+- (void)pullCachedHealthEvents:(UniModuleKeepAliveCallback)callback {
+    NSArray *events = @[];
+    @synchronized (self.healthCache) {
+        events = [self.healthCache copy];
+        [self.healthCache removeAllObjects];
+    }
+    if (callback) {
+        callback([self okResult:@{@"events": events}], NO);
     }
 }
 
@@ -744,6 +852,11 @@ UNI_EXPORT_METHOD(@selector(openAppSettings:))
         }
         if (callback) callback([self okResult:nil], NO);
     });
+}
+
+UNI_EXPORT_METHOD(@selector(openBluetoothSettings:))
+- (void)openBluetoothSettings:(UniModuleKeepAliveCallback)callback {
+    [self openAppSettings:callback];
 }
 
 @end

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="CE_Email">邮件</string>
+    <string name="CE_Facebook">Facebook</string>
+    <string name="CE_Instagram">Instagram</string>
+    <string name="CE_Line">Line</string>
+    <string name="CE_Linked_in">LinkedIn</string>
+    <string name="CE_Message">短信</string>
+    <string name="CE_Other">其他</string>
+    <string name="CE_QQ">QQ</string>
+    <string name="CE_Skype">Skype</string>
+    <string name="CE_Twitter">Twitter</string>
+    <string name="CE_Wechat">微信</string>
+    <string name="CE_WhatsApp">Whats App</string>
+    <string name="answer_the_phone">很抱歉!我现在不方便接电话。</string>
+    <string name="call_me_later">现在无法接听，能稍后再打给我吗</string>
+    <string name="call_you_later">稍后给您电话，好吗?</string>
+    <string name="push_kakao_talk">KakaoTalk</string>
+    <string name="push_play_store">Play 商店</string>
+    <string name="push_telegram">Telegram</string>
+    <string name="will_arrive_soon">马上到</string>
+    <string name="will_contact_you_later">正在开会，稍后联系</string>
+</resources>

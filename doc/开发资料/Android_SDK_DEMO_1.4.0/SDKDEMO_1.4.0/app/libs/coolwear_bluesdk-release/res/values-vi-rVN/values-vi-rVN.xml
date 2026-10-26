@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Xin lỗi, tôi không thể trả lời điện thoại.</string>
+    <string name="call_me_later">Bây giờ không thể trả lời, bạn có thể gọi cho tôi sau được không?</string>
+    <string name="call_you_later">Gọi cho bạn sau, ok?</string>
+    <string name="will_arrive_soon">Sẽ đến sớm.</string>
+    <string name="will_contact_you_later">Gặp nhau bây giờ, sẽ liên hệ với bạn sau.</string>
+</resources>

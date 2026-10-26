@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="answer_the_phone">Maaf, saya tidak bisa menjawab telepon.</string>
+    <string name="call_me_later">Tidak bisa menjawab sekarang, bisakah Anda menelepon saya nanti?</string>
+    <string name="call_you_later">Menelepon Anda nanti, oke?</string>
+    <string name="will_arrive_soon">Akan segera tiba.</string>
+    <string name="will_contact_you_later">Bertemu sekarang, akan menghubungi Anda nanti.</string>
+</resources>

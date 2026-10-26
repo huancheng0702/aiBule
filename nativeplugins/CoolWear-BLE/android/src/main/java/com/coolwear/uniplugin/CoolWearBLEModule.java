@@ -3,8 +3,10 @@ package com.coolwear.uniplugin;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 
 import com.alibaba.fastjson.JSONArray;
@@ -27,11 +29,13 @@ import ce.com.cenewbluesdk.entity.k6.K6_Action;
 import ce.com.cenewbluesdk.entity.k6.K6_CESyncTime;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_BATTERY_INFO;
 import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_REAL_O2;
+import ce.com.cenewbluesdk.entity.k6.K6_DATA_TYPE_FUNCTION_CONTROL;
 import ce.com.cenewbluesdk.entity.k6.K6_DevInfoStruct;
 import ce.com.cenewbluesdk.entity.k6.K6_HeartStruct;
 import ce.com.cenewbluesdk.entity.k6.K6_HrvStruct;
 import ce.com.cenewbluesdk.entity.k6.K6_Mix_sport_Struct;
 import ce.com.cenewbluesdk.entity.k6.K6_Sport;
+import ce.com.cenewbluesdk.entity.k6.K6_SendUserInfo;
 import ce.com.cenewbluesdk.entity.k6.K6_TempStruct;
 import ce.com.cenewbluesdk.proxy.interfaces.IK6AnalysiDevRcvDataManager;
 import ce.com.cenewbluesdk.proxy.interfaces.K6BleDataResult;
@@ -49,10 +53,16 @@ public class CoolWearBLEModule extends UniModule {
     private static final int STATUS_CONNECTED = 1;
     private static final int STATUS_CONNECTING = 2;
 
+    private static final int CODE_BLUETOOTH_OFF = -100;
+    private static final int CODE_BLUETOOTH_DENIED = -101;
+    private static final int MAX_HEALTH_CACHE = 300;
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean initialized = false;
     private boolean listenersRegistered = false;
     private final Set<String> emittedDevices = new HashSet<>();
+    private final List<HashMap<String, Object>> healthCache = new ArrayList<>();
+    private volatile boolean o2AutoSwitchSeparate = false;
 
     private void success(UniJSCallback callback) {
         success(callback, null);
@@ -72,13 +82,40 @@ public class CoolWearBLEModule extends UniModule {
     }
 
     private void fail(UniJSCallback callback, String message) {
+        fail(callback, -1, message);
+    }
+
+    private void fail(UniJSCallback callback, int code, String message) {
         if (callback == null) {
             return;
         }
         JSONObject result = new JSONObject();
-        result.put("code", -1);
+        result.put("code", code);
         result.put("message", message != null ? message : "unknown error");
         invokeCallback(callback, result);
+    }
+
+    private boolean isBluetoothOn() {
+        try {
+            return BluetoothHelper.getInstance().isEnabled();
+        } catch (Throwable e) {
+            Log.w(TAG, "check bluetooth enabled failed", e);
+            return true;
+        }
+    }
+
+    private void cacheHealthEvent(String type, Object data) {
+        if (type == null || data == null) return;
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", type);
+        event.put("data", data);
+        event.put("at", System.currentTimeMillis());
+        synchronized (healthCache) {
+            healthCache.add(event);
+            while (healthCache.size() > MAX_HEALTH_CACHE) {
+                healthCache.remove(0);
+            }
+        }
     }
 
     private void invokeCallback(UniJSCallback callback, JSONObject result) {
@@ -247,14 +284,18 @@ public class CoolWearBLEModule extends UniModule {
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DAILY_HEART, new K6BleDataResult<ArrayList<K6_HeartStruct>>() {
             @Override
             public boolean bleDataResult(ArrayList<K6_HeartStruct> list) {
-                fireEvent("onHeartRateDaily", toHeartRateArray(list));
+                JSONArray arr = toHeartRateArray(list);
+                cacheHealthEvent("dailyHeart", arr);
+                fireEvent("onHeartRateDaily", arr);
                 return false;
             }
         });
 
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_SPORT_HRV_FOR_SHOW,
                 (K6BleDataResult<ArrayList<K6_HrvStruct>>) list -> {
-                    fireEvent("onHRV", toHrvArray(list));
+                    JSONArray arr = toHrvArray(list);
+                    cacheHealthEvent("hrv", arr);
+                    fireEvent("onHRV", arr);
                     return false;
                 });
 
@@ -267,7 +308,9 @@ public class CoolWearBLEModule extends UniModule {
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_K6_SLEEP_DATA, new K6BleDataResult<K6_sleepData>() {
             @Override
             public boolean bleDataResult(K6_sleepData data) {
-                fireEvent("onSleep", toSleepPayload(data));
+                JSONObject payload = toSleepPayload(data);
+                cacheHealthEvent("sleep", payload);
+                fireEvent("onSleep", payload);
                 return false;
             }
         });
@@ -275,7 +318,9 @@ public class CoolWearBLEModule extends UniModule {
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DATA_TYPE_REAL_O2, new K6BleDataResult<ArrayList<K6_DATA_TYPE_REAL_O2>>() {
             @Override
             public boolean bleDataResult(ArrayList<K6_DATA_TYPE_REAL_O2> list) {
-                fireEvent("onBloodOxygen", toBloodOxygenArray(list));
+                JSONArray arr = toBloodOxygenArray(list);
+                cacheHealthEvent("spo2", arr);
+                fireEvent("onBloodOxygen", arr);
                 return false;
             }
         });
@@ -283,10 +328,23 @@ public class CoolWearBLEModule extends UniModule {
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DATA_TYPE_REAL_O2_HISTORY, new K6BleDataResult<ArrayList<K6_DATA_TYPE_REAL_O2>>() {
             @Override
             public boolean bleDataResult(ArrayList<K6_DATA_TYPE_REAL_O2> list) {
-                fireEvent("onBloodOxygen", toBloodOxygenArray(list));
+                JSONArray arr = toBloodOxygenArray(list);
+                cacheHealthEvent("spo2", arr);
+                fireEvent("onBloodOxygen", arr);
                 return false;
             }
         });
+
+        rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DATA_TYPE_FUNCTION_CONTROL,
+                (K6BleDataResult<K6_DATA_TYPE_FUNCTION_CONTROL>) caps -> {
+                    if (caps != null) {
+                        o2AutoSwitchSeparate = caps.isO2AutoSwitch();
+                        Log.d(TAG, "function control: hasO2=" + caps.isHasO2()
+                                + ", hasHR24H=" + caps.isHasHR24H()
+                                + ", o2AutoSwitch=" + o2AutoSwitchSeparate);
+                    }
+                    return false;
+                });
 
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_SPORT_DATA, new K6BleDataResult<ArrayList<K6_Sport>>() {
             @Override
@@ -626,6 +684,10 @@ public class CoolWearBLEModule extends UniModule {
                 fail(callback, "Context unavailable");
                 return;
             }
+            if (!isBluetoothOn()) {
+                fail(callback, CODE_BLUETOOTH_OFF, "bluetooth_off");
+                return;
+            }
             emittedDevices.clear();
             BluetoothHelper.getInstance().scanningDeviceInit(context, scanDevListener);
             BluetoothHelper.getInstance().startScan();
@@ -648,6 +710,10 @@ public class CoolWearBLEModule extends UniModule {
     @UniJSMethod(uiThread = true)
     public void connect(JSONObject options, UniJSCallback callback) {
         try {
+            if (!isBluetoothOn()) {
+                fail(callback, CODE_BLUETOOTH_OFF, "bluetooth_off");
+                return;
+            }
             String mac = options != null ? options.getString("mac") : null;
             if (mac == null && options != null) {
                 mac = options.getString("identifier");
@@ -683,8 +749,36 @@ public class CoolWearBLEModule extends UniModule {
     @UniJSMethod(uiThread = true)
     public void disconnect(UniJSCallback callback) {
         try {
-            BluetoothHelper.getInstance().getSendBlueData().sendSwitchGSensor(0);
+            BluetoothHelper.getInstance().stopScan();
             BluetoothHelper.getInstance().disConnect();
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void unbind(UniJSCallback callback) {
+        try {
+            BluetoothHelper.getInstance().stopScan();
+            BluetoothHelper.getInstance().unbindDevice();
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void openBluetoothSettings(UniJSCallback callback) {
+        try {
+            Context context = resolveContext();
+            if (context == null) {
+                fail(callback, "Context unavailable");
+                return;
+            }
+            Intent intent = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());
@@ -719,7 +813,10 @@ public class CoolWearBLEModule extends UniModule {
     @UniJSMethod(uiThread = true)
     public void sendSyncInfo(UniJSCallback callback) {
         try {
-            BluetoothHelper.getInstance().getSendBlueData().sendSyncInfo();
+            // 官方 demo 连接后调用 sendAsynInfo（同步用户信息/时间/语言等），
+            // 历史睡眠数据还需要 sendSleepMonitor 打开设备侧睡眠监测。
+            BluetoothHelper.getInstance().getSendDataManager().sendAsynInfo();
+            BluetoothHelper.getInstance().getSendDataManager().sendSleepMonitor();
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());
@@ -796,7 +893,63 @@ public class CoolWearBLEModule extends UniModule {
             int heartStatus = heart ? CEBC.OPENSTATUS.OPEN : CEBC.OPENSTATUS.CLOSE;
             int o2Status = o2 ? CEBC.OPENSTATUS.OPEN : CEBC.OPENSTATUS.CLOSE;
             BluetoothHelper.getInstance().getSendBlueData().sendHeartAutoSwitch(heartStatus, o2Status, interval);
+            // 部分固件把自动血氧做成独立开关（FUNCTION_CONTROL.isO2AutoSwitch=true），
+            // 只在 HeartAutoSwitch 里带 O2 位不会生效，需要再单独打开一次 O2 检测。
+            if (o2 && o2AutoSwitchSeparate) {
+                BluetoothHelper.getInstance().getSendDataManager().sendK6_DATA_TYPE_REAL_O2(CEBC.OPENSTATUS.OPEN);
+            }
             success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void setSensorOn(JSONObject options, UniJSCallback callback) {
+        try {
+            boolean open = options == null || options.getBooleanValue("open");
+            BluetoothHelper.getInstance().setEnableGsDataTrans(open);
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void syncUserInfo(JSONObject options, UniJSCallback callback) {
+        try {
+            int userId = options != null ? options.getIntValue("userId") : 0;
+            int sex = options != null ? options.getIntValue("sex") : 0;
+            int age = options != null ? options.getIntValue("age") : 30;
+            int height = options != null ? options.getIntValue("height") : 170;
+            int weight = options != null ? options.getIntValue("weight") : 60;
+            int lrHand = options != null ? options.getIntValue("lrHand") : 1;
+            age = Math.min(120, Math.max(1, age));
+            height = Math.min(250, Math.max(50, height));
+            weight = Math.min(250, Math.max(20, weight));
+            sex = sex == 1 ? 1 : 0;
+            lrHand = lrHand == 0 ? 0 : 1;
+            BluetoothHelper.getInstance().getSendDataManager()
+                    .sendUserInfo(new K6_SendUserInfo(userId, sex, age, height, weight, lrHand));
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void pullCachedHealthEvents(UniJSCallback callback) {
+        try {
+            JSONArray events = new JSONArray();
+            synchronized (healthCache) {
+                for (HashMap<String, Object> event : healthCache) {
+                    events.add(new JSONObject(event));
+                }
+                healthCache.clear();
+            }
+            HashMap<String, Object> data = new HashMap<>();
+            data.put("events", events);
+            success(callback, data);
         } catch (Exception e) {
             fail(callback, e.getMessage());
         }

@@ -3,16 +3,7 @@
 		"^u-(.*)": "@/uni_modules/uview-ui/components/u-$1/u-$1.vue",
 		"qiun-data-charts": "@/uni_modules/qiun-data-charts/components/qiun-data-charts/qiun-data-charts.vue"
 	},
-	"pages": [{
-			"path": "pages/login",
-			"style": {
-				"navigationBarTitleText": "",
-				"navigationStyle": "custom",
-				"app-plus": {
-					"bounce": "none"
-				}
-			}
-		},
+	"pages": [
 		{
 			"path": "pages/index/index",
 			"style": {
@@ -20,6 +11,16 @@
 				"navigationStyle": "custom",
 				"navigationBarTextStyle": "white",
 				"backgroundColor": "#000000",
+				"app-plus": {
+					"bounce": "none"
+				}
+			}
+		},
+		{
+			"path": "pages/login",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
 				"app-plus": {
 					"bounce": "none"
 				}

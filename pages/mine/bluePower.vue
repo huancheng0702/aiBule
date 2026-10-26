@@ -11,7 +11,7 @@
 			</view>
 		</view>
 
-		<!-- 蓝牙权限卡 -->
+		<!-- 蓝牙权限卡 --> 
 		<view class="perm-card">
 			<image class="perm-card-bg" src="/static/ringStatusBg.png" mode=""></image>
 			<view class="perm-card-body">

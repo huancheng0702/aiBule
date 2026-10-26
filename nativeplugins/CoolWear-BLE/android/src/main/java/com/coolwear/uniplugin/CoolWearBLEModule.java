@@ -816,6 +816,9 @@ public class CoolWearBLEModule extends UniModule {
             // 官方 demo 连接后调用 sendAsynInfo（同步用户信息/时间/语言等），
             // 历史睡眠数据还需要 sendSleepMonitor 打开设备侧睡眠监测。
             BluetoothHelper.getInstance().getSendDataManager().sendAsynInfo();
+            // 关键：真正让设备"重新上传缓存数据"（心率/血氧/HRV/睡眠）的是这条 sendSyncInfo，
+            // 官方 demo 的 MainActivity.onResume 就是靠它触发重传。sendAsynInfo 只同步时间/语言，不拉数据。
+            BluetoothHelper.getInstance().getSendBlueData().sendSyncInfo();
             BluetoothHelper.getInstance().getSendDataManager().sendSleepMonitor();
             success(callback);
         } catch (Exception e) {

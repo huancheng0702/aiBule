@@ -11,8 +11,8 @@
 				console.log('[App] bluetooth permission', e && e.message)
 			})
 			BleService.bootstrap()
-			// 冷启动（进程被杀后重开）强制断开重连：否则系统残留的“已连接”状态没有重新订阅通知，
-			// 会出现已连接却收不到心率/步数等数据的问题
+			// 冷启动（进程被杀后重开）：仅安卓强制断开重连，全新连接才能让设备重新 dump 历史数据；
+			// iOS 的 sendSyncInfo 会主动 requestAllInfo，保持原逻辑（force 在 iOS 上被 !isIos() 置 false）。
 			BleService.tryAutoReconnect({ force: true }).catch((e) => {
 				console.log('[App] auto reconnect on launch', e && e.message)
 			})

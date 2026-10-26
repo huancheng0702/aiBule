@@ -1,7 +1,7 @@
 {
 	"name": "CoolWear-BLE",
 	"id": "CoolWear-BLE",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "CoolWear AI Ring Bluetooth SDK native plugin for UniApp",
 	"_dp_type": "nativeplugin",
 	"_dp_nativeplugin": {

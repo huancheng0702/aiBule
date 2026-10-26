@@ -1574,17 +1574,21 @@ function pickBatteryField(o, keys) {
 		/**
 		 * 有本地绑定设备且未解绑时自动重连；解绑会清 STORAGE，不会触发
 		 */
-		async tryAutoReconnect() {
+		async tryAutoReconnect(options = {}) {
 			// #ifndef APP-PLUS
 			return false
 			// #endif
 			// #ifdef APP-PLUS
+			// force=true：仅安卓生效。安卓上系统/SDK 残留的"已连接"不会让设备重新 dump 历史数据，
+			// 表现为已连接却收不到心率/血氧/HRV/睡眠；而 iOS 的 sendSyncInfo 会主动 requestAllInfo，
+			// 冷启动自动重连也能拿到数据，故 iOS 保持原逻辑不动。
+			const force = !!(options && options.force) && !isIos()
 			loadStoredDevice()
 			const device = state.device
 			if (!device || !(device.mac || device.identifier || device.id)) {
 				return false
 			}
-			if (state.connected) return true
+			if (state.connected && !force) return true
 			if (reconnecting || state.connectStatus === 2) return false
 
 			reconnecting = true
@@ -1598,34 +1602,44 @@ function pickBatteryField(o, keys) {
 				}
 				await BleService.ensureInit()
 
-				try {
-					const res = await CoolWearBLE.isConnected()
-					if (res && res.connected) {
-						state.connected = true
-						state.connectStatus = 1
-						emit()
-						schedulePostConnectInit()
-						await CoolWearBLE.requestBattery().catch(() => {})
-						persistDevice()
-						return true
-					}
-				} catch (e) {
-					// ignore, continue reconnect
+				// force 时先主动断开残留的"假连接"，确保后面是真正的全新连接
+				if (force) {
+					try {
+						await CoolWearBLE.disconnect()
+					} catch (e) {}
 				}
 
-				// 优先走 SDK 自动重连（依赖上次连接记录）
-				try {
-					await CoolWearBLE.reconnect()
-					const ok = await pollConnected(20000)
-					if (ok) {
-						persistDevice()
-						return true
+				// 非强制：优先复用已连接状态，或走 SDK 快速重连
+				if (!force) {
+					try {
+						const res = await CoolWearBLE.isConnected()
+						if (res && res.connected) {
+							state.connected = true
+							state.connectStatus = 1
+							emit()
+							schedulePostConnectInit()
+							await CoolWearBLE.requestBattery().catch(() => {})
+							persistDevice()
+							return true
+						}
+					} catch (e) {
+						// ignore, continue reconnect
 					}
-				} catch (e) {
-					console.log('[ble-service] reconnect() failed, fallback connect', e)
+
+					// 优先走 SDK 自动重连（依赖上次连接记录）
+					try {
+						await CoolWearBLE.reconnect()
+						const ok = await pollConnected(20000)
+						if (ok) {
+							persistDevice()
+							return true
+						}
+					} catch (e) {
+						console.log('[ble-service] reconnect() failed, fallback connect', e)
+					}
 				}
 
-				// 回退：用本地缓存的 mac / identifier 主动连接
+				// 回退 / 强制：用本地缓存的 mac / identifier 主动全新连接
 				await CoolWearBLE.connect({
 					mac: device.mac,
 					identifier: device.identifier,
@@ -1641,7 +1655,6 @@ function pickBatteryField(o, keys) {
 				}
 				schedulePostConnectInit()
 				persistDevice()
-				notifyBindToCloud()
 				return true
 			} catch (e) {
 				console.error('[ble-service] tryAutoReconnect', e)
@@ -1899,12 +1912,17 @@ function pickBatteryField(o, keys) {
 			}
 		},
 
-		/** App 回前台：重开 sensor 上传开关、补报队列、回放原生缓存事件 */
+		/** App 回前台：重开 sensor 上传开关、主动触发设备重传缓存、补报队列、回放原生缓存事件 */
 		async onAppShow() {
 			if (state.connected) {
 				try {
 					await CoolWearBLE.setSensorOn({ open: true })
 				} catch (e) {}
+				// 对齐官方 demo 的 MainActivity.onResume：回前台时主动 sendSyncInfo，
+				// 让设备把后台缓存的心率/血氧/HRV/睡眠重新上传。（仅安卓；iOS 原有逻辑已正常，不动）
+				if (!isIos()) {
+					await CoolWearBLE.sendSyncInfo().catch(() => {})
+				}
 			}
 			flushPendingUploads()
 			pullCachedHealthEvents()

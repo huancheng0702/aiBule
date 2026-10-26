@@ -1,0 +1,8 @@
+fix(ios): 修复 HRV 值被解析成时间戳导致不上报
+
+iOS SDK 的 HRV 数据形如 {time, heartNum}，没有独立 hrv 字段，
+原生把 time 兜底当成 value（10 位时间戳），reportAutoHrv 的 [1,300] 区间
+会把整条数据过滤掉，所以 onHRV 有数据但一直不上报。
+
+- 原生 HRV 解析 valueKeys 增加 heartNum/heart，取真实 HRV 值
+- JS reportAutoHrv 对明显是时间戳的 value 用 hr/heart 兜底

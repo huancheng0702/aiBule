@@ -274,7 +274,7 @@ static const NSUInteger kHealthCacheLimit = 300;
         }
         case DATA_TYPE_REAL_HRV:
         case DATA_TYPE_HISTORY_HRV: {
-            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"hrv", @"hrvNums", @"hrvValue", @"rmssd", @"sdnn"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
+            NSArray *arr = [self normalizedValueArray:data valueKeys:@[@"value", @"hrv", @"hrvNums", @"hrvValue", @"rmssd", @"sdnn", @"heartNum", @"heart"] extra:^NSDictionary *(NSDictionary *src, NSMutableDictionary *out) {
                 id s = [self pickFirst:src keys:@[@"stress", @"pressure", @"stressValue", @"press"]];
                 if (s != nil) return @{@"stress": s, @"pressure": s};
                 return nil;

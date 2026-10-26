@@ -264,7 +264,18 @@ function reportAutoOxygen(data) {
 /** 自动 HRV / 压力 */
 function reportAutoHrv(data) {
 	if (state.manualMeasure) return
-	const series = extractSeries(data)
+	const rawSeries = extractSeries(data)
+	// iOS 的 HRV 数据有时没有独立 hrv 字段，原生会把 time 误当成 value（变成 10 位时间戳），
+	// 这里对明显是时间戳的 value 用 hr/heart/heartNum 兜底，避免被 [1,300] 区间过滤掉。
+	const series = rawSeries.map((it) => {
+		if (!it || typeof it !== 'object') return it
+		const v = pickNumber(it, ['hrvNums', 'hrv', 'hrvValue', 'rmssd', 'sdnn', 'value'])
+		if (v == null || v > 1000) {
+			const alt = pickNumber(it, ['hr', 'heart', 'heartNum'])
+			if (alt != null && alt > 0 && alt <= 300) return { ...it, value: alt }
+		}
+		return it
+	})
 	const hrvItems = buildSeriesItems(series, 'hrv', ['hrvNums', 'hrv', 'hrvValue', 'rmssd', 'sdnn', 'value'], [1, 300])
 	if (hrvItems.length) submitDeviceData(hrvItems, '自动HRV')
 	const stressItems = []

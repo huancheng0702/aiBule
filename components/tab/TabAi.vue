@@ -190,7 +190,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight + 20 || 20
+			this.statusBarHeight = sys.statusBarHeight + 10 || 20
 			this.loadQuickQuestions()
 			this.loadHistory(true)
 		},

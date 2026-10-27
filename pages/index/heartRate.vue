@@ -825,14 +825,14 @@
 							startDate: dateToYmd(start),
 							endDate: dateToYmd(end)
 						}
-						console.log('[heartRate] getDeviceDataList params=', JSON.stringify(params))
+						// console.log('[heartRate] getDeviceDataList params=', JSON.stringify(params))
 						const res = await getDeviceDataList(params)
-						console.log('[heartRate] getDeviceDataList resp=', JSON.stringify(res))
+						// console.log('[heartRate] getDeviceDataList resp=', JSON.stringify(res))
 						return res
 					})()
 				])
-				console.log('[heartRate] getDeviceLatest resp=', JSON.stringify(latest))
-				console.log('[heartRate] getHeartRateTrend resp=', JSON.stringify(trend))
+				// console.log('[heartRate] getDeviceLatest resp=', JSON.stringify(latest))
+				// console.log('[heartRate] getHeartRateTrend resp=', JSON.stringify(trend))
 				this.applyLatest(latest)
 				this.applyTrend(trend)
 				this.applyRecent(unwrapList(recent))
@@ -1678,8 +1678,9 @@
 		position: relative;
 		z-index: 1;
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 38rpx;
+		padding-left: 40rpx;
 	}
 
 	.recent-card {

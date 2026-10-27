@@ -14,6 +14,7 @@
 					<text class="hero-status">{{ latestStatus }}</text>
 				</view>
 				<view class="measure-btn" @click="onEnterWeight">
+					<image src="/static/luruBg.png" mode=""></image>
 					<text class="measure-btn-text">录入血压</text>
 				</view>
 			</view>
@@ -118,21 +119,27 @@
 				<view class="stats-col">
 					<text class="stats-label">最高值</text>
 					<view class="stats-value-row">
-						<text class="stats-num">{{ statsMax }}</text>
+						<text class="stats-num">{{ statsMaxSys }}</text>
+						<text class="stats-slash">/</text>
+						<text class="stats-num-dia">{{ statsMaxDia }}</text>
 					</view>
 				</view>
 				<view class="stats-divider"></view>
 				<view class="stats-col">
 					<text class="stats-label">最低值</text>
 					<view class="stats-value-row">
-						<text class="stats-num">{{ statsMin }}</text>
+						<text class="stats-num">{{ statsMinSys }}</text>
+						<text class="stats-slash">/</text>
+						<text class="stats-num-dia">{{ statsMinDia }}</text>
 					</view>
 				</view>
 				<view class="stats-divider"></view>
 				<view class="stats-col">
 					<text class="stats-label">平均值</text>
 					<view class="stats-value-row">
-						<text class="stats-num">{{ statsAvg }}</text>
+						<text class="stats-num">{{ statsAvgSys }}</text>
+						<text class="stats-slash">/</text>
+						<text class="stats-num-dia">{{ statsAvgDia }}</text>
 					</view>
 				</view>
 			</view>
@@ -165,7 +172,10 @@
 						<text class="recent-time">{{ item.time }}</text>
 						<text class="recent-source">{{ item.source }}</text>
 					</view>
-					<text class="recent-duration">{{ item.valueText }}</text>
+					<view class="">
+						<text class="recent-duration">{{ item.valueText }}</text>
+						<text class="recent-unit">mmHg</text>
+					</view>
 				</view>
 			</view>
 		</view>
@@ -479,6 +489,12 @@
 				statsMax: '--',
 				statsMin: '--',
 				statsAvg: '--',
+				statsMaxSys: '--',
+				statsMaxDia: '--',
+				statsMinSys: '--',
+				statsMinDia: '--',
+				statsAvgSys: '--',
+				statsAvgDia: '--',
 				chartLeft: 0,
 				touchActive: false,
 				touchIndex: -1,
@@ -551,7 +567,10 @@
 			},
 			diaLinePath() {
 				if (!this.chartDiaValues.length) return ''
-				return buildSmoothLinePath(this.diaPoints, CHART_PAD_TOP, this.chartH - CHART_PAD_BOTTOM)
+				// 过滤缺失（0）点，避免在底部画出一条无效的平直线
+				const validPoints = this.diaPoints.filter((p, i) => Number(this.chartDiaValues[i]) > 0)
+				if (validPoints.length < 2) return ''
+				return buildSmoothLinePath(validPoints, CHART_PAD_TOP, this.chartH - CHART_PAD_BOTTOM)
 			},
 			areaPath() {
 				return buildAreaPath(this.linePath, this.chartPoints, this.chartH)
@@ -727,6 +746,12 @@
 					this.statsMax = '--'
 					this.statsMin = '--'
 					this.statsAvg = '--'
+					this.statsMaxSys = '--'
+					this.statsMaxDia = '--'
+					this.statsMinSys = '--'
+					this.statsMinDia = '--'
+					this.statsAvgSys = '--'
+					this.statsAvgDia = '--'
 					this.recentList = []
 					this.trendTime = ''
 					return
@@ -774,12 +799,21 @@
 				this.statsMax = formatBpStat(stats.max)
 				this.statsMin = formatBpStat(stats.min)
 				this.statsAvg = formatBpStat(stats.avg)
+				const maxP = parseBpValue(stats.max)
+				const minP = parseBpValue(stats.min)
+				const avgP = parseBpValue(stats.avg)
+				this.statsMaxSys = maxP ? maxP.sys : '--'
+				this.statsMaxDia = maxP && maxP.dia != null ? maxP.dia : '--'
+				this.statsMinSys = minP ? minP.sys : '--'
+				this.statsMinDia = minP && minP.dia != null ? minP.dia : '--'
+				this.statsAvgSys = avgP ? avgP.sys : '--'
+				this.statsAvgDia = avgP && avgP.dia != null ? avgP.dia : '--'
 
 				const records = Array.isArray(data.records) ? data.records : []
 				this.recentList = records.map((item) => ({
 					time: item.timeText || '--',
 					source: item.source || '手动录入',
-					valueText: (item.value || '--') + ' ' + (item.unit || 'mmHg')
+					valueText: item.value
 				}))
 				this.$nextTick(() => this.measureChart(0))
 			},
@@ -1011,9 +1045,15 @@
 
 	.hero-unit {
 		margin-left: 10rpx;
-		font-size: 28rpx;
+		font-size: 32rpx;
 		color: rgba(255, 255, 255, 0.9);
 		line-height: 40rpx;
+		font-weight: bold;
+		background-image: linear-gradient(to right, #FFFFFF 18%, #4EA1FF 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
 	}
 
 	.hero-status {
@@ -1025,19 +1065,29 @@
 	}
 
 	.measure-btn {
-		flex-shrink: 0;
-		padding: 16rpx 28rpx;
 		border-radius: 40rpx;
-		background: linear-gradient(90deg, #1a53ec 0%, #2f7bff 50%, #4da3ff 100%);
-		box-shadow: 0 0 20rpx rgba(47, 123, 255, 0.45);
+		position: relative;
+		width: 202rpx;
+		height: 112rpx;
 	}
-
+	.measure-btn image{
+		width: 100%;
+		height: 100%;
+	}
+	
 	.measure-btn-text {
+		font-weight: bold;
 		font-size: 26rpx;
-		font-weight: 500;
-		color: #ffffff;
-		line-height: 36rpx;
+		color: #FFFFFF;
+		width: 100%;
+		height: 100%;
+		position: absolute;
+		top: 0;
+		left: 0;
+		text-align: center;
+		line-height: 102rpx;
 	}
+	
 
 	.bmi-card {
 		margin-top: 28rpx;
@@ -1059,15 +1109,18 @@
 	.bmi-badge {
 		padding: 8rpx 18rpx;
 		border-radius: 24rpx;
-		background: rgba(47, 123, 255, 0.18);
-		border: 1rpx solid rgba(77, 163, 255, 0.35);
+		background: rgba(44,137,255,0.1);
+		border-radius: 200rpx 200rpx 200rpx 200rpx;
 		box-sizing: border-box;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
-
+	
 	.bmi-badge-text {
-		font-size: 22rpx;
-		color: #64b5f6;
-		line-height: 30rpx;
+		font-weight: 500;
+		font-size: 24rpx;
+		color: #2C89FF;
 	}
 
 	.bmi-value {
@@ -1124,13 +1177,15 @@
 		font-size: 24rpx;
 		color: rgba(255, 255, 255, 0.65);
 		line-height: 40rpx;
+		padding-bottom: 28rpx;
 	}
 
 	.sugar-footer {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-top: 24rpx;
+		padding-top: 24rpx;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.sugar-footer-left {
@@ -1431,6 +1486,21 @@
 		line-height: 48rpx;
 	}
 
+	.stats-slash {
+		margin: 0 4rpx;
+		font-weight: 500;
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.7);
+		line-height: 48rpx;
+	}
+
+	.stats-num-dia {
+		font-weight: 500;
+		font-size: 22rpx;
+		color: rgba(255, 255, 255, 0.7);
+		line-height: 48rpx;
+	}
+
 	.stats-unit {
 		margin-left: 6rpx;
 		font-size: 22rpx;
@@ -1514,9 +1584,14 @@
 	}
 
 	.recent-duration {
-		font-size: 28rpx;
+		font-size: 32rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+	.recent-unit{
+		font-size: 24rpx;
+		color: #ffffff;
+		margin-left: 10rpx;
 	}
 
 	.cal-mask {

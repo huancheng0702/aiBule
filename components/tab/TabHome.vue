@@ -1,5 +1,7 @@
 <template>
 	<view class="tab-page">
+		<scroll-view class="tab-scroll" scroll-y :refresher-enabled="true" :refresher-triggered="isRefreshing"
+			refresher-default-style="white" refresher-background="#000000" @refresherrefresh="onRefresh">
 		<!-- 顶部问候：paddingTop 用系统状态栏高度适配不同机型 -->
 		<view class="header" :style="{ paddingTop: statusBarHeight + 'px' }">
 			<view class="header-left">
@@ -182,16 +184,22 @@
 					</view>
 					<view class="record-info">
 						<text class="record-value" :class="{ empty: !item.value }">{{ item.value || '暂无数据' }}</text>
+						<text class="record-unit"> {{item.unit}}</text>
 					</view>
 				</view>
 			</view>
 		</view>
+		<view class="spaceemty">
+			
+		</view>
+
+		</scroll-view>
 
 		<!-- 管理显示弹窗 -->
 		<view v-if="showManagePopup" class="popup-mask" @click="closeManagePopup">
 			<view class="popup-sheet" @click.stop>
 				<!-- 背景图，自行补充 src -->
-				<image class="popup-bg" mode="aspectFill"></image>
+				<image class="popup-bg" src="/static/bushuPopBg.png" mode=""></image>
 				<view class="popup-content">
 					<view class="popup-header">
 						<text class="popup-title">手动健康显示</text>
@@ -203,10 +211,15 @@
 								<text class="popup-item-title">{{ item.manageLabel }}</text>
 								<text class="popup-item-sub">显示在首页</text>
 							</view>
-							<switch :checked="item.visible" color="#3b82f6" @change="onToggleChange(index, $event)" />
+							<switch :checked="item.visible" :class="{ ischeck: !item.visible }" color="#2C89FF" @change="onToggleChange(index, $event)" />
+							
 						</view>
 					</view>
-					<view class="popup-btn" @click="confirmManagePopup">完成</view>
+					<view class="popup-btn" @click="confirmManagePopup">
+						<image class="popup-btn-bg" src="/static/btnBan.png" mode=""></image>
+						<text class="popup-btn-text">完成</text>
+					</view>
+
 				</view>
 			</view>
 		</view>
@@ -435,6 +448,7 @@
 		data() {
 			return {
 				statusBarHeight: 20,
+				isRefreshing: false,
 				batteryLevel: null,
 				batteryCharging: false,
 				unsubBle: null,
@@ -593,6 +607,7 @@
 						manageLabel: '体重',
 						homeLabel: '体重',
 						value: '',
+						unit: '',
 						visible: true,
 						icon: '/static/tizhong.png'
 					},
@@ -637,7 +652,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight + 20 || 20
+			this.statusBarHeight = sys.statusBarHeight + 10 || 20
 			this.nickName = uni.getStorageSync('nickName') || ''
 			this.unsubBle = BleService.subscribe((s) => {
 				this.batteryLevel = s.batteryLevel
@@ -675,7 +690,7 @@
 				else if (hour < 12) text = '早上好'
 				else if (hour < 14) text = '中午好'
 				else if (hour < 18) text = '下午好'
-				return this.nickName ? (text + '，' + this.nickName) : text
+				return text
 			},
 			stepText() {
 				const n = Number(this.stepCurrent) || 0
@@ -722,6 +737,15 @@
 				this._lastBleSportKey = key
 				clearTimeout(this._bleReloadTimer)
 				this._bleReloadTimer = setTimeout(() => { this.loadDashboard() }, 1500)
+			},
+			async onRefresh() {
+				this.isRefreshing = true
+				try {
+					await this.loadHome()
+					BleService.syncSport && BleService.syncSport().catch(() => {})
+					BleService.syncSleep && BleService.syncSleep().catch(() => {})
+				} catch (e) {}
+				this.isRefreshing = false
 			},
 			onTabShow() {
 				this.loadHome()
@@ -834,16 +858,19 @@
 						const meta = RECORD_META[rec.type]
 						if (!row || !row.value) {
 							rec.value = ''
+							rec.unit = ''
 							return
 						}
 						const unit = row.unit ? (' ' + row.unit) : (meta && meta.suffix) || ''
-						rec.value = String(row.value) + unit
+						rec.value = String(row.value)
+						rec.unit = String(unit).trim()
 					})
 				} catch (e) {}
 				try {
 					const stats = await getPeriodStatistics()
 					const rec = this.recordList.find((item) => item.type === '5')
 					if (!rec || !stats) return
+					rec.unit = ''
 					if (Number(stats.periodDay) > 0) {
 						rec.value = '经期第' + stats.periodDay + '天'
 					} else if (stats.nextStartDate) {
@@ -978,6 +1005,7 @@
 				})
 			},
 			onToggleChange(index, e) {
+				console.log(e)
 				this.$set(this.recordList[index], 'visible', e.detail.value)
 			}
 		}
@@ -986,12 +1014,18 @@
 
 <style scoped lang="scss">
 	.tab-page {
-		min-height: 100%;
-		padding: 0 28rpx 40rpx;
+		height: 100%;
+		overflow: hidden;
+		padding: 0;
 		box-sizing: border-box;
-		padding-bottom: 140rpx;
 		background: #000000;
 		color: #ffffff;
+	}
+
+	.tab-scroll {
+		height: 100%;
+		padding: 0 28rpx 0;
+		box-sizing: border-box;
 	}
 
 	.header {
@@ -1066,7 +1100,7 @@
 	}
 
 	.section-last {
-		padding-bottom: 20rpx;
+		padding-bottom: 20rpx; 
 	}
 
 	.section-row {
@@ -1150,7 +1184,7 @@
 		display: block;
 		margin-top: 8rpx;
 		font-size: 22rpx;
-		color: #636366;
+		color: rgba(255, 255, 255, 0.65);
 		line-height: 30rpx;
 	}
 
@@ -1307,7 +1341,8 @@
 	.record-info {
 		flex: 1;
 		display: flex;
-		flex-direction: column;
+		align-items: baseline;
+		flex-wrap: wrap;
 		min-width: 0;
 	}
 
@@ -1329,7 +1364,15 @@
 	.record-value.empty {
 		font-size: 26rpx;
 		font-weight: 400;
-		color: #636366;
+		color: #FFFFFF;
+	}
+
+	.record-unit {
+		margin-left: 10rpx;
+		margin-top: 20rpx;
+		font-size: 24rpx;
+		color: rgba(255, 255, 255, 0.65);
+		line-height: 40rpx;
 	}
 
 	.popup-mask {
@@ -1397,11 +1440,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 28rpx 28rpx;
-		margin-bottom: 16rpx;
-		border-radius: 24rpx;
-		background: rgba(255, 255, 255, 0.06);
+		padding: 20rpx;
+		margin-bottom: 26rpx;
 		box-sizing: border-box;
+		height: 118rpx;
+		background: #1A1B25;
+		border-radius: 20rpx 20rpx 20rpx 20rpx;
+		border: 1rpx solid rgba(255,255,255,0.1)
 	}
 
 	.popup-item:last-child {
@@ -1414,28 +1459,41 @@
 	}
 
 	.popup-item-title {
-		font-size: 30rpx;
+		font-size: 28rpx;
 		font-weight: 600;
-		color: #ffffff;
+		color: rgba(255, 255, 255, 0.80);
 		line-height: 42rpx;
 	}
 
 	.popup-item-sub {
 		margin-top: 6rpx;
-		font-size: 22rpx;
-		color: #8e8e93;
+		font-size: 24rpx;
+		color: rgba(255, 255, 255, 0.80);
 		line-height: 30rpx;
 	}
 
 	.popup-btn {
+		position: relative;
 		height: 96rpx;
 		line-height: 96rpx;
 		text-align: center;
-		border-radius: 48rpx;
+		border-radius:28rpx;
 		font-size: 32rpx;
 		font-weight: 600;
 		color: #ffffff;
-		background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+	}
+
+	.popup-btn-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.popup-btn-text {
+		position: relative;
+		z-index: 1;
 	}
 
 	.butler-mask {
@@ -1522,5 +1580,32 @@
 	.butler-copy-btn {
 		width: 172rpx;
 		height: 64rpx;
+	}
+	::v-deep uni-switch .uni-switch-input{
+		height: 32rpx;
+		width: 64rpx;
+		background-color: #30313A;
+		border: 1px solid #30313A;
+	}
+	::v-deep uni-switch .uni-switch-input:after{
+		height: 28rpx;
+		width: 28rpx;
+		background-color: #000;
+	}
+	::v-deep uni-switch .uni-switch-input.uni-switch-input-checked:after{
+		transform: translateX(30rpx);
+	}
+	::v-deep uni-switch .uni-switch-input:before{
+		height: 32rpx;
+		width: 64rpx;
+		background-color: #30313A;
+	}
+
+	::v-deep .ischeck .uni-switch-wrapper .uni-switch-input:after{
+		background-color: #2C89FF;
+	}
+	.spaceemty{
+		width: 100%;
+		height: 100px;
 	}
 </style>

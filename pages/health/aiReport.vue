@@ -48,7 +48,6 @@
 					<view class="parse-item-left">
 						<view class="parse-item-name">{{ item.name }}</view>
 						<view class="parse-item-ref">{{ item.ref }}</view>
-						<view class="parse-item-status">{{ item.status }}</view>
 					</view>
 					<view class="parse-item-value">{{ item.value }}</view>
 				</view>
@@ -1263,6 +1262,7 @@
 		justify-content: center;
 		align-items: center;
 		margin-top: 20rpx;
+		margin-bottom: 30rpx;
 	}
 
 	.privacy-icon {
@@ -1274,7 +1274,8 @@
 	.privacy-text {
 		font-weight: 500;
 		font-size: 26rpx;
-		color: #FFFFFF;
+		color: rgba(255, 255, 255, 0.5);
+		
 	}
 
 	.upload-mask {

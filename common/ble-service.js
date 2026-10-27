@@ -1743,6 +1743,16 @@ function pickBatteryField(o, keys) {
 					promptEnableBluetooth()
 					throw new Error('蓝牙未开启，请打开手机蓝牙后重试')
 				}
+			} else {
+				// 安卓：蓝牙从关闭→开启后，原生 BluetoothHelper 状态可能残留为"未就绪"，
+				// 导致 startScan 静默扫不到设备（需杀进程重进才恢复）。这里先强制重新初始化，
+				// 再给适配器一点时间就绪。
+				if (!state.connected) {
+					try {
+						await CoolWearBLE.resetBluetooth()
+					} catch (e) {}
+					await sleep(500)
+				}
 			}
 			if (scanTimer) {
 				clearTimeout(scanTimer)
@@ -1761,16 +1771,15 @@ function pickBatteryField(o, keys) {
 				}
 				throw e
 			}
-			if (isIos()) {
-				setTimeout(async () => {
-					if (!state.scanning) return
-					if (state.devices.length > 0) return
-					try {
-						await CoolWearBLE.stopScan().catch(() => {})
-						await CoolWearBLE.startScan()
-					} catch (e) {}
-				}, 1500)
-			}
+			// 首次扫描可能因适配器刚就绪而为空，1.5s 后若仍无设备则重扫一次
+			setTimeout(async () => {
+				if (!state.scanning) return
+				if (state.devices.length > 0) return
+				try {
+					await CoolWearBLE.stopScan().catch(() => {})
+					await CoolWearBLE.startScan()
+				} catch (e) {}
+			}, 1500)
 			if (timeoutMs > 0) {
 				scanTimer = setTimeout(() => {
 					BleService.stopScan().catch(() => {})

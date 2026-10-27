@@ -52,7 +52,7 @@
 		</view>
 
 		<!-- 调试：蓝牙全量信息 -->
-		<view class="section">
+		<!-- <view class="section">
 			<view class="debug-head">
 				<text class="section-title debug-title">蓝牙调试信息</text>
 				<text class="debug-refresh" @click="dumpBleInfo">刷新打印</text>
@@ -60,7 +60,7 @@
 			<view class="debug-card">
 				<text class="debug-line" selectable>{{ bleDebugText }}</text>
 			</view>
-		</view>
+		</view> -->
 
 		<!-- 断开确认弹窗 -->
 		<view v-if="showUnbindPopup" class="unbind-mask" @click="closeUnbindPopup">
@@ -88,7 +88,10 @@
 <script>
 	import BleService from '@/common/ble-service.js'
 	import CoolWearBLE from '@/common/coolwear-ble.js'
-	import { getDeviceList, unbindDevice } from '@/common/api/device.js'
+	import {
+		getDeviceList,
+		unbindDevice
+	} from '@/common/api/device.js'
 
 	const BLE_EVENT_NAMES = [
 		'onDeviceFound',
@@ -130,9 +133,9 @@
 			statusMeta() {
 				if (!this.connected) return '未连接'
 				if (this.battery != null) {
-					return this.batteryCharging
-						? `已连接 · 电量 ${this.battery}% · 充电中`
-						: `已连接 · 电量 ${this.battery}%`
+					return this.batteryCharging ?
+						`已连接 · 电量 ${this.battery}% · 充电中` :
+						`已连接 · 电量 ${this.battery}%`
 				}
 				return this.batteryCharging ? '已连接 · 充电中' : '已连接'
 			},
@@ -217,7 +220,9 @@
 					this.isConnectedRaw = res
 					console.log('[4] CoolWearBLE.isConnected():', res)
 				} catch (e) {
-					this.isConnectedRaw = { error: (e && e.message) || String(e) }
+					this.isConnectedRaw = {
+						error: (e && e.message) || String(e)
+					}
 					console.log('[4] CoolWearBLE.isConnected() 失败:', e)
 				}
 
@@ -289,7 +294,9 @@
 				setTimeout(() => {
 					uni.hideLoading()
 					this.checkingFirmware = false
-					if (this.firmware === this.latestFirmware) {
+					const currentFw = this.firmware || '--'
+					const latestFw = this.latestFirmware || '--'
+					if (!latestFw || latestFw === '--' || currentFw === latestFw) {
 						uni.showToast({
 							title: '已是最新版本',
 							icon: 'none'
@@ -332,19 +339,20 @@
 				})
 				try {
 					const response = await getDeviceList()
-					const list = Array.isArray(response)
-						? response
-						: (response && (response.list || response.records || response.data || response.rows)) || []
+					const list = Array.isArray(response) ?
+						response :
+						(response && (response.list || response.records || response.data || response.rows)) || []
 					const current = BleService.getState().device || {}
 					const boundDevice = list.find((item) =>
-						(item.mac && current.mac && String(item.mac).toUpperCase() === String(current.mac).toUpperCase()) ||
+						(item.mac && current.mac && String(item.mac).toUpperCase() === String(current.mac)
+							.toUpperCase()) ||
 						(item.deviceId && current.id && String(item.deviceId) === String(current.id)) ||
 						(item.name && current.name && item.name === current.name)
 					) || (list.length === 1 ? list[0] : null)
 					const bindId = boundDevice && (boundDevice.bindId != null ? boundDevice.bindId : boundDevice.id)
 					if (bindId == null) throw new Error('未找到当前设备的绑定信息')
 					await unbindDevice(bindId)
-				
+
 					await BleService.disconnect(true)
 					uni.hideLoading()
 					uni.showToast({
@@ -352,8 +360,8 @@
 						icon: 'none'
 					})
 					setTimeout(() => {
-						uni.redirectTo({
-							url: '/pages/mine/deviceManage'
+						uni.reLaunch({
+							url: '/pages/index/index?tab=3'
 						})
 					}, 500)
 				} catch (e) {

@@ -232,7 +232,7 @@
 	}
 
 	.footer {
-		margin-top: auto;
+		margin-top: 380rpx;
 		padding: 24rpx 0 48rpx;
 	}
 

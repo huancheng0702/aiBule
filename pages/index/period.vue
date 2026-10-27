@@ -795,7 +795,7 @@
 
 	.today-badge,
 	.selected-badge {
-		width: 64rpx;
+		width: 86rpx;
 		height:84rpx;
 		border-radius: 16rpx;
 		display: flex;

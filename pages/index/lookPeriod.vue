@@ -3,15 +3,8 @@
 		<!-- 顶部横幅 -->
 		<view class="hero-card">
 			<!-- 横幅背景图，自行补充 src -->
-			<image class="hero-bg" src="/static/lookPeriodBg.png" mode=""></image>
-			<view class="hero-body">
-				<view class="hero-left">
-					<text class="hero-title">认识你的生理周期</text>
-					<text class="hero-desc">持续记录周期变化，有助于了解个人节律，并为日常健康管理提供参考。</text>
-				</view>
-				<!-- 右侧装饰花图，自行补充 src -->
-				<image class="hero-deco" src="/static/lookPeriodFlower.png" mode="aspectFit"></image>
-			</view>
+			<image class="hero-bg" src="/static/jingqiBan.png" mode=""></image>
+
 		</view>
 
 		<!-- 什么是生理周期 -->
@@ -24,12 +17,8 @@
 		<view class="section">
 			<text class="section-title">周期的四个阶段</text>
 			<view class="card phase-card">
-				<view
-					v-for="(item, index) in phaseList"
-					:key="item.title"
-					class="phase-item"
-					:class="{ border: index < phaseList.length - 1 }"
-				>
+				<view v-for="(item, index) in phaseList" :key="item.title" class="phase-item"
+					:class="{ border: index < phaseList.length - 1 }">
 					<text class="phase-title">{{ item.title }}</text>
 					<text class="phase-desc">{{ item.desc }}</text>
 				</view>
@@ -37,24 +26,28 @@
 		</view>
 
 		<!-- 记录建议 -->
-		<view class="card tip-card">
-			<view class="tip-header">
-				<!-- 灯泡图标 -->
-				<image class="tip-icon" src="/static/qushijianyi.png" mode="aspectFit"></image>
-				<text class="tip-title">记录建议</text>
+		<view class=" tip-card">
+			<image class="tip-bg" src="/static/heartCardBg.png" mode=""></image>
+			<view class="tip-body">
+				<view class="tip-header">
+					<!-- 灯泡图标 -->
+					<image class="tip-icon" src="/static/qushijianyi.png" mode="aspectFit"></image>
+					<text class="tip-title">记录建议</text>
+				</view>
+				<text class="tip-text">{{ tipText }}</text>
 			</view>
-			<text class="tip-text">{{ tipText }}</text>
 		</view>
 	</view>
 </template>
 
 <script>
-	import { getHealthTypeInfoList } from '@/common/api/config.js'
+	import {
+		getHealthTypeInfoList
+	} from '@/common/api/config.js'
 
 	const DEFAULT_INTRO = '生理周期从一次月经来潮的第一天开始，到下一次月经来潮前一天结束。周期长度存在个体差异，也可能受睡眠、压力、运动和生活方式影响。'
 	const DEFAULT_TIP = '准确记录每次月经开始与结束日期；记录经量、痛经及其他身体感受；关注睡眠、压力和运动对周期的影响；周期持续异常或伴明显不适时咨询医生。'
-	const DEFAULT_PHASES = [
-		{
+	const DEFAULT_PHASES = [{
 			title: '经期',
 			desc: '子宫内膜脱落并出现月经，适合关注休息、经量及身体感受。'
 		},
@@ -99,7 +92,8 @@
 					const list = Array.isArray(data) ? data : (data && (data.list || data.items || data.records)) || []
 					if (!list.length) return
 					const sorted = list.slice().sort((a, b) => {
-						return Number(a.sort || a.sortNo || a.orderNum || 0) - Number(b.sort || b.sortNo || b.orderNum || 0)
+						return Number(a.sort || a.sortNo || a.orderNum || 0) - Number(b.sort || b.sortNo || b
+							.orderNum || 0)
 					})
 					const intro = []
 					const phases = []
@@ -113,7 +107,10 @@
 							return
 						}
 						if (/阶段|经期|卵泡|排卵|黄体/.test(title) && desc) {
-							phases.push({ title: title || '阶段', desc })
+							phases.push({
+								title: title || '阶段',
+								desc
+							})
 							return
 						}
 						intro.push(desc || title)
@@ -141,7 +138,7 @@
 	.hero-card {
 		position: relative;
 		overflow: hidden;
-		min-height: 220rpx;
+		height: 230rpx;
 		padding: 36rpx 28rpx;
 		border-radius: 24rpx;
 		background: linear-gradient(135deg, #0d2a6b 0%, #1a53ec 45%, #4da3ff 100%);
@@ -261,6 +258,22 @@
 
 	.tip-card {
 		margin-top: 24rpx;
+		position: relative;
+		padding: 32rpx 28rpx;
+	}
+
+	.tip-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
+
+	.tip-body {
+		position: relative;
+		z-index: 1;
 	}
 
 	.tip-header {
@@ -278,14 +291,19 @@
 	.tip-title {
 		font-size: 28rpx;
 		font-weight: 600;
-		color: #4da3ff;
 		line-height: 40rpx;
+		background-image: linear-gradient(to right, #FFFFFF 18%, #4EA1FF 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
 	}
 
 	.tip-text {
 		display: block;
-		font-size: 26rpx;
+		font-size: 22rpx;
 		color: rgba(255, 255, 255, 0.65);
 		line-height: 42rpx;
+		padding-left: 28px;
 	}
 </style>

@@ -101,15 +101,18 @@
 			</view>
 		</view>
 
-		<!-- 说明 -->
 		<view class="tip-card">
+			<!-- 说明卡片背景图，自行补充 src -->
+			<image class="tip-bg" src="/static/heartCardBg.png" mode=""></image>
 			<view class="tip-header">
 				<!-- 灯泡图标，自行补充 src -->
-				<image class="tip-icon" mode="aspectFit"></image>
-				<text class="tip-title">说明</text>
+				<image class="tip-icon" src="/static/qushijianyi.png" mode=""></image>
+				<image src="/static/shuoming.png" style="width: 70rpx;height: 34rpx;" mode=""></image>
 			</view>
-			<text class="tip-text">{{ tipText }}</text>
+			<view class="tip-text">{{ tipText }}</view>
 		</view>
+		
+		
 
 		<!-- 目标设置弹窗 -->
 		<view v-if="showGoalPopup" class="goal-mask" @click="closeGoalPopup">
@@ -803,51 +806,53 @@
 	}
 
 	.tip-card {
+		position: relative;
+		overflow: hidden;
 		margin-top: 28rpx;
 		padding: 28rpx;
 		border-radius: 24rpx;
-		background: #1A1B25;
+		background: #1a1b25;
 		box-sizing: border-box;
-		position: relative;
-		overflow: hidden;
 	}
-
-	.tip-card::before {
-		content: '';
+	
+	.tip-bg {
 		position: absolute;
 		left: 0;
 		top: 0;
-		width: 180rpx;
-		height: 120rpx;
-		background: radial-gradient(ellipse at top left, rgba(47, 123, 255, 0.35) 0%, transparent 70%);
+		width: 100%;
+		height: 100%;
 		pointer-events: none;
+		z-index: 0;
 	}
-
+	
 	.tip-header {
 		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		margin-bottom: 16rpx;
 	}
-
+	
 	.tip-icon {
 		width: 32rpx;
 		height: 32rpx;
 		margin-right: 10rpx;
 	}
-
+	
 	.tip-title {
 		font-size: 28rpx;
 		font-weight: 600;
 		color: #4da3ff;
 		line-height: 40rpx;
 	}
-
+	
 	.tip-text {
 		position: relative;
+		z-index: 1;
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 38rpx;
+		padding-left: 40rpx;
 	}
 
 	.goal-mask {

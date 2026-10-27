@@ -7,21 +7,21 @@
 					本机号码一键登录
 				</view>
 			</view>
-			<view class="oneBtn" @click="onOpenSmsLogin">
+		<!-- 	<view class="oneBtn" @click="onOpenSmsLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					验证码登录
 				</view>
-			</view>
+			</view> -->
 			<view class="wxLogin" @click="onWxLogin">
 				微信登录 
 			</view>
 			<view class="agreement">
 				<image @click.stop="agreed = !agreed"
-					:src="agreed ? '/static/check-circle-fil.png' : '/static/checkCircle.png'" class="agreImg" mode="">
+					:src="agreed ? '/static/celiangSuccess.png' : '/static/checkCircle.png'" class="agreImg" mode="">
 				</image>
 				<view class="agreText">
-					我已阅读并同意 <text class="agreLink" @click="openContent(5)">《隐私政策》</text>及健康 <text class="agreLink"
+					我已阅读并同意 <text class="agreLink" @click="openContent(5)">《隐私政策》</text>及 <text class="agreLink"
 						@click="openContent(1)">《用户协议》</text>
 				</view>
 			</view>
@@ -461,7 +461,7 @@
 			width: 100%;
 			position: absolute;
 			text-align: center;
-			bottom: 60rpx;
+			bottom: 102rpx;
 			left: 0;
 			padding: 0 30rpx;
 			box-sizing: border-box;
@@ -517,7 +517,7 @@
 				text-align: center;
 				line-height: 80rpx;
 				font-size: 28rpx;
-				margin-bottom: 20rpx;
+				margin-bottom: 30rpx;
 			}
 		}
 	}
@@ -526,7 +526,7 @@
 		display: flex;
 		justify-content: flex-start;
 		align-items: flex-start;
-
+		margin-top: 36rpx;
 		image {
 			width: 36rpx;
 			height: 36rpx;

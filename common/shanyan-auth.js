@@ -1,5 +1,8 @@
 // 闪验一键登录，写法参照创蓝闪验官方示例 pages/login/alogin.vue
-import { oneKeyLogin, wxLogin } from '@/common/api/auth.js'
+import {
+	oneKeyLogin,
+	wxLogin
+} from '@/common/api/auth.js'
 
 const shanYanSDKModule = uni.requireNativePlugin('CLSDK-ShanYanSDKModule'); //调用
 
@@ -11,8 +14,14 @@ const SHANYAN_APPID = {
 
 //隐私协议链接
 const PRIVACY_LINKS = {
-	privacyPolicy: { title: '隐私政策', url: 'https://fx.tailunkaluo.com/h5/content.html?id=5' },
-	userAgreement: { title: '用户协议', url: 'https://fx.tailunkaluo.com/h5/content.html?id=1' }
+	privacyPolicy: {
+		title: '隐私政策',
+		url: 'https://fx.tailunkaluo.com/h5/content.html?id=5'
+	},
+	userAgreement: {
+		title: '用户协议',
+		url: 'https://fx.tailunkaluo.com/h5/content.html?id=1'
+	}
 }
 
 //自定义控件ID（微信登录）
@@ -46,7 +55,8 @@ function init(callback) {
 	} else if (platform == 'ios') {
 		appid = SHANYAN_APPID.ios
 	}
-	// shanYanSDKModule.setDebug(true)
+
+	shanYanSDKModule.setDebug(true)
 	//闪验SDK 初始化
 	shanYanSDKModule.init({
 		appid: appid
@@ -72,21 +82,22 @@ function setAuthThemeConfig(hooks) {
 				setFullScreen: false,
 				setTextSizeIsdp: true,
 				setStatusBarHidden: false,
-				setStatusBarColor: '#ffffff',
+				setStatusBarColor: '#E8E8EA',
 				setLightColor: false,
 				setAuthNavHidden: false,
-				setNavTextColor:'#ffffff', //设置导航栏标题文字颜色
+				setNavTextColor: '#E8E8EA', //设置导航栏标题文字颜色
 				setAuthNavTransparent: true,
-				setNavReturnImgHidden: true,
+				setNavReturnImgHidden: false,
 				setLogoHidden: true,
 				setNumberColor: '#09090D',
 				setNumberSize: '28',
 				setNumberBold: true,
 				setNumFieldWidth: buttonWidth,
-				setNumFieldOffsetBottomY: '220',
+				setNumFieldOffsetBottomY: '240',
 				setSloganHidden: true,
 				setShanYanSloganHidden: true,
 				setLogBtnText: '本机号码一键登录',
+				setLogBtnImgPath: 'static/btnBan.png',
 				setLogBtnTextColor: '#FFFFFF',
 				setLogBtnTextSize: '16',
 				setLogBtnTextBold: false,
@@ -123,7 +134,7 @@ function setAuthThemeConfig(hooks) {
 				setPrivacyCustomToastText: '请先同意用户协议',
 				setPrivacyText: {
 					privacyTextOne: '我已阅读并同意',
-					privacyTextTwo: '及健康',
+					privacyTextTwo: '及',
 					privacyTextThree: '',
 					privacyTextFour: '',
 					privacyTextFive: '并授权获取本机号码'
@@ -140,16 +151,15 @@ function setAuthThemeConfig(hooks) {
 			widgets: {
 				widget1: {
 					widgetId: "customView_wx",
-					type: 'TextView',
-					left: '160',
-					bottom: '105',
-					width: '',
-					height: '',
-					textContent: '微信登录',
-					textFont: 15,
-					textColor: '#2C89FF',
-					backgroundColor: '#FFFFFF',
-					isFinish: true
+					type: "ImageView",
+					left: String(side),
+					top: "",
+					right: "",
+					bottom: '80',
+					width: buttonWidth,
+					height: "48",
+					backgroundImgPath: "static/wxlogin.png",
+					isFinish: "true"
 				}
 			}
 		}, result => {
@@ -160,14 +170,15 @@ function setAuthThemeConfig(hooks) {
 				wxLoginInAuthPage(hooks)
 			}
 		})
-	} else if (platform == 'ios') { 
+	} else if (platform == 'ios') {
 		//iOS 全屏模式
 		ios_uiConfigure = buildIosConfigure()
 
 		//设置自定义控件点击回调（控件ID可能在 widgetId 或 result 字段里）
 		shanYanSDKModule.setCustomInterface(customInterface => {
 			console.log(JSON.stringify(customInterface))
-			let widgetId = String((customInterface && (customInterface.widgetId || customInterface.result)) || '')
+			let widgetId = String((customInterface && (customInterface.widgetId || customInterface.result)) ||
+				'')
 			if (widgetId.indexOf(WX_WIDGET_ID) != -1) {
 				wxLoginInAuthPage(hooks)
 			}
@@ -233,7 +244,7 @@ export function openOneKeyLogin(hooks = {}) {
 						// let data = oneKeyLoginListenerResult.result
 						let data = oneKeyLoginListenerResult.data
 						console.log(oneKeyLoginListenerResult)
-						console.log(123,data)
+						console.log(123, data)
 						if (typeof data == 'string') {
 							try {
 								data = JSON.parse(data)
@@ -263,9 +274,10 @@ export function finishAuthPage() {
 			//部分插件版本没有 finishAuthActivity 方法，不能直接调用
 			shanYanSDKModule.finishAuthActivity && shanYanSDKModule.finishAuthActivity()
 		} else if (platform == 'ios') {
-			shanYanSDKModule.finishAuthControllerCompletion && shanYanSDKModule.finishAuthControllerCompletion(result => {
-				console.log(JSON.stringify(result))
-			})
+			shanYanSDKModule.finishAuthControllerCompletion && shanYanSDKModule.finishAuthControllerCompletion(
+				result => {
+					console.log(JSON.stringify(result))
+				})
 		}
 	} catch (e) {
 		console.log(JSON.stringify(e))
@@ -346,20 +358,20 @@ function buildIosConfigure() {
 	}
 
 	//竖屏
-	let clLayoutPhoneLeft_Portrait = 30 * screenScale;
-	let clLayoutPhoneRight_Portrait = -30 * screenScale;
+	let clLayoutPhoneLeft_Portrait = 15 * screenScale;
+	let clLayoutPhoneRight_Portrait = -15 * screenScale;
 	let clLayoutPhoneHeight_Portrait = 40 * screenScale;
-	let clLayoutPhoneBottom_Portrait = -220 * screenScale;
+	let clLayoutPhoneBottom_Portrait = -240 * screenScale;
 
-	let clLayoutLoginBtnLeft_Portrait = 30 * screenScale;
-	let clLayoutLoginBtnRight_Portrait = -30 * screenScale;
+	let clLayoutLoginBtnLeft_Portrait = 15 * screenScale;
+	let clLayoutLoginBtnRight_Portrait = -15 * screenScale;
 	let clLayoutLoginBtnHeight_Portrait = 48 * screenScale;
-	let clLayoutLoginBtnBottom_Portrait = -138 * screenScale;
+	let clLayoutLoginBtnBottom_Portrait = -165 * screenScale;
 
 	let clLayoutAppPrivacyLeft_Portrait = 40 * screenScale;
 	let clLayoutAppPrivacyRight_Portrait = -16 * screenScale;
 	let clLayoutAppPrivacyHeight_Portrait = 56 * screenScale;
-	let clLayoutAppPrivacyBottom_Portrait = -18 * screenScale;
+	let clLayoutAppPrivacyBottom_Portrait = -38 * screenScale;
 
 	let clLayoutSloganLeft_Portrait = 0;
 	let clLayoutSloganRight_Portrait = 0;
@@ -367,10 +379,10 @@ function buildIosConfigure() {
 	let clLayoutSloganBottom_Portrait = 0;
 
 	//微信登录控件
-	let clLayoutWxBtnLeft_Portrait = 30 * screenScale;
-	let clLayoutWxBtnRight_Portrait = -30 * screenScale;
+	let clLayoutWxBtnLeft_Portrait = 15 * screenScale;
+	let clLayoutWxBtnRight_Portrait = -15 * screenScale;
 	let clLayoutWxBtnHeight_Portrait = 48 * screenScale;
-	let clLayoutWxBtnBottom_Portrait = -65 * screenScale;
+	let clLayoutWxBtnBottom_Portrait = -97 * screenScale;
 
 	return {
 		clBackgroundImg: 'static/loginBanner.png',
@@ -381,7 +393,7 @@ function buildIosConfigure() {
 		 * */
 		supportedInterfaceOrientations: 0,
 
-		clNavigationBarHidden: true,
+		clNavigationBarHidden: false,
 		clNavigationBackgroundClear: true, //导航栏透明
 		clNavigationBackBtnHidden: false,
 
@@ -390,32 +402,35 @@ function buildIosConfigure() {
 		clPhoneNumberColor: [0.035, 0.035, 0.05, 1.0], //rgba
 		clPhoneNumberFont: 28 * screenScale,
 
-		clLoginBtnText: '本机号码一键登录', //一键登录按钮文字
+		clLoginBtnText: '', //一键登录按钮文字
 		clLoginBtnTextColor: [1, 1, 1, 1.0], //rgba
 		clLoginBtnBgColor: [0.17, 0.54, 1.0, 1.0], //rgba
-		clLoginBtnTextFont: 15 * screenScale,
+		clLoginBtnTextFont: 16 * screenScale,
 		clLoginBtnCornerRadius: 16 * screenScale,
+		clLoginBtnNormalBgImage: 'static/yijiandeng.png',
 
 
 		clCheckBoxHidden: false,
 		clCheckBoxValue: false,
-		clCheckBoxVerticalAlignmentToAppPrivacyCenterY:true,
-		clSloganTextHidden:false,
+		clCheckBoxVerticalAlignmentToAppPrivacyCenterY: true,
+		clSloganTextHidden: false,
 		clCheckBoxSize: [30 * screenScale, 30 * screenScale], //2 item, width and height
 		// clCheckBoxSize: [40, 40],
 		clCheckBoxUncheckedImage: 'static/checkCircle.png',
 		clCheckBoxCheckedImage: 'static/celiangSuccess.png',
-		clCheckBoxImageEdgeInsets:[5,5,5,5],
+		clCheckBoxImageEdgeInsets: [5, 5, 5, 5],
 		clAppPrivacyColor: [
 			[0.4, 0.4, 0.4, 1.0],
 			[0.17, 0.54, 1.0, 1.0]
 		], //2 item,commomTextColor and appPrivacyTextColor
 		clAppPrivacyTextFont: 11 * screenScale,
-		clAppPrivacyTextAlignment:1, //0: center 1: left 2: right
-		clAppPrivacyFirst: [PRIVACY_LINKS.privacyPolicy.title, PRIVACY_LINKS.privacyPolicy.url], // 2 item, name and url
-		clAppPrivacySecond: [PRIVACY_LINKS.userAgreement.title, PRIVACY_LINKS.userAgreement.url], // 2 item, name and url
+		clAppPrivacyTextAlignment: 1, //0: center 1: left 2: right
+		clAppPrivacyFirst: ['《' + PRIVACY_LINKS.privacyPolicy.title + '》', PRIVACY_LINKS.privacyPolicy.url], // 2 item, name and url
+		clAppPrivacySecond: ['《' + PRIVACY_LINKS.userAgreement.title + '》', PRIVACY_LINKS.userAgreement
+			.url
+		], // 2 item, name and url
 		clAppPrivacyNormalDesTextFirst: '我已阅读并同意',
-		clAppPrivacyNormalDesTextSecond: '及',
+		clAppPrivacyNormalDesTextSecond: '及', 
 		clAppPrivacyNormalDesTextThird: '',
 		clAppPrivacyNormalDesTextFourth: '并授权获取本机号码',
 
@@ -446,19 +461,16 @@ function buildIosConfigure() {
 		widgets: {
 			widgetWx: {
 				widgetId: WX_WIDGET_ID, //字符标记
-				type: 'Button', // 类型：Button：按钮，ImageView:图片 TextView:文本
-				textContent: '微信登录', //文字
-				textFont: 15 * screenScale, //字体
-				textColor: [0.17, 0.54, 1.0, 1.0], //文字颜色[r,g,b,a]
-				backgroundColor: [1, 1, 1, 1.0], //控件背景色[r,g,b,a]
-				cornerRadius: 16 * screenScale, //圆角，设置圆角时请设置masksToBounds:true
+				type: "ImageView", // 类型：Button：按钮，ImageView:图片 TextView:文本
+				image: "static/wxlogin.png",
+				cornerRadius: 14, //圆角，设置圆角时请设置masksToBounds:true
 				masksToBounds: true, //圆角相关
 				isFinish: true, //点击销毁授权页
 
 				clLayoutLeft: clLayoutWxBtnLeft_Portrait,
 				clLayoutRight: clLayoutWxBtnRight_Portrait,
 				clLayoutHeight: clLayoutWxBtnHeight_Portrait,
-				clLayoutBottom: clLayoutWxBtnBottom_Portrait
+				clLayoutBottom: clLayoutWxBtnBottom_Portrait,
 			}
 		}
 	}

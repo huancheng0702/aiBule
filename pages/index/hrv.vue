@@ -1637,8 +1637,9 @@
 		position: relative;
 		z-index: 1;
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 38rpx;
+		padding-left: 44rpx;
 	}
 
 	.recent-card {

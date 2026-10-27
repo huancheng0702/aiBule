@@ -92,7 +92,7 @@
 						inset = Number(info.screenHeight) - Number(info.safeArea.bottom)
 						if (!(inset > 0)) inset = 0
 					}
-					this.tabbarPaddingBottom = inset + 'px'
+					this.tabbarPaddingBottom = inset- 10 + 'px'
 				} catch (e) {
 					this.tabbarPaddingBottom = ''
 				}
@@ -127,11 +127,11 @@
 		height: 100vh;
 		background: #000000;
 		box-sizing: border-box;
-		padding-bottom: 160rpx;
 	}
 
 	.page-body {
 		height: 100%;
+		overflow: hidden;
 	}
 
 	.tabbar-wrap {

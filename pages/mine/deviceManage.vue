@@ -177,6 +177,12 @@
 				this.startSearch()
 			},
 			async onConnect() {
+				// 点击连接：停止搜索，避免后续弹出“发现设备”提示
+				if (this.emptyCheckTimer) {
+					clearTimeout(this.emptyCheckTimer)
+					this.emptyCheckTimer = null
+				}
+				BleService.stopScan().catch(() => {})
 				const device = this.deviceList.find((item) => item.id === this.selectedId)
 				if (!device) {
 					uni.showToast({
@@ -242,11 +248,6 @@
 						const list = BleService.getState().devices || []
 						if (!list.length) {
 							this.showNotFoundPopup = true
-						} else {
-							uni.showToast({
-								title: `发现 ${list.length} 台设备`,
-								icon: 'none'
-							})
 						}
 						this.emptyCheckTimer = null
 					}, 10000)
@@ -364,7 +365,7 @@
 	}
 
 	.device-list {
-		height:62%;
+		flex: 0.6;
 		margin-top: 28rpx;
 		padding-bottom: 20rpx;
 		box-sizing: border-box;
@@ -439,7 +440,7 @@
 	}
 
 	.device-empty {
-		flex: 1;
+		flex: 0.6;
 		display: flex;
 		align-items: center;
 		justify-content: center;

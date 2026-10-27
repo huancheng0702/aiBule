@@ -330,7 +330,7 @@
 		},
 		created() {
 			const sys = uni.getSystemInfoSync()
-			this.statusBarHeight = sys.statusBarHeight + 20 || 20
+			this.statusBarHeight = sys.statusBarHeight + 10 || 20
 			this.nickName = uni.getStorageSync('nickName') || ''
 			this.avatar = uni.getStorageSync('avatar') || ''
 			this.unsub = BleService.subscribe((s) => {
@@ -985,7 +985,7 @@
 		border-radius: 999rpx;
 		border: 2rpx solid #ff4d4f;
 		font-size: 24rpx;
-		line-height:64rpx;
+		line-height:60rpx;
 		color: #ff5a5a;
 		text-align: center;
 		box-sizing: border-box;

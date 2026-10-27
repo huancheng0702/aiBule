@@ -337,7 +337,7 @@
 	}
 
 	.footer {
-		margin-top: 100%;
+		margin-top: 216rpx;
 		padding-top: 40rpx;
 	}
 

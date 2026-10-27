@@ -59,6 +59,11 @@
 				<!-- 箭头图标，自行补充 src -->
 				<image class="week-arrow" src="/static/rightLitterIcon.png" mode="aspectFit"></image>
 			</view>
+			<view class="load-more">
+				<text v-if="weekLoading">加载中...</text>
+				<text v-else-if="!weekHasMore && weekList.length">没有更多了</text>
+				<text v-else-if="weekList.length">上拉加载更多</text>
+			</view>
 		</view>
 
 		<!-- 异常记录 -->
@@ -112,6 +117,11 @@
 						</view>
 					</view>
 				</view>
+			</view>
+			<view class="load-more">
+				<text v-if="abLoading">加载中...</text>
+				<text v-else-if="!abHasMore && abList.length">没有更多了</text>
+				<text v-else-if="abList.length">上拉加载更多</text>
 			</view>
 		</view>
 
@@ -254,7 +264,7 @@
 
 						<view class="week-popup-actions">
 							<view class="week-btn solid" @click="closeDailyPopup">
-								<image class="week-btn-bg" src="/static/confirmBg.png" mode="scaleToFill"></image>
+								<image class="week-btn-bg" src="/static/btnBan.png" mode="scaleToFill"></image>
 								<text class="week-btn-text">返回</text>
 							</view>
 						</view>
@@ -343,7 +353,7 @@
 				<view class="archive-confirm-wrap">
 					<view class="archive-confirm-btn" @click="confirmArchivePopup">
 						<!-- 确定按钮背景图，自行补充 src -->
-						<image class="archive-confirm-btn-bg" src="/static/confirmBg.png" mode="scaleToFill"></image>
+						<image class="archive-confirm-btn-bg" src="/static/btnBan.png" mode="scaleToFill"></image>
 						<text class="archive-confirm-text">确定</text>
 					</view>
 				</view>
@@ -438,6 +448,10 @@
 				dailyStatus: '恢复状态良好',
 				dailyDesc: '睡眠与静息心率稳定，建议今天完成25分钟轻量活动。',
 				weekList: [],
+				weekPage: 1,
+				weekPageSize: 10,
+				weekHasMore: true,
+				weekLoading: false,
 				showWeekPopup: false,
 				showDailyPopup: false,
 				dailyPopup: {
@@ -459,6 +473,10 @@
 				abDateMode: 'all',
 				abDateLabel: '08/09',
 				abRangeLabel: '近30天',
+				abPage: 1,
+				abPageSize: 10,
+				abHasMore: true,
+				abLoading: false,
 				abList: [{
 					time: '8月6日 23:18',
 					title: '静息心率短时',
@@ -647,6 +665,15 @@
 		onShow() {
 			this.loadTabData(this.activeTab)
 		},
+		onPullDownRefresh() {
+			this.loadTabData(this.activeTab).finally(() => {
+				uni.stopPullDownRefresh()
+			})
+		},
+		onReachBottom() {
+			if (this.activeTab === 0) this.loadReport(false)
+			else if (this.activeTab === 1) this.loadAbnormal(false)
+		},
 		watch: {
 			activeTab(v) { this.loadTabData(v) },
 			score() {
@@ -727,24 +754,33 @@
 			},
 			async loadTabData(tab) {
 				try {
-					if (tab == 0) await this.loadReport()
-					else if (tab == 1) await this.loadAbnormal()
+					if (tab == 0) await this.loadReport(true)
+					else if (tab == 1) await this.loadAbnormal(true)
 					else await this.loadArchive()
 				} catch (e) { console.warn('healthRecord load fail', e) }
 			},
 			// ---- 健康报告：今日日报 + 周报列表 ----
-			async loadReport() {
-				const [daily, weekly] = await Promise.all([
-					getDailyDetail().catch(() => null),
-					getWeeklyList({ pageNum: 1, pageSize: 10 }).catch(() => [])
-				])
-				if (daily) {
-					this.score = daily.healthScore ?? daily.score ?? daily.totalScore ?? this.score
-					this.dailyStatus = daily.scoreLevel || daily.status || daily.title || this.dailyStatus
-					this.dailyDesc = daily.summary || daily.desc || daily.advice || this.dailyDesc
+			async loadReport(reset = true) {
+				if (reset) {
+					this.weekPage = 1
+					this.weekList = []
+					this.weekHasMore = true
 				}
-				const list = this.unwrapList(weekly)
-				this.weekList = list.map((w, i) => {
+				if (this.weekLoading) return
+				if (!reset && !this.weekHasMore) return
+				this.weekLoading = true
+				try {
+					if (reset) {
+						const daily = await getDailyDetail().catch(() => null)
+						if (daily) {
+							this.score = daily.healthScore ?? daily.score ?? daily.totalScore ?? this.score
+							this.dailyStatus = daily.scoreLevel || daily.status || daily.title || this.dailyStatus
+							this.dailyDesc = daily.summary || daily.desc || daily.advice || this.dailyDesc
+						}
+					}
+					const weekly = await getWeeklyList({ pageNum: this.weekPage, pageSize: this.weekPageSize }).catch(() => [])
+					const list = this.unwrapList(weekly)
+					const mapped = list.map((w, i) => {
 					// weekTitle 形如 "15 9月"，dateRangeText 形如 "9月15日-9月21日 · 健康周报"
 					const weekTitle = String(w.weekTitle || '').trim()
 					const titleParts = weekTitle.split(/\s+/).filter(Boolean)
@@ -768,8 +804,15 @@
 						metrics: this.normalizeWeekMetrics(w)
 					}
 				})
+				if (reset) this.weekList = mapped
+				else this.weekList = this.weekList.concat(mapped)
+				this.weekHasMore = list.length >= this.weekPageSize
+				if (this.weekHasMore) this.weekPage++
 				this.$nextTick(() => this.drawScoreRing())
-			},
+			} finally {
+				this.weekLoading = false
+			}
+		},
 			onDailyDetail() {
 				this.openDailyPopup()
 			},
@@ -888,8 +931,17 @@
 					cells: a.cells || this.formatAbCell(a)
 				}
 			},
-			async loadAbnormal() {
-				const params = { pageNum: 1, pageSize: 30 }
+			async loadAbnormal(reset = true) {
+				if (reset) {
+					this.abPage = 1
+					this.abList = []
+					this.abHasMore = true
+				}
+				if (this.abLoading) return
+				if (!reset && !this.abHasMore) return
+				this.abLoading = true
+				try {
+					const params = { pageNum: this.abPage, pageSize: this.abPageSize }
 				// 单日筛选：abDateLabel 为 MM/DD，拼当年日期做 startTime/endTime
 				if (this.abDateMode === 'day' && /^\d{2}\/\d{2}$/.test(this.abDateLabel)) {
 					const y = new Date().getFullYear()
@@ -899,9 +951,15 @@
 				}
 				const res = await getAbnormalList(params).catch(() => [])
 				const list = this.unwrapList(res)
-				if (!list.length) return
-				this.abList = list.map((a) => this.toAbCard(a))
-			},
+				const mapped = list.map((a) => this.toAbCard(a))
+				if (reset) this.abList = mapped
+				else this.abList = this.abList.concat(mapped)
+				this.abHasMore = list.length >= this.abPageSize
+				if (this.abHasMore) this.abPage++
+			} finally {
+				this.abLoading = false
+			}
+		},
 			async onAbDetail(item) {
 				try {
 					if (item.id != null) {
@@ -1037,6 +1095,9 @@
 	}
 
 	.tab-bar {
+		position: sticky;
+		top: 0;
+		z-index: 50;
 		display: flex;
 		align-items: center;
 		padding: 6rpx;
@@ -1044,6 +1105,14 @@
 		border-radius: 20rpx;
 		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
+		margin-bottom: 24rpx;
+	}
+
+	.load-more {
+		padding: 24rpx 0 8rpx;
+		text-align: center;
+		font-size: 24rpx;
+		color: rgba(255, 255, 255, 0.45);
 	}
 
 	.tab-item {
@@ -2270,7 +2339,7 @@
 	.archive-confirm-btn {
 		position: relative;
 		height: 96rpx;
-		border-radius: 48rpx;
+		border-radius: 28rpx;
 		overflow: hidden;
 		display: flex;
 		align-items: center;

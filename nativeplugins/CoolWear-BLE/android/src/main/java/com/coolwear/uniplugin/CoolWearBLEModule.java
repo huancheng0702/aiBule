@@ -315,6 +315,39 @@ public class CoolWearBLEModule extends UniModule {
             }
         });
 
+        // 兼容不同固件：睡眠数据可能经由其它接收类型上报（RCVD_SLEEP_DATA / RCVD_DATA_TYPE_SLEEP_MONITOR），
+        // 这里统一做诊断 + 兜底解析，避免"设备有睡眠数据但 App 收不到"。
+        rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DATA_TYPE_SLEEP_MONITOR, new K6BleDataResult<Object>() {
+            @Override
+            public boolean bleDataResult(Object data) {
+                Log.d(TAG, "RCVD_DATA_TYPE_SLEEP_MONITOR raw class=" + (data == null ? "null" : data.getClass().getName())
+                        + " toString=" + String.valueOf(data));
+                if (data instanceof K6_sleepData) {
+                    JSONObject payload = toSleepPayload((K6_sleepData) data);
+                    cacheHealthEvent("sleep", payload);
+                    fireEvent("onSleep", payload);
+                } else if (data instanceof java.util.List) {
+                    // 兜底：把列表里每个元素尝试转成睡眠事件
+                    Log.d(TAG, "RCVD_DATA_TYPE_SLEEP_MONITOR list size=" + ((java.util.List<?>) data).size());
+                }
+                return false;
+            }
+        });
+
+        rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_SLEEP_DATA, new K6BleDataResult<Object>() {
+            @Override
+            public boolean bleDataResult(Object data) {
+                Log.d(TAG, "RCVD_SLEEP_DATA raw class=" + (data == null ? "null" : data.getClass().getName())
+                        + " toString=" + String.valueOf(data));
+                if (data instanceof K6_sleepData) {
+                    JSONObject payload = toSleepPayload((K6_sleepData) data);
+                    cacheHealthEvent("sleep", payload);
+                    fireEvent("onSleep", payload);
+                }
+                return false;
+            }
+        });
+
         rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_DATA_TYPE_REAL_O2, new K6BleDataResult<ArrayList<K6_DATA_TYPE_REAL_O2>>() {
             @Override
             public boolean bleDataResult(ArrayList<K6_DATA_TYPE_REAL_O2> list) {
@@ -694,6 +727,30 @@ public class CoolWearBLEModule extends UniModule {
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void resetBluetooth(UniJSCallback callback) {
+        // 蓝牙从关闭→开启后，BluetoothHelper 内部状态可能残留为"未就绪"，
+        // 导致 startScan 静默扫不到设备（需杀进程重进才恢复）。这里强制重新初始化。
+        try {
+            Context context = resolveContext();
+            if (context == null) {
+                fail(callback, "Context unavailable");
+                return;
+            }
+            Context appContext = context.getApplicationContext();
+            initialized = false;
+            Log.d(TAG, "resetBluetooth: re-init BluetoothHelper");
+            BluetoothHelper.getInstance().init();
+            BluetoothHelper.getInstance().initProxy(appContext);
+            initialized = true;
+            emittedDevices.clear();
+            success(callback);
+        } catch (Throwable e) {
+            Log.e(TAG, "resetBluetooth failed", e);
+            fail(callback, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
     }
 

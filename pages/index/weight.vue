@@ -14,6 +14,7 @@
 					<text class="hero-status">BMI {{ bmiText }} · {{ bmiStatus }}</text>
 				</view>
 				<view class="measure-btn" @click="onEnterWeight">
+					<image src="/static/luruBg.png" mode=""></image>
 					<text class="measure-btn-text">录入体重</text>
 				</view>
 			</view>
@@ -165,7 +166,10 @@
 						<text class="recent-time">{{ item.time }}</text>
 						<text class="recent-source">{{ item.source }}</text>
 					</view>
-					<text class="recent-duration">{{ item.weight }} kg</text>
+					<view class="">
+						<text class="recent-duration">{{ item.weight }} </text>
+						<text class="reUnit">kg</text>
+					</view>
 				</view>
 			</view>
 		</view>
@@ -1011,18 +1015,27 @@
 	}
 
 	.measure-btn {
-		flex-shrink: 0;
-		padding: 16rpx 28rpx;
 		border-radius: 40rpx;
-		background: linear-gradient(90deg, #1a53ec 0%, #2f7bff 50%, #4da3ff 100%);
-		box-shadow: 0 0 20rpx rgba(47, 123, 255, 0.45);
+		position: relative;
+		width: 202rpx;
+		height: 112rpx;
+	}
+	.measure-btn image{
+		width: 100%;
+		height: 100%;
 	}
 
 	.measure-btn-text {
+		font-weight: bold;
 		font-size: 26rpx;
-		font-weight: 500;
-		color: #ffffff;
-		line-height: 36rpx;
+		color: #FFFFFF;
+		width: 100%;
+		height: 100%;
+		position: absolute;
+		top: 0;
+		left: 0;
+		text-align: center;
+		line-height: 102rpx;
 	}
 
 	.bmi-card {
@@ -1045,15 +1058,18 @@
 	.bmi-badge {
 		padding: 8rpx 18rpx;
 		border-radius: 24rpx;
-		background: rgba(47, 123, 255, 0.18);
-		border: 1rpx solid rgba(77, 163, 255, 0.35);
+		background: rgba(44,137,255,0.1);
+		border-radius: 200rpx 200rpx 200rpx 200rpx;
 		box-sizing: border-box;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
 
 	.bmi-badge-text {
-		font-size: 22rpx;
-		color: #64b5f6;
-		line-height: 30rpx;
+		font-weight: 500;
+		font-size: 24rpx;
+		color: #2C89FF;
 	}
 
 	.bmi-value {
@@ -1401,7 +1417,7 @@
 	.stats-unit {
 		margin-left: 6rpx;
 		font-size: 22rpx;
-		color: #8e8e93;
+		color: rgba(255, 255, 255, 0.6);
 		line-height: 30rpx;
 	}
 
@@ -1440,10 +1456,11 @@
 	.tip-text {
 		position: relative;
 		z-index: 1;
-		font-size: 24rpx;
-		color: #fff;
+		font-weight: 400;
+		font-size: 22rpx;
+		color: #FFFFFF;
 		line-height: 50rpx;
-		padding-left: 44rpx;
+		padding-left: 52rpx;
 	}
 
 	.recent-card {
@@ -1481,9 +1498,13 @@
 	}
 
 	.recent-duration {
-		font-size: 28rpx;
+		font-size:32rpx;
 		color: #ffffff;
 		line-height: 40rpx;
+	}
+	.reUnit{
+		font-size: 24rpx;
+		color: #ffffff;
 	}
 
 	.cal-mask {

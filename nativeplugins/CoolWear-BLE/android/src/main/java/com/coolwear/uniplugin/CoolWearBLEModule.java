@@ -953,11 +953,6 @@ public class CoolWearBLEModule extends UniModule {
             int heartStatus = heart ? CEBC.OPENSTATUS.OPEN : CEBC.OPENSTATUS.CLOSE;
             int o2Status = o2 ? CEBC.OPENSTATUS.OPEN : CEBC.OPENSTATUS.CLOSE;
             BluetoothHelper.getInstance().getSendBlueData().sendHeartAutoSwitch(heartStatus, o2Status, interval);
-            // 部分固件把自动血氧做成独立开关（FUNCTION_CONTROL.isO2AutoSwitch=true），
-            // 只在 HeartAutoSwitch 里带 O2 位不会生效，需要再单独打开一次 O2 检测。
-            if (o2 && o2AutoSwitchSeparate) {
-                BluetoothHelper.getInstance().getSendDataManager().sendK6_DATA_TYPE_REAL_O2(CEBC.OPENSTATUS.OPEN);
-            }
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());

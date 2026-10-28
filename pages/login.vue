@@ -7,12 +7,12 @@
 					本机号码一键登录
 				</view>
 			</view>
-		<!-- 	<view class="oneBtn" @click="onOpenSmsLogin">
+			<view class="oneBtn" @click="onOpenSmsLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					验证码登录
 				</view>
-			</view> -->
+			</view>
 			<view class="wxLogin" @click="onWxLogin">
 				微信登录 
 			</view>

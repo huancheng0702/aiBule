@@ -587,6 +587,10 @@ async function pullCachedHealthEvents() {
 }
 
 let postConnectTimer = null
+// 本次 App 运行内，设备配置（同步时间/用户信息/自动监测等）是否已下发过。
+// 设备会持久保存自动监测计划，重连时无需重复下发（重复下发会每次触发一次血氧测量），
+// 因此仅“首次连接”下发一次，之后同一次运行内的重连只做数据上报。
+let postConnectConfigDone = false
 
 function cancelPostConnectInit() {
 	if (postConnectTimer) {
@@ -597,7 +601,8 @@ function cancelPostConnectInit() {
 
 /**
  * 连接就绪后统一下发初始化（延迟 1.5s 等设备配对完成）：
- * 同步时间 -> 打开 sensor 上传开关 -> 同步用户信息 -> 开启自动监测 -> 拉基础信息
+ * 首次连接：同步时间 -> 打开 sensor 上传开关 -> 同步用户信息 -> 开启自动监测；
+ * 之后的重连：只做数据上报（flushPendingUploads + 回放原生缓存事件），不再下发设备配置。
  * iOS connected/completed 双回调、重连重复回调都通过这里去重，只执行一次。
  */
 function schedulePostConnectInit() {
@@ -605,19 +610,24 @@ function schedulePostConnectInit() {
 	postConnectTimer = setTimeout(async () => {
 		postConnectTimer = null
 		if (!state.connected) return
-		console.log('[ble-service] 连接初始化：同步时间/传感器开关/用户信息/自动监测')
-		try {
-			await CoolWearBLE.syncTime()
-		} catch (e) {}
-		try {
-			await CoolWearBLE.setSensorOn({ open: true })
-		} catch (e) {}
-		// 先同步设备基础信息/时间，再写用户信息，避免设备侧用默认用户信息覆盖真实资料
-		await CoolWearBLE.sendSyncInfo().catch(() => {})
-		try {
-			await BleService.syncUserInfo()
-		} catch (e) {}
-		await BleService.enableAutoMeasure().catch(() => {})
+		if (!postConnectConfigDone) {
+			postConnectConfigDone = true
+			console.log('[ble-service] 首次连接初始化：同步时间/传感器开关/用户信息/自动监测')
+			try {
+				await CoolWearBLE.syncTime()
+			} catch (e) {}
+			try {
+				await CoolWearBLE.setSensorOn({ open: true })
+			} catch (e) {}
+			// 先同步设备基础信息/时间，再写用户信息，避免设备侧用默认用户信息覆盖真实资料
+			await CoolWearBLE.sendSyncInfo().catch(() => {})
+			try {
+				await BleService.syncUserInfo()
+			} catch (e) {}
+			await BleService.enableAutoMeasure().catch(() => {})
+		} else {
+			console.log('[ble-service] 重连：跳过设备配置，仅上报')
+		}
 		flushPendingUploads()
 		pullCachedHealthEvents()
 	}, 1500)
@@ -1807,6 +1817,8 @@ function pickBatteryField(o, keys) {
 			await BleService.ensureInit()
 			await BleService.stopScan()
 			setUserDisconnecting(false)
+			// 手动连接（扫码绑定/切换设备）重新下发一次设备配置
+			postConnectConfigDone = false
 			state.connectStatus = 2
 			state.connected = false
 			state.device = {

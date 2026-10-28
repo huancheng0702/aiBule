@@ -52,11 +52,11 @@ function init(callback) {
 	let appid
 	if (platform == 'android') {
 		appid = SHANYAN_APPID.android
+		shanYanSDKModule.setDebug(true)
 	} else if (platform == 'ios') {
 		appid = SHANYAN_APPID.ios
 	}
 
-	shanYanSDKModule.setDebug(true)
 	//闪验SDK 初始化
 	shanYanSDKModule.init({
 		appid: appid

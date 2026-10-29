@@ -79,7 +79,7 @@
 
 			<!-- 统计 -->
 			<view class="card stats-card">
-				<view class="stats-col">
+				<view class="stats-col" style="flex: 0.7;">
 					<text class="stats-label">经期</text>
 					<view class="stats-value-row">
 						<text class="stats-prefix">第</text>
@@ -105,7 +105,7 @@
 				<image class="action-icon" src="/static/xinPer.png" mode="aspectFit"></image>
 				<text class="action-text">{{ selectedIsToday ? '今天是经期日' : '这天是经期日' }}</text>
 				<u-switch class="action-switch" :value="isPeriodToday" :space="2" :asyncChange="true" :loading="savingToday"
-					activeColor="#2F7BFF" inactiveColor="#E5E5EA" :size="22" @change="onTogglePeriodToday"></u-switch>
+					activeColor="#2F7BFF" inactiveColor="#E5E5EA" :size="17" @change="onTogglePeriodToday"></u-switch>
 
 			</view>
 
@@ -114,7 +114,7 @@
 				<image class="action-bg" src="/static/heartCardBg.png" mode=""></image>
 				<image class="action-icon" src="/static/xinPer.png" mode="aspectFit"></image>
 				<text class="action-text">了解生理周期</text>
-				<image class="action-arrow" src="/static/rightLitterIcon.png" mode="aspectFit"></image>
+				<image class="action-arrow" src="/static/rightLitterIcon.png" mode=""></image>
 			</view>
 		</view>
 	</view>
@@ -238,11 +238,10 @@
 			while (j + 1 < 7 && barGroup(visibleBg(row[j + 1])) === group) {
 				j += 1
 			}
-			const count = j - i + 1
 			bars.push({
 				type: group,
-				left: ((i / 7) * 100).toFixed(4) + '%',
-				width: ((count / 7) * 100).toFixed(4) + '%'
+				left: `calc(${i} * 74rpx + ${i} * (100% - 518rpx) / 6)`,
+				width: `calc(${j - i + 1} * 74rpx + ${j - i} * (100% - 518rpx) / 6)`
 			})
 			i = j + 1
 		}
@@ -590,7 +589,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;
@@ -670,7 +673,7 @@
 	.cal-nav {
 		display: flex;
 		align-items: center;
-		justify-content: center;
+		justify-content: space-between;
 		margin-bottom: 24rpx;
 	}
 
@@ -685,7 +688,6 @@
 	.cal-nav-icon {
 		width: 28rpx;
 		height: 28rpx;
-		opacity: 0.55;
 	}
 
 	.cal-title {
@@ -699,21 +701,26 @@
 
 	.cal-week {
 		display: flex;
+		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 8rpx;
 	}
 
 	.cal-week-item {
-		flex: 1;
+		width: 74rpx;
+		height: 84rpx;
+		border-radius: 16rpx 16rpx 16rpx 16rpx;
 		text-align: center;
-		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
+		font-weight: 500;
+		font-size: 32rpx;
+		line-height: 84rpx;
+		color: #FFFFFF;
 	}
 
 	.cal-grid {
 		display: flex;
 		flex-direction: column;
+		padding-bottom: 28rpx;
 	}
 
 	.cal-week-row {
@@ -759,6 +766,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
+		justify-content: space-between;
 		align-items: stretch;
 		height: 84rpx;
 	}
@@ -766,12 +774,13 @@
 	.cal-cell {
 		position: relative;
 		z-index: 1;
-		flex: 1;
+		width: 74rpx;
 		height: 84rpx;
+		border-radius: 16rpx 16rpx 16rpx 16rpx;
 		display: flex;
 		align-items: center;
-		justify-content: center;
 		box-sizing: border-box;
+		justify-content: center;
 	}
 
 	.cal-cell.empty {
@@ -779,9 +788,9 @@
 	}
 
 	.cal-day {
-		font-size: 28rpx;
-		color: #ffffff;
-		line-height: 40rpx;
+		font-weight: 500;
+		font-size: 32rpx;
+		color: #F4F7F8;
 	}
 
 	.cal-day.ovulation {
@@ -816,15 +825,15 @@
 	.today-badge .cal-day,
 	.selected-badge .cal-day {
 		color: #ffffff;
-		font-weight: 700;
 	}
 
 	.legend {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-top: 20rpx;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
 		padding: 0 8rpx;
+		padding-top: 28rpx;
 	}
 
 	.legend-item {
@@ -859,7 +868,7 @@
 
 	.legend-text {
 		font-size: 22rpx;
-		color: #8e8e93;
+		color: #FFFFFF;
 		line-height: 30rpx;
 	}
 
@@ -889,7 +898,7 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 34rpx;
 	}
 
@@ -975,10 +984,7 @@
 
 	.action-arrow {
 		position: relative;
-		z-index: 1;
-		width: 24rpx;
-		height: 24rpx;
-		opacity: 0.55;
-		flex-shrink: 0;
+		width: 34rpx;
+		height: 34rpx;
 	}
 </style>

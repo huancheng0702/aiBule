@@ -525,7 +525,9 @@
 			},
 			gridYs() {
 				const s = this.yScale
-				return s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				return [valueToY(s.max, this.chartH, s.min, s.max)].concat(
+					s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				)
 			},
 			linePath() {
 				// 控制点限制在绘图区上下界内，避免平滑曲线冲出 0 基线或顶部
@@ -546,6 +548,7 @@
 						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
 						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#3B82F6" stroke="#ffffff" stroke-width="2"/>`
 				}
+				const bottomY = valueToY(s.min, this.chartH, s.min, s.max)
 				const inner =
 					`<defs><linearGradient id="sugarAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
 					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
@@ -556,7 +559,8 @@
 					`<path d="${this.areaPath}" fill="url(#sugarAreaGrad)"/>` +
 					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
-					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0.5" y1="0" x2="0.5" y2="${bottomY}" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="butt"/>` +
+					`<line x1="0.5" y1="${bottomY}" x2="${this.chartW - 0.5}" y2="${bottomY}" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-linecap="butt"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1145,13 +1149,8 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
-		color: #ffffff;
-		font-weight: 600;
 	}
 
 	.card {
@@ -1244,7 +1243,7 @@
 	}
 
 	.trend-chart {
-		margin-top: 24rpx;
+		margin-top: 28rpx;
 	}
 
 	.trend-body {
@@ -1257,6 +1256,7 @@
 		width: 48rpx;
 		margin-right: 8rpx;
 		flex-shrink: 0;
+		left: -10rpx;
 	}
 
 	.y-label {
@@ -1272,7 +1272,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 260rpx;
 		min-width: 0;
 	}
 
@@ -1314,7 +1314,6 @@
 	.trend-x {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 12rpx;
 		margin-left: 56rpx;
 	}
 
@@ -1380,12 +1379,12 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 34rpx;
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top: 28rpx;
 		display: flex;
 		align-items: baseline;
 	}

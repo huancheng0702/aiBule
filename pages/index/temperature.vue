@@ -260,48 +260,17 @@
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
 	const Y_TICK_COUNT = 4
-	const DEFAULT_Y_MIN = 30
-	const DEFAULT_Y_MAX = 45
+	const DEFAULT_Y_MIN = 0
+	const DEFAULT_Y_MAX = 42
+	const Y_STEP = (DEFAULT_Y_MAX - DEFAULT_Y_MIN) / Y_TICK_COUNT
 
-	function niceStep(raw) {
-		if (!(raw > 0)) return 5
-		const pow = Math.pow(10, Math.floor(Math.log10(raw)))
-		const n = raw / pow
-		let m = 10
-		if (n <= 1) m = 1
-		else if (n <= 2) m = 2
-		else if (n <= 2.5) m = 2.5
-		else if (n <= 5) m = 5
-		return m * pow
-	}
-
-	/** Y 轴范围跟随数据（体温不适合从 0 开始），刻度与曲线同步 */
-	function calcYScale(values) {
-		let min = Infinity
-		let max = -Infinity
-		;(values || []).forEach((v) => {
-			const n = Number(v)
-			if (Number.isNaN(n) || n <= 0) return
-			if (n < min) min = n
-			if (n > max) max = n
-		})
-		if (!(max > -Infinity)) {
-			const step = (DEFAULT_Y_MAX - DEFAULT_Y_MIN) / Y_TICK_COUNT
-			const ticks = []
-			for (let v = DEFAULT_Y_MIN; v <= DEFAULT_Y_MAX + 0.0001; v += step) {
-				ticks.push(Math.round(v * 10) / 10)
-			}
-			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks }
-		}
-		const step = Math.max(1, niceStep((max - min) / Y_TICK_COUNT))
-		const yMin = Math.floor((min - step * 0.5) / step) * step
-		let yMax = Math.ceil((max + step * 0.5) / step) * step
-		if (yMax - yMin < step * 2) yMax = yMin + step * 2
+	/** Y 轴固定从 0 开始，最高到 42 */
+	function calcYScale() {
 		const ticks = []
-		for (let v = yMin; v <= yMax + 0.0001; v += step) {
+		for (let v = DEFAULT_Y_MIN; v <= DEFAULT_Y_MAX + 0.0001; v += Y_STEP) {
 			ticks.push(Math.round(v * 10) / 10)
 		}
-		return { min: yMin, max: yMax, ticks }
+		return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks }
 	}
 
 	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
@@ -531,7 +500,8 @@
 			},
 			gridYs() {
 				const s = this.yScale
-				return s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				// 每个 Y 轴刻度都绘制横向虚线，最底部 0 由实线基准轴表示
+				return s.ticks.filter((v) => v > s.min).map((v) => valueToY(v, this.chartH, s.min, s.max))
 			},
 			linePath() {
 				// 控制点限制在绘图区上下界内，避免平滑曲线冲出边界
@@ -552,6 +522,7 @@
 						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
 						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#3B82F6" stroke="#ffffff" stroke-width="2"/>`
 				}
+				const bottomY = valueToY(s.min, this.chartH, s.min, s.max)
 				const inner =
 					`<defs><linearGradient id="tempAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
 					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
@@ -562,7 +533,8 @@
 					`<path d="${this.areaPath}" fill="url(#tempAreaGrad)"/>` +
 					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
-					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0.5" y1="0" x2="0.5" y2="${bottomY}" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="butt"/>` +
+					`<line x1="0.5" y1="${bottomY}" x2="${this.chartW - 0.5}" y2="${bottomY}" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-linecap="butt"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1085,8 +1057,8 @@
 	.bmi-desc {
 		display: block;
 		margin-top: 28rpx;
-		font-size: 24rpx;
-		color: rgba(255, 255, 255, 0.65);
+		font-size: 26rpx;
+		color: #fff;
 		line-height: 40rpx;
 		padding-bottom: 28rpx;
 	}
@@ -1100,7 +1072,7 @@
 	}
 	.sugar-footer-left {
 		font-size: 24rpx;
-		color: rgba(255, 255, 255, 0.65);
+		color: #FFFFFF;
 		line-height: 34rpx;
 	}
 
@@ -1144,13 +1116,8 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
-		color: #ffffff;
-		font-weight: 600;
 	}
 
 	.card {
@@ -1271,7 +1238,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 260rpx;
 		min-width: 0;
 	}
 
@@ -1379,12 +1346,12 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 34rpx;
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top: 28rpx;
 		display: flex;
 		align-items: baseline;
 	}

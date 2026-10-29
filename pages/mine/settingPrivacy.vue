@@ -104,6 +104,7 @@
 </template>
 
 <script>
+	import BleService from '@/common/ble-service.js'
 	import { clearLoginSession, LOGIN_PATH, USER_INFO_KEY, saveLoginSession } from '@/common/auth.js'
 	import { getUserInfo, cancelAccount } from '@/common/api/user.js'
 
@@ -303,10 +304,13 @@
 				if (this.cancelling) return
 				this.cancelling = true
 				try {
+					uni.showLoading({ title: '注销中...', mask: true })
+					await this.disconnectDeviceIfNeeded()
 					await cancelAccount()
 					this.showCancelPopup = false
 					this.showSecurityPopup = false
 					clearLoginSession()
+					uni.hideLoading()
 					uni.showToast({ title: '账号已注销', icon: 'none' })
 					setTimeout(() => {
 						uni.reLaunch({
@@ -314,10 +318,18 @@
 						})
 					}, 400)
 				} catch (e) {
+					uni.hideLoading()
 					// http 层已 toast
 				} finally {
 					this.cancelling = false
 				}
+			},
+			async disconnectDeviceIfNeeded() {
+				try {
+					const s = BleService.getState()
+					if (!s || (!s.device && !s.connected)) return
+					await BleService.disconnect(true)
+				} catch (e) {}
 			},
 			onLogout() {
 				uni.showModal({
@@ -325,9 +337,14 @@
 					content: '确认退出当前账号？',
 					confirmText: '退出',
 					cancelText: '取消',
-					success: (res) => {
+					success: async (res) => {
 						if (!res.confirm) return
+						uni.showLoading({ title: '退出中...', mask: true })
+						try {
+							await this.disconnectDeviceIfNeeded()
+						} catch (e) {}
 						clearLoginSession()
+						uni.hideLoading()
 						uni.reLaunch({
 							url: LOGIN_PATH
 						})

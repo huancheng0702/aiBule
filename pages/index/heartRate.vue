@@ -647,7 +647,15 @@
 			chartImageSrc() {
 				if (!this.chartW || !this.chartH || !this.linePath) return ''
 				const s = this.yScale
-				const grids = (this.midGridYs || []).map((y) =>
+				// 横向虚线铺满整个绘图区，从 y 轴最顶部一直到底部基准线
+				const bottomY = valueToY(s.min, this.chartH, s.min, s.max)
+				// 与 UI 一致：虚线按像素把绘图区等分，最顶部一条贴 Y 轴顶端；最底部由实线基准线绘制
+				const gridSteps = 5
+				const gridYs = []
+				for (let k = 0; k < gridSteps; k++) {
+					gridYs.push((bottomY * k) / gridSteps)
+				}
+				const grids = gridYs.map((y) =>
 					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 5"/>`
 				).join('')
 				let touch = ''
@@ -666,9 +674,9 @@
 					`<line x1="0" y1="${this.thresholdTopY}" x2="${this.chartW}" y2="${this.thresholdTopY}" stroke="rgba(255,94,123,0.7)" stroke-width="1" stroke-dasharray="4 5"/>` +
 					`<line x1="0" y1="${this.thresholdBottomY}" x2="${this.chartW}" y2="${this.thresholdBottomY}" stroke="rgba(255,94,123,0.7)" stroke-width="1" stroke-dasharray="4 5"/>` +
 					`<path d="${this.areaPath}" fill="url(#hrAreaGrad)"/>` +
-					`<path d="${this.linePath}" fill="none" stroke="#FF5E7B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+					`<path d="${this.linePath}" fill="none" stroke="#FF5E7B" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
-					`<line x1="0.5" y1="0" x2="0.5" y2="${this.chartH}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>` +
+					`<line x1="0.5" y1="0" x2="0.5" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>` +
 					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
@@ -1244,7 +1252,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;
@@ -1361,15 +1373,8 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
-		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
 		color: #ffffff;
-		font-weight: 600;
 	}
-
 	.card {
 		margin-top: 28rpx;
 		padding: 32rpx 28rpx 28rpx;
@@ -1520,7 +1525,7 @@
 
 	.threshold-label {
 		position: absolute;
-		left: 0;
+		left: 14rpx;
 		font-size: 20rpx;
 		color: #ff5e7b;
 		line-height: 28rpx;
@@ -1560,7 +1565,6 @@
 	.trend-x {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 12rpx;
 		padding: 0 2rpx;
 	}
 

@@ -270,8 +270,9 @@
 	} from '@/common/chart-x-labels.js'
 	const CHART_PAD_TOP = 12
 	const CHART_PAD_BOTTOM = 8
-	const DEFAULT_Y_MIN = 40
+	const DEFAULT_Y_MIN = 0
 	const DEFAULT_Y_MAX = 200
+	const Y_TICK_COUNT = 5
 
 	const BP_LEVELS = [
 		{ key: 'low', label: '偏低', min: 60, max: 90, color: '#5B9FFF' },
@@ -303,29 +304,14 @@
 		return parsed ? parsed.text : '--'
 	}
 
-	/** Y 轴范围跟随数据（血压不适合从 0 开始），刻度与曲线同步 */
-	function calcYScale(...seriesList) {
-		let min = Infinity
-		let max = -Infinity
-		seriesList.forEach((arr) => {
-			;(arr || []).forEach((v) => {
-				const n = Number(v)
-				if (Number.isNaN(n) || n <= 0) return
-				if (n < min) min = n
-				if (n > max) max = n
-			})
-		})
-		const step = 40
-		if (!(max > -Infinity)) {
-			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks: [40, 80, 120, 160, 200] }
-		}
-		const yMin = Math.min(DEFAULT_Y_MIN, Math.floor(min / step) * step)
-		const yMax = Math.max(DEFAULT_Y_MAX, Math.ceil(max / step) * step)
+	/** Y 轴固定从 0 开始，按 5 段显示到 200 */
+	function calcYScale() {
+		const step = DEFAULT_Y_MAX / Y_TICK_COUNT
 		const ticks = []
-		for (let v = yMin; v <= yMax + 0.0001; v += step) {
-			ticks.push(Math.round(v))
+		for (let v = DEFAULT_Y_MIN; v <= DEFAULT_Y_MAX + 0.0001; v += step) {
+			ticks.push(v)
 		}
-		return { min: yMin, max: yMax, ticks }
+		return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks }
 	}
 
 	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
@@ -559,7 +545,8 @@
 			},
 			gridYs() {
 				const s = this.yScale
-				return s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				// 每个 Y 轴刻度都绘制横向虚线，最底部刻度由实线基准轴表示
+				return s.ticks.filter((v) => v > s.min).map((v) => valueToY(v, this.chartH, s.min, s.max))
 			},
 			linePath() {
 				// 控制点限制在绘图区上下界内，避免平滑曲线冲出边界
@@ -568,7 +555,7 @@
 			diaLinePath() {
 				if (!this.chartDiaValues.length) return ''
 				// 过滤缺失（0）点，避免在底部画出一条无效的平直线
-				const validPoints = this.diaPoints.filter((p, i) => Number(this.chartDiaValues[i]) > 0)
+				const validPoints = this.diaPoints.filter((_, i) => Number(this.chartDiaValues[i]) > 0)
 				if (validPoints.length < 2) return ''
 				return buildSmoothLinePath(validPoints, CHART_PAD_TOP, this.chartH - CHART_PAD_BOTTOM)
 			},
@@ -591,6 +578,7 @@
 				if (this.diaLinePath) {
 					dia = `<path d="${this.diaLinePath}" fill="none" stroke="#64B5F6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
 				}
+				const bottomY = valueToY(s.min, this.chartH, s.min, s.max)
 				const inner =
 					`<defs><linearGradient id="bpAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
 					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
@@ -602,7 +590,8 @@
 					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					dia +
 					touch +
-					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0.5" y1="0" x2="0.5" y2="${bottomY}" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="butt"/>` +
+					`<line x1="0.5" y1="${bottomY}" x2="${this.chartW - 0.5}" y2="${bottomY}" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-linecap="butt"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1174,9 +1163,9 @@
 	.bmi-desc {
 		display: block;
 		margin-top: 28rpx;
-		font-size: 24rpx;
-		color: rgba(255, 255, 255, 0.65);
-		line-height: 40rpx;
+		font-size: 26rpx;
+		color: #fff;
+		line-height: 50rpx;
 		padding-bottom: 28rpx;
 	}
 
@@ -1190,7 +1179,7 @@
 
 	.sugar-footer-left {
 		font-size: 24rpx;
-		color: rgba(255, 255, 255, 0.65);
+		color: #fff;
 		line-height: 34rpx;
 	}
 
@@ -1234,15 +1223,9 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 40rpx;
 	}
-
-	.period-item.active .period-text {
-		color: #ffffff;
-		font-weight: 600;
-	}
-
 	.card {
 		margin-top: 28rpx;
 		padding: 32rpx 28rpx 28rpx;
@@ -1346,6 +1329,7 @@
 		width: 48rpx;
 		margin-right: 8rpx;
 		flex-shrink: 0;
+		left: -10rpx;
 	}
 
 	.y-label {
@@ -1361,7 +1345,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 260rpx;
 		min-width: 0;
 	}
 
@@ -1403,7 +1387,6 @@
 	.trend-x {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 12rpx;
 		margin-left: 56rpx;
 	}
 
@@ -1469,12 +1452,12 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
+		color: #fff;
 		line-height: 34rpx;
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top: 28rpx;
 		display: flex;
 		align-items: baseline;
 	}

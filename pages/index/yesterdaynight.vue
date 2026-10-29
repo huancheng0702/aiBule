@@ -1,9 +1,9 @@
 <template>
 	<view class="page">
 		<!-- 最近一次摘要 -->
-		<view class="hero-card">
+		<view class="hero-card" @click="openSleepDetail">
 			<!-- 整卡装饰背景图 -->
-			<image class="hero-bg" src="/static/yearertodayBg.png" mode="aspectFill"></image>
+			<image class="hero-bg" src="/static/yearertodayBg.png" mode=""></image>
 			<text class="hero-label">最近一次</text>
 			<view class="hero-duration">
 				<text class="hero-num">{{ sleepHours }}</text>
@@ -46,8 +46,12 @@
 				</view>
 				<view class="cycle-main">
 					<!-- Canvas圆角阶梯波形图 hypnogram -->
-					<view class="cycle-plot">
+					<view class="cycle-plot" @touchstart="onChartTouch" @touchmove.stop.prevent="onChartTouch"
+						@touchend="onChartTouchEnd">
 						<canvas class="cycle-canvas" canvas-id="sleepCanvas" id="sleepCanvas"></canvas>
+						<view v-if="touchValue.show" class="cycle-tip" :style="{ left: touchValue.tipLeft }">
+							<text class="cycle-tip-text">{{ touchValue.label }}</text>
+						</view>
 					</view>
 					<view class="cycle-x">
 						<text class="cycle-x-label">{{ sleepStart }}</text>
@@ -159,6 +163,57 @@
 							<image class="cal-btn-bg" src="/static/confirmBg.png" mode=""></image>
 							<text class="cal-btn-text">确定</text>
 						</view>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 睡眠记录详情弹窗 -->
+		<view v-if="showSleepDetail" class="detail-mask" @click="closeSleepDetail">
+			<view class="detail-popup" @click.stop>
+				<image class="detail-popup-bg" src="/static/bushuPopBg.png" mode=""></image>
+				<view class="detail-body">
+					<view class="detail-head">
+						<text class="detail-title">睡眠记录详情</text>
+						<text class="detail-time">{{ detailTimeText }}</text>
+					</view>
+
+					<!-- 最近一次摘要卡片 -->
+					<view class="detail-hero">
+						<image class="detail-hero-bg" src="/static/yearertodayBg.png" mode=""></image>
+						<text class="detail-hero-label">最近一次</text>
+						<view class="detail-hero-duration">
+							<text class="detail-hero-num">{{ sleepHours }}</text>
+							<text class="detail-hero-unit">小时</text>
+							<text class="detail-hero-num">{{ sleepMinutes }}</text>
+							<text class="detail-hero-unit">分</text>
+						</view>
+						<text class="detail-hero-status">{{ recoverStatus }}</text>
+					</view>
+
+					<!-- 数据来源 / 同步状态 -->
+					<view class="detail-info-row">
+						<view class="detail-info-item">
+							<view class="detail-info-head">
+								<!-- 数据来源图标（待补路径） -->
+								<image class="detail-info-icon" src="/static/shuiQu.png" mode=""></image>
+								<text class="detail-info-label">数据来源</text>
+							</view>
+							<text class="detail-info-value">近7天</text>
+						</view>
+						<view class="detail-info-item">
+							<view class="detail-info-head">
+								<!-- 同步状态图标（待补路径） -->
+								<image class="detail-info-icon" src="/static/shuiTong.png" mode=""></image>
+								<text class="detail-info-label">同步状态</text>
+							</view>
+							<text class="detail-info-value">{{ recoverStatus === '等待同步' ? '待同步' : '已同步' }}</text>
+						</view>
+					</view>
+
+					<!-- 返回趋势按钮 -->
+					<view class="detail-btn" @click="closeSleepDetail">
+						<text class="detail-btn-text">返回趋势</text>
 					</view>
 				</view>
 			</view>
@@ -336,6 +391,21 @@
 		return (h < 10 ? '0' + h : h) + ':' + (mi < 10 ? '0' + mi : mi)
 	}
 
+	function parseTimeMs(value) {
+		if (!value) return 0
+		const d = new Date(String(value).replace(/-/g, '/').replace('T', ' '))
+		return isNaN(d.getTime()) ? 0 : d.getTime()
+	}
+
+	function clockFromMs(ms) {
+		if (!ms) return '--:--'
+		const d = new Date(ms)
+		if (isNaN(d.getTime())) return '--:--'
+		const h = d.getHours()
+		const mi = d.getMinutes()
+		return (h < 10 ? '0' + h : h) + ':' + (mi < 10 ? '0' + mi : mi)
+	}
+
 	function formatRecentDate(ymd, minutes) {
 		if (!ymd) return '最近'
 		const parts = String(ymd).split('-')
@@ -444,12 +514,17 @@
 				bandRadius: 5,
 				chartRects: [],
 				sleepSample: null,
+				chartStartMs: 0,
+				chartEndMs: 0,
+				chartLeft: 0,
+				chartTop: 0,
 				touchValue: {},
 				movaX: 0,
 				_lastDrawKey: '',
 				structureList: emptyStructure(),
 				recentList: [],
 				showCalendar: false,
+				showSleepDetail: false,
 				calYear: new Date().getFullYear(),
 				calMonth: new Date().getMonth(),
 				calSelectedDay: new Date().getDate(),
@@ -466,6 +541,14 @@
 			},
 			calendarTitle() {
 				return `${this.calYear}年${this.calMonth + 1}月`
+			},
+			detailTimeText() {
+				const d = this.currentDate
+				const now = new Date()
+				const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+				const hh = String(now.getHours()).padStart(2, '0')
+				const mm = String(now.getMinutes()).padStart(2, '0')
+				return `${sameDay ? '今天' : this.dateText} ${hh}:${mm}`
 			},
 			canCalNextMonth() {
 				const today = new Date()
@@ -548,6 +631,8 @@
 						this.chartH = rect.height
 						this.canvasW = rect.width
 						this.canvasH = rect.height
+						this.chartLeft = rect.left || 0
+						this.chartTop = rect.top || 0
 						if (!this.canvasCtx) this.canvasCtx = uni.createCanvasContext('sleepCanvas', this)
 						this.initSample()
 					})
@@ -572,11 +657,14 @@
 				return [padTop, padTop + step, padTop + step * 2, padTop + step * 3]
 			},
 			buildSleepData() {
-				let t = new Date(this.currentDate); t.setHours(22, 0, 0, 0)
-				let ts = t.getTime()
+				let ts = Number(this.chartStartMs) || 0
+				if (!ts) {
+					const t = new Date(this.currentDate); t.setHours(22, 0, 0, 0)
+					ts = t.getTime()
+				}
 				return this.cycleSegments.map((s) => {
 					const durMs = Math.max(60000, Number(s.dur || 1) * 60000)
-					const o = { startTimestamp: ts, endTimestamp: ts + durMs, state: this.stageIndex(s.stage) }
+					const o = { startTimestamp: ts, endTimestamp: ts + durMs, state: this.stageIndex(s.stage), stage: s.stage }
 					ts += durMs
 					return o
 				})
@@ -584,26 +672,43 @@
 			initSample() {
 				const W = this.canvasW, H = this.canvasH
 				const sleepData = this.buildSleepData()
-				if (!W || !H || !sleepData.length) return
+				if (!W || !H) return
+				if (!sleepData.length) {
+					if (this.canvasCtx) {
+						this.canvasCtx.clearRect(0, 0, W, H)
+						this.canvasCtx.draw()
+					}
+					this.sleepSample = null
+					this.touchValue = {}
+					return
+				}
 				const yValue = this.sampleY(H)
-				let xValue = 0
-				const widths = sleepData.map(it => it.endTimestamp - it.startTimestamp)
-				const total = widths.reduce((a, b) => a + b, 0)
-				const ratio = (W * 0.95) / total
+				const padX = 4
+				const usable = Math.max(1, W - padX * 2)
+				const widths = sleepData.map(it => Math.max(1, it.endTimestamp - it.startTimestamp))
+				const total = widths.reduce((a, b) => a + b, 0) || 1
+				// 先按比例分配像素宽度（保留最小可见宽度），再统一缩放保证总宽不溢出
+				let px = widths.map(w => Math.max(2, (w / total) * usable))
+				const sumPx = px.reduce((a, b) => a + b, 0)
+				if (sumPx > usable) {
+					const k = usable / sumPx
+					px = px.map(v => v * k)
+				}
+				let xValue = padX
+				const yHeight = H * 0.13
 				for (let i = 0; i < sleepData.length; i++) {
 					const item = sleepData[i]
-					const yHeight = H * 0.13
-					const xWidth = Math.max(3, Math.floor((item.endTimestamp - item.startTimestamp) * ratio))
 					const state = item.state
-					item.rect = { x: xValue, y: yValue[state], w: xWidth, h: yHeight }
+					const w = Math.max(1, px[i])
+					item.rect = { x: xValue, y: yValue[state], w, h: yHeight }
 					if (i < sleepData.length - 1) {
 						const ns = sleepData[i + 1].state
 						item.line = {
-							x1: xValue + xWidth, y1: yValue[state] + (state > ns ? yHeight - this.bandRadius : this.bandRadius),
-							x2: xValue + xWidth, y2: yValue[ns] + (state > ns ? this.bandRadius : yHeight - this.bandRadius)
+							x1: xValue + w, y1: yValue[state] + (state > ns ? yHeight - this.bandRadius : this.bandRadius),
+							x2: xValue + w, y2: yValue[ns] + (state > ns ? this.bandRadius : yHeight - this.bandRadius)
 						}
 					}
-					xValue += xWidth
+					xValue += w
 				}
 				for (let i = 0; i < sleepData.length; i++) {
 					const item = sleepData[i]
@@ -638,23 +743,27 @@
 				const c = this.sampleColors()
 				gg.addColorStop(0, c[0]); gg.addColorStop(0.33, c[1]); gg.addColorStop(0.66, c[2]); gg.addColorStop(1, c[3])
 				context.setLineWidth(1); context.setStrokeStyle(gg); context.setFillStyle(gg)
-				for (let i = 0; i < this.sleepSample.length; i++) {
+				// 先画阶段之间的连接线，再用色块覆盖穿过块内部的线
+				for (let i = 0; i < this.sleepSample.length - 1; i++) {
 					const item = this.sleepSample[i]
-					context.beginPath()
-					this.drawSampleRect(context, item.rect.x, item.rect.y, item.rect.w, item.rect.h, item.left, item.right)
-					context.fill()
-					if (i < this.sleepSample.length - 1 && item.line) {
+					if (item.line) {
 						context.beginPath()
 						context.moveTo(item.line.x1, item.line.y1)
 						context.lineTo(item.line.x2, item.line.y2)
 						context.stroke()
 					}
 				}
-				if (this.touchValue.touchX) {
+				for (let i = 0; i < this.sleepSample.length; i++) {
+					const item = this.sleepSample[i]
+					context.beginPath()
+					this.drawSampleRect(context, item.rect.x - 0.55, item.rect.y, item.rect.w + 1, item.rect.h, item.left, item.right)
+					context.fill()
+				}
+				if (this.touchValue && this.touchValue.show && this.touchValue.touchX) {
 					const gline = context.createLinearGradient(0, 0, 0, this.canvasH)
-					gline.addColorStop(0, 'rgba(255,255,255,0)'); gline.addColorStop(0.5, 'rgba(255,255,255,1)'); gline.addColorStop(1, 'rgba(255,255,255,0)')
+					gline.addColorStop(0, 'rgba(255,255,255,0)'); gline.addColorStop(0.5, 'rgba(255,255,255,0.85)'); gline.addColorStop(1, 'rgba(255,255,255,0)')
 					context.setStrokeStyle(gline); context.setFillStyle(gline)
-					context.fillRect(this.touchValue.touchX, 0, 0.5, this.canvasH)
+					context.fillRect(this.touchValue.touchX, 0, 1, this.canvasH)
 					context.fill()
 				}
 				context.draw()
@@ -684,19 +793,43 @@
 				context.lineTo(arr[7][0], arr[7][1])
 				context.closePath()
 			},
-			onScrubChange(e) {
-				if (!this.sleepSample || !this.sleepSample.length) return
-				const areaW = this.canvasW || 300
-				const touchX = (Number(e.detail.x) || 0) / Math.max(1, areaW - 36) * areaW
-				for (const item of this.sleepSample) {
-					if (touchX >= item.rect.x && touchX <= item.rect.x + item.rect.w) {
-						const st = ['清醒', '快速眼动', '浅睡', '深睡'][item.state]
-						this.touchValue = { stage: ['awake', 'rem', 'light', 'deep'][item.state], sleepStateText: st, startLabel: this.sleepStart, endLabel: this.wakeTime, touchX }
-						break
-					}
-				}
-				this.draftSample()
+			formatChartTime(timestamp) {
+				const date = new Date(timestamp)
+				const hh = String(date.getHours()).padStart(2, '0')
+				const mm = String(date.getMinutes()).padStart(2, '0')
+				return `${hh}:${mm}`
 			},
+			onChartTouch(e) {
+			if (!this.sleepSample || !this.sleepSample.length) return
+			const touch = e.touches && e.touches[0]
+			if (!touch) return
+			let x
+			if (typeof touch.x === 'number') x = touch.x
+			else x = (Number(touch.clientX) || 0) - this.chartLeft
+			x = Math.max(0, Math.min(this.canvasW, x))
+			const item = this.sleepSample.find((it) => x >= it.rect.x && x <= it.rect.x + it.rect.w) ||
+				this.sleepSample[this.sleepSample.length - 1]
+			if (!item) return
+			const ratio = Math.max(0, Math.min(1, (x - item.rect.x) / Math.max(1, item.rect.w)))
+			const timestamp = item.startTimestamp + (item.endTimestamp - item.startTimestamp) * ratio
+			const stage = ['awake', 'rem', 'light', 'deep'][item.state]
+			const label = `${this.stageName(stage)} ${this.formatChartTime(timestamp)}`
+			this.touchValue = {
+				show: true,
+				stage,
+				touchX: x,
+				label,
+				tipLeft: `${Math.max(0, Math.min(this.canvasW, x - 70))}px`
+			}
+			this.draftSample()
+		},
+			onChartTouchEnd() {
+			setTimeout(() => {
+				this.touchValue = {}
+				this.draftSample()
+			}, 1800)
+		},
+
 			async refreshSleep() {
 				try {
 					if (BleService.getState().connected) {
@@ -706,6 +839,7 @@
 				this.loadTrend()
 			},
 			async loadTrend() {
+				this.recentList = []
 				try {
 					const data = await getSleepTrend(dateToYmd(this.currentDate), 'day')
 					this.applyTrend(data)
@@ -714,7 +848,18 @@
 				}
 			},
 			applyTrend(data) {
-				if (!data || (!(Number(data.score) > 0) && !(data.series && data.series.length) && !(data.segments && data.segments.length))) {
+				const series = data && Array.isArray(data.series) ? data.series : []
+				const segs = data && Array.isArray(data.segments) ? data.segments : []
+				let totalMin = 0
+				series.forEach((p) => {
+					totalMin += Number(p.value2) || 0
+				})
+				if (!totalMin) {
+					segs.forEach((s) => {
+						totalMin += Number(s.value) || 0
+					})
+				}
+				if (!data || !(totalMin > 0)) {
 					this.sleepHours = 0
 					this.sleepMinutes = 0
 					this.recoverStatus = '暂无数据'
@@ -725,33 +870,38 @@
 					this.qualityMarkerPercent = 8
 					this.structureList = emptyStructure()
 					this.cycleSegments = []
-					this.applyRecent(data && data.recentList)
-					this.$nextTick(() => this.measureChart(0))
+					this.chartStartMs = 0
+					this.chartEndMs = 0
+					this.sleepSample = null
+					this.touchValue = {}
+					this.recentList = []
+					if (this.canvasW && this.canvasH) this.initSample()
+					this.measureChart(0)
 					return
-				}
-
-				const series = Array.isArray(data.series) ? data.series : []
-				const segs = Array.isArray(data.segments) ? data.segments : []
-				let totalMin = 0
-				series.forEach((p) => {
-					totalMin += Number(p.value2) || 0
-				})
-				if (!totalMin) {
-					segs.forEach((s) => {
-						totalMin += Number(s.value) || 0
-					})
-				}
-				if (!totalMin && data.startTime && data.endTime) {
-					const a = new Date(String(data.startTime).replace(/-/g, '/').replace('T', ' ')).getTime()
-					const b = new Date(String(data.endTime).replace(/-/g, '/').replace('T', ' ')).getTime()
-					if (b > a) totalMin = Math.round((b - a) / 60000)
 				}
 
 				this.sleepHours = Math.floor(totalMin / 60)
 				this.sleepMinutes = totalMin % 60
 				this.recoverStatus = data.status || data.scoreText || '恢复一般'
-				this.sleepStart = formatClock(data.startTime)
-				this.wakeTime = formatClock(data.endTime)
+
+				let firstTime = ''
+				let lastTime = ''
+				if (series.length) {
+					firstTime = series[0].fullTime || series[0].time || ''
+					lastTime = (data.latest && data.latest.fullTime) || series[series.length - 1].fullTime || series[series.length - 1].time || ''
+				}
+				const parsedStart = firstTime ? new Date(String(firstTime).replace(/-/g, '/').replace('T', ' ')).getTime() : 0
+				const parsedEnd = lastTime ? new Date(String(lastTime).replace(/-/g, '/').replace('T', ' ')).getTime() : 0
+				this.chartStartMs = parsedStart || (parsedEnd && totalMin ? parsedEnd - totalMin * 60000 : 0)
+				this.chartEndMs = parsedEnd || (this.chartStartMs && totalMin ? this.chartStartMs + totalMin * 60000 : 0)
+
+				if (series.length) {
+					this.sleepStart = firstTime ? formatClock(firstTime) : '--:--'
+					this.wakeTime = lastTime ? formatClock(lastTime) : '--:--'
+				} else {
+					this.sleepStart = '--:--'
+					this.wakeTime = '--:--'
+				}
 				this.sleepScore = Number(data.score) || 0
 				this.qualityText = data.scoreText ? ('睡眠质量' + data.scoreText) : (data.status || '睡眠质量一般')
 				this.qualityMarkerPercent = this.sleepScore > 0 ? Math.max(4, Math.min(96, this.sleepScore)) : 8
@@ -805,11 +955,19 @@
 					stage: STAGE_BY_VALUE[Number(p.value)] || 'light',
 					dur: Number(p.value2) || 1
 				})).filter((item) => item.dur > 0)
-
 				this.applyRecent(data.recentList)
 				this.touchValue = {}
+				this.sleepSample = null
 				this._lastDrawKey = ''
-				this.$nextTick(() => this.measureChart(0))
+				if (this.canvasW && this.canvasH) {
+					if (!this.canvasCtx) this.canvasCtx = uni.createCanvasContext('sleepCanvas', this)
+					this.initSample()
+				}
+				this.measureChart(0)
+				setTimeout(() => {
+					if (!this.canvasCtx) this.canvasCtx = uni.createCanvasContext('sleepCanvas', this)
+					if (this.canvasW && this.canvasH) this.initSample()
+				}, 80)
 			},
 			applyRecent(list) {
 				const rows = Array.isArray(list) ? list : []
@@ -837,6 +995,12 @@
 			},
 			onNextDay() {
 				this.shiftDate(1)
+			},
+			openSleepDetail() {
+				this.showSleepDetail = true
+			},
+			closeSleepDetail() {
+				this.showSleepDetail = false
 			},
 			openCalendar() {
 				const d = this.currentDate
@@ -904,7 +1068,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;
@@ -1036,6 +1204,206 @@
 		width: 40rpx;
 		height: 40rpx;
 		margin-left: 10rpx;
+	}
+
+	.detail-mask {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		z-index: 1100;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+		padding: 0 30rpx 30rpx;
+		box-sizing: border-box;
+		background: rgba(0, 0, 0, 0.7);
+		animation: detailMaskIn 0.2s ease-out;
+	}
+
+	@keyframes detailMaskIn {
+		from {
+			background: rgba(0, 0, 0, 0);
+		}
+
+		to {
+			background: rgba(0, 0, 0, 0.7);
+		}
+	}
+
+	.detail-popup {
+		position: relative;
+		width: 100%;
+		border: 1rpx solid rgba(255, 255, 255, 0.08);
+		border-radius: 40rpx;
+		overflow: hidden;
+		background: #191a24;
+		box-shadow: 0 20rpx 60rpx rgba(0, 0, 0, 0.45);
+		animation: detailPopupUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
+	@keyframes detailPopupUp {
+		from {
+			transform: translateY(100%);
+		}
+
+		to {
+			transform: translateY(0);
+		}
+	}
+
+	.detail-popup-bg,
+	.detail-hero-bg {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.detail-popup-bg {
+		opacity: 0.22;
+	}
+
+	.detail-body {
+		position: relative;
+		z-index: 1;
+		padding: 38rpx 36rpx 34rpx;
+	}
+
+	.detail-head {
+		margin-bottom: 28rpx;
+	}
+
+	.detail-title {
+		display: block;
+		font-size: 38rpx;
+		font-weight: 600;
+		line-height: 52rpx;
+		color: #ffffff;
+	}
+
+	.detail-time {
+		display: block;
+		margin-top: 8rpx;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.65);
+	}
+
+	.detail-hero {
+		position: relative;
+		height: 246rpx;
+		padding: 30rpx 28rpx;
+		box-sizing: border-box;
+		overflow: hidden;
+		border-radius: 28rpx;
+	}
+
+	.detail-hero-label,
+	.detail-hero-duration,
+	.detail-hero-status {
+		position: relative;
+		z-index: 1;
+	}
+
+	.detail-hero-label {
+		display: block;
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.72);
+	}
+
+	.detail-hero-duration {
+		display: flex;
+		align-items: baseline;
+		margin-top: 12rpx;
+	}
+
+	.detail-hero-num {
+		font-size: 70rpx;
+		font-weight: 600;
+		line-height: 78rpx;
+		color: #ffffff;
+	}
+
+	.detail-hero-unit {
+		margin: 0 10rpx 0 7rpx;
+		font-size: 25rpx;
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.detail-hero-status {
+		display: block;
+		margin-top: 10rpx;
+		font-size: 23rpx;
+		line-height: 32rpx;
+		color: #76bfff;
+	}
+
+	.detail-info-row {
+		display: flex;
+		margin-top: 28rpx;
+	}
+
+	.detail-info-item {
+		flex: 1;
+		min-width: 0;
+		margin-left: 20rpx;
+		height: 148rpx;
+		padding: 22rpx 20rpx;
+		box-sizing: border-box;
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
+		border-radius: 20rpx;
+		background: rgba(27, 28, 39, 0.72);
+	}
+
+	.detail-info-item:first-child {
+		margin-left: 0;
+	}
+
+	.detail-info-head {
+		display: flex;
+		align-items: center;
+	}
+
+	.detail-info-icon {
+		width: 34rpx;
+		height: 34rpx;
+		margin-right: 8rpx;
+	}
+
+	.detail-info-label {
+		font-size: 24rpx;
+		line-height: 34rpx;
+		color: rgba(255, 255, 255, 0.72);
+	}
+
+	.detail-info-value {
+		display: block;
+		margin-top: 14rpx;
+		font-size: 28rpx;
+		line-height: 40rpx;
+		color: #ffffff;
+	}
+
+	.detail-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 88rpx;
+		margin-top: 30rpx;
+		border: 2rpx solid #2C89FF;
+		border-radius: 22rpx;
+		background: rgba(24, 26, 37, 0.72);
+	}
+
+	.detail-btn-text {
+		font-size: 30rpx;
+		font-weight: 600;
+		line-height: 42rpx;
+		color: #ffffff;
 	}
 
 	.cal-mask {
@@ -1298,6 +1666,7 @@
 	}
 
 	.cycle-plot {
+		position: relative;
 		width: 100%;
 		height: 269.46rpx;
 	}
@@ -1309,10 +1678,15 @@
 	}
 
 	.cycle-tip {
-		align-self: flex-start;
-		padding: 8rpx 20rpx;
-		border-radius: 20rpx;
-		margin-bottom: 10rpx;
+		position: absolute;
+		top: 8rpx;
+		z-index: 2;
+		max-width: 280rpx;
+		padding: 8rpx 16rpx;
+		border: 1rpx solid rgba(255, 255, 255, 0.18);
+		border-radius: 18rpx;
+		background: rgba(20, 21, 30, 0.94);
+		pointer-events: none;
 	}
 
 	.cycle-tip-text {

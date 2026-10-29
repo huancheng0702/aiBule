@@ -125,7 +125,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;

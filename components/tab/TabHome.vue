@@ -18,7 +18,7 @@
 		<view class="hero-banner">
 			<swiper v-if="banners.length" class="hero-swiper" circular autoplay interval="4000" indicator-dots>
 				<swiper-item v-for="item in banners" :key="item.bannerId" @click="onBanner(item)">
-					<image class="hero-img" :src="item.imageUrl" mode=""></image>
+					<image class="hero-img" :src="item.imageUrl" mode="aspectFill"></image>
 				</swiper-item>
 			</swiper>
 			<image v-else src="/static/swiper.png" class="hero-img" mode="aspectFill"></image>
@@ -60,17 +60,11 @@
 						<text class="card-unit">分</text>
 					</view>
 					<text class="card-sub">{{ sleepSubText }}</text>
-					<view v-if="hasSleepData" class="sleep-bars">
-						<view class="sleep-bar orange">
-							<view class="sleep-bar-solid" :style="{ width: sleepBarDeep + '%' }"></view>
-							<view class="sleep-bar-glow"></view>
-						</view>
-						<view class="sleep-bar purple">
-							<view class="sleep-bar-solid" :style="{ width: sleepBarLight + '%' }"></view>
-							<view class="sleep-bar-glow"></view>
-						</view>
-						<view class="sleep-bar cyan">
-							<view class="sleep-bar-solid" :style="{ width: sleepBarRem + '%' }"></view>
+					<view v-if="sleepBars.length" class="sleep-bars">
+						<view v-for="(bar, i) in sleepBars" :key="bar.key" class="sleep-bar"
+							:class="[bar.color, { 'is-first': i === 0, 'is-last': i === sleepBars.length - 1 }]"
+							:style="{ width: bar.width + '%' }">
+							<view class="sleep-bar-solid"></view>
 							<view class="sleep-bar-glow"></view>
 						</view>
 					</view>
@@ -716,14 +710,19 @@
 			hasSleepData() {
 				return !!(Number(this.sleepHours) || Number(this.sleepMinutes))
 			},
-			sleepBarDeep() {
-				return Math.max(8, Math.min(100, Math.round((this.sleepDeepRatio || 0) * 100)))
-			},
-			sleepBarLight() {
-				return Math.max(8, Math.min(100, Math.round((this.sleepLightRatio || 0) * 100)))
-			},
-			sleepBarRem() {
-				return Math.max(8, Math.min(100, Math.round((this.sleepRemRatio || 0) * 100)))
+			sleepBars() {
+				const segs = [
+					{ key: 'deep', color: 'orange', ratio: Number(this.sleepDeepRatio) || 0 },
+					{ key: 'light', color: 'purple', ratio: Number(this.sleepLightRatio) || 0 },
+					{ key: 'awake', color: 'cyan', ratio: Number(this.sleepRemRatio) || 0 }
+				].filter(s => s.ratio > 0)
+				const total = segs.reduce((sum, s) => sum + s.ratio, 0)
+				if (total <= 0) return []
+				return segs.map(s => ({
+					key: s.key,
+					color: s.color,
+					width: Math.round((s.ratio / total) * 1000) / 10
+				}))
 			},
 			visibleRecords() {
 				return this.recordList.filter(item => item.visible)
@@ -738,12 +737,16 @@
 				clearTimeout(this._bleReloadTimer)
 				this._bleReloadTimer = setTimeout(() => { this.loadDashboard() }, 1500)
 			},
-			async onRefresh() {
+async onRefresh() {
 				this.isRefreshing = true
 				try {
 					await this.loadHome()
+					// 同步戒指数据：先获取戒指数据
 					BleService.syncSport && BleService.syncSport().catch(() => {})
 					BleService.syncSleep && BleService.syncSleep().catch(() => {})
+					// 再把该上报的数据上报一次（补报队列 + 原生缓存健康事件）
+					BleService.flushPendingUploads && BleService.flushPendingUploads().catch(() => {})
+					BleService.pullCachedHealthEvents && BleService.pullCachedHealthEvents().catch(() => {})
 				} catch (e) {}
 				this.isRefreshing = false
 			},
@@ -781,19 +784,32 @@
 					const parsed = parseSleepValue(sleep)
 					this.sleepHours = parsed.hours
 					this.sleepMinutes = parsed.minutes
-					this.sleepScore = Number(sleep.status) || Number((sleep.subText || '').replace(/\D/g, '')) || 0
-					const segs = sleep.segments || []
+					const statusNum = Number(sleep.status)
+					this.sleepScore = (!isNaN(statusNum) && statusNum > 0) ? statusNum : 0
+					const segs = Array.isArray(sleep.segments) ? sleep.segments : []
+					const segTotal = segs.reduce((sum, seg) => {
+						const v = Number(seg && seg.value)
+						return sum + (isNaN(v) ? 0 : v)
+					}, 0)
 					this.sleepDeepRatio = 0
 					this.sleepLightRatio = 0
 					this.sleepRemRatio = 0
 					segs.forEach((seg) => {
 						const name = String(seg.name || '')
 						const percent = Number(seg.percent)
-						const ratio = isNaN(percent) ? 0 : percent / 100
+						let ratio
+						if (!isNaN(percent) && percent > 0) {
+							ratio = Math.min(1, percent / 100)
+						} else if (segTotal > 0) {
+							const v = Number(seg.value)
+							ratio = (isNaN(v) ? 0 : v) / segTotal
+						} else {
+							ratio = 0
+						}
 						if (name.indexOf('深') !== -1) this.sleepDeepRatio = ratio
 						else if (name.indexOf('浅') !== -1) this.sleepLightRatio = ratio
-						else if (name.indexOf('眼动') !== -1 || name.toLowerCase().indexOf('rem') !== -1) this
-							.sleepRemRatio = ratio
+						else if (name.indexOf('眼动') !== -1 || name.toLowerCase().indexOf('rem') !== -1 ||
+							name.indexOf('清醒') !== -1 || name.indexOf('醒') !== -1) this.sleepRemRatio = ratio
 					})
 				}
 				const heart = pickDashItem(items, 'heart_rate')
@@ -1086,6 +1102,7 @@
 		.hero-img {
 			width: 100%;
 			height: 100%;
+			border-radius: 24rpx;
 		}
 	}
 
@@ -1207,6 +1224,7 @@
 		align-items: flex-start;
 		margin-top: 20rpx;
 		height: 44rpx;
+		gap: 6rpx;
 	}
 
 	.sleep-empty {
@@ -1218,9 +1236,10 @@
 
 	.sleep-bar {
 		height: 100%;
-		margin-right: 6rpx;
+		flex-shrink: 0;
 		display: flex;
 		flex-direction: column;
+		min-width: 4rpx;
 	}
 
 	.sleep-bar-solid {
@@ -1232,24 +1251,26 @@
 	.sleep-bar-glow {
 		width: 100%;
 		flex: 1;
+		position: relative;
+		top: -2rpx;
 	}
 
-	.sleep-bar.orange {
-		width: 28%;
-	}
-
-	.sleep-bar.orange .sleep-bar-solid {
-		background: #ff9f0a;
+	.sleep-bar.is-first .sleep-bar-solid {
 		border-top-left-radius: 30rpx;
 		border-bottom-left-radius: 30rpx;
 	}
 
-	.sleep-bar.orange .sleep-bar-glow {
-		background: linear-gradient(180deg, rgba(255, 159, 10, 0.55) 0%, rgba(255, 159, 10, 0) 100%);
+	.sleep-bar.is-last .sleep-bar-solid {
+		border-top-right-radius: 30rpx;
+		border-bottom-right-radius: 30rpx;
 	}
 
-	.sleep-bar.purple {
-		width: 40%;
+	.sleep-bar.orange .sleep-bar-solid {
+		background: #ff9f0a;
+	}
+
+	.sleep-bar.orange .sleep-bar-glow {
+		background: linear-gradient(180deg, rgba(255, 159, 10, 0.55) 0%, rgba(255, 159, 10, 0) 100%);
 	}
 
 	.sleep-bar.purple .sleep-bar-solid {
@@ -1260,15 +1281,8 @@
 		background: linear-gradient(180deg, rgba(191, 90, 242, 0.55) 0%, rgba(191, 90, 242, 0) 100%);
 	}
 
-	.sleep-bar.cyan {
-		width: 24%;
-		margin-right: 0;
-	}
-
 	.sleep-bar.cyan .sleep-bar-solid {
 		background: #64d2ff;
-		border-top-right-radius: 30rpx;
-		border-bottom-right-radius: 30rpx;
 	}
 
 	.sleep-bar.cyan .sleep-bar-glow {

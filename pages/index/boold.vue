@@ -15,7 +15,7 @@
 				</view>
 				<!-- 血氧装饰图，自行补充 src -->
 				<!-- <image class="hero-o2" mode="aspectFit"></image> -->
-			<!-- 	<view class="measure-btn" @click="onStartMeasure">
+				<!-- 	<view class="measure-btn" @click="onStartMeasure">
 					<text class="measure-btn-text">{{ measuring ? '测量中' : '开始测量' }}</text>
 				</view> -->
 				<view class="measure-btn" @click="onStartMeasure">
@@ -26,15 +26,11 @@
 
 		<!-- 日 / 周 / 月 -->
 		<view class="period-bar">
-			<view
-				v-for="item in periodList"
-				:key="item.key"
-				class="period-item"
-				:class="{ active: period === item.key }"
-				@click="onPeriodChange(item.key)"
-			>
+			<view v-for="item in periodList" :key="item.key" class="period-item"
+				:class="{ active: period === item.key }" @click="onPeriodChange(item.key)">
 				<!-- 选中背景图，自行补充 src -->
-				<image v-if="period === item.key" src="/static/confirmBg.png" class="period-item-bg" mode="scaleToFill"></image>
+				<image v-if="period === item.key" src="/static/confirmBg.png" class="period-item-bg" mode="scaleToFill">
+				</image>
 				<text class="period-text">{{ item.label }}</text>
 			</view>
 		</view>
@@ -71,22 +67,14 @@
 			<view class="trend-chart">
 				<view class="trend-body">
 					<view class="y-axis">
-						<text v-for="item in yLabelItems" :key="item.text" class="y-label" :style="{ top: item.top }">{{ item.text }}</text>
+						<text v-for="item in yLabelItems" :key="item.text" class="y-label"
+							:style="{ top: item.top }">{{ item.text }}</text>
 					</view>
-					<view
-						class="trend-plot"
-						@touchstart="onChartTouch"
-						@touchmove.stop="onChartTouch"
-						@touchend="onChartTouchEnd"
-						@touchcancel="onChartTouchEnd"
-					>
+					<view class="trend-plot" @touchstart="onChartTouch" @touchmove.stop="onChartTouch"
+						@touchend="onChartTouchEnd" @touchcancel="onChartTouchEnd">
 						<image v-if="chartImageSrc" class="trend-svg" :src="chartImageSrc" mode="scaleToFill" />
 						<view class="threshold-label" :style="{ top: thresholdLabelTop }">≥95%</view>
-						<view
-							v-if="touchActive && touchPoint"
-							class="chart-tip"
-							:style="chartTipStyle"
-						>
+						<view v-if="touchActive && touchPoint" class="chart-tip" :style="chartTipStyle">
 							<text class="chart-tip-value">{{ touchValue }}%</text>
 							<text class="chart-tip-time">{{ touchTimeText }}</text>
 						</view>
@@ -150,12 +138,8 @@
 		<view class="section">
 			<text class="section-title">最近数据</text>
 			<view class="card recent-card">
-				<view
-					v-for="(item, index) in recentList"
-					:key="index"
-					class="recent-row"
-					:class="{ border: index < recentList.length - 1 }"
-				>
+				<view v-for="(item, index) in recentList" :key="index" class="recent-row"
+					:class="{ border: index < recentList.length - 1 }">
 					<view class="recent-left">
 						<text class="recent-time">{{ item.time }}</text>
 						<text class="recent-source">{{ item.source }}</text>
@@ -185,14 +169,11 @@
 					</view>
 
 					<view class="cal-grid" :class="{ 'month-grid': period === 'month' }">
-						<view
-							v-for="(cell, index) in calendarCells"
-							:key="index"
-							class="cal-cell"
+						<view v-for="(cell, index) in calendarCells" :key="index" class="cal-cell"
 							:class="{ empty: !cell.day && !cell.month, active: cell.active, inRange: cell.inRange, disabled: cell.disabled }"
-							@click="(cell.day || cell.month) && !cell.disabled && onSelectCalCell(cell)"
-						>
-							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill"></image>
+							@click="(cell.day || cell.month) && !cell.disabled && onSelectCalCell(cell)">
+							<image v-if="cell.active" src="/static/dateSelect.png" class="cal-day-bg" mode="aspectFill">
+							</image>
 							<text v-if="cell.day" class="cal-day">{{ cell.day }}</text>
 							<text v-if="cell.month" class="cal-day">{{ cell.month }}月</text>
 						</view>
@@ -217,12 +198,8 @@
 					<text class="tip-popup-title">检测注意事项</text>
 					<image class="tip-popup-illust" src="/static/celiangTipsIcon.png" mode=""></image>
 					<view class="tip-popup-card">
-						<view
-							v-for="(item, index) in measureTips"
-							:key="item.no"
-							class="tip-popup-row"
-							:class="{ border: index < measureTips.length - 1 }"
-						>
+						<view v-for="(item, index) in measureTips" :key="item.no" class="tip-popup-row"
+							:class="{ border: index < measureTips.length - 1 }">
 							<view class="tip-popup-no">
 								<text class="tip-popup-no-text">{{ item.no }}</text>
 							</view>
@@ -275,10 +252,14 @@
 </template>
 
 <script>
-	import { toSvgDataUrl } from '@/common/svg-data-url.js'
+	import {
+		toSvgDataUrl
+	} from '@/common/svg-data-url.js'
 	import CoolWearBLE from '@/common/coolwear-ble.js'
 	import BleService from '@/common/ble-service.js'
-	import { hasLogin } from '@/common/auth.js'
+	import {
+		hasLogin
+	} from '@/common/auth.js'
 	import {
 		getDeviceLatest,
 		getBloodOxygenTrend,
@@ -304,14 +285,18 @@
 
 	/** Y 轴范围跟随数据，刻度与柱子同步 */
 	function calcYScale(values) {
-		let min = Infinity
-		;(values || []).forEach((v) => {
+		let min = Infinity;
+		(values || []).forEach((v) => {
 			const n = Number(v)
 			if (Number.isNaN(n) || n <= 0) return
 			if (n < min) min = n
 		})
 		if (!(min < Infinity)) {
-			return { min: DEFAULT_Y_MIN, max: DEFAULT_Y_MAX, ticks: [94, 95, 96, 97, 98, 99, 100] }
+			return {
+				min: DEFAULT_Y_MIN,
+				max: DEFAULT_Y_MAX,
+				ticks: [94, 95, 96, 97, 98, 99, 100]
+			}
 		}
 		const yMin = Math.min(DEFAULT_Y_MIN, Math.floor(min))
 		const yMax = DEFAULT_Y_MAX
@@ -320,7 +305,11 @@
 		for (let v = yMin; v <= yMax + 0.0001; v += step) {
 			ticks.push(Math.round(v))
 		}
-		return { min: yMin, max: yMax, ticks }
+		return {
+			min: yMin,
+			max: yMax,
+			ticks
+		}
 	}
 
 	function valueToY(value, chartH, yMin = DEFAULT_Y_MIN, yMax = DEFAULT_Y_MAX) {
@@ -454,10 +443,18 @@
 				latestValue: '--',
 				latestStatus: '暂无数据',
 				period: 'day',
-				periodList: [
-					{ key: 'day', label: '日' },
-					{ key: 'week', label: '周' },
-					{ key: 'month', label: '月' }
+				periodList: [{
+						key: 'day',
+						label: '日'
+					},
+					{
+						key: 'week',
+						label: '周'
+					},
+					{
+						key: 'month',
+						label: '月'
+					}
 				],
 				currentDate: new Date(),
 				trendAvg: '--',
@@ -468,11 +465,22 @@
 				chartValues: [],
 				chartTimes: [],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
-				legendList: [
-					{ color: '#3EE0C3', label: '≥95%' },
-					{ color: '#3B82F6', label: '90~94%' },
-					{ color: '#F5C451', label: '80~89%' },
-					{ color: '#FF7A45', label: '偏低' }
+				legendList: [{
+						color: '#3EE0C3',
+						label: '≥95%'
+					},
+					{
+						color: '#3B82F6',
+						label: '90~94%'
+					},
+					{
+						color: '#F5C451',
+						label: '80~89%'
+					},
+					{
+						color: '#FF7A45',
+						label: '偏低'
+					}
 				],
 				statsMax: '--',
 				statsMin: '--',
@@ -490,9 +498,14 @@
 				measureTimer: null,
 				measureStableTimer: null,
 				bloodOxygenUnsub: null,
-				measureTips: [
-					{ no: '1', text: '请正确佩戴设备，使设备光路对准指腹或手指两侧' },
-					{ no: '2', text: '测量过程中身体尽可能保持静止，请勿走动或晃动' }
+				measureTips: [{
+						no: '1',
+						text: '请正确佩戴设备，使设备光路对准指腹或手指两侧'
+					},
+					{
+						no: '2',
+						text: '测量过程中身体尽可能保持静止，请勿走动或晃动'
+					}
 				],
 				calYear: new Date().getFullYear(),
 				calMonth: new Date().getMonth(),
@@ -515,7 +528,8 @@
 					weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
 					const weekEnd = new Date(weekStart)
 					weekEnd.setDate(weekStart.getDate() + 6)
-					const fmtWeekDay = (dt) => String(dt.getMonth() + 1).padStart(2, '0') + '月' + String(dt.getDate()).padStart(2, '0') + '日'
+					const fmtWeekDay = (dt) => String(dt.getMonth() + 1).padStart(2, '0') + '月' + String(dt.getDate())
+						.padStart(2, '0') + '日'
 					if (weekStart.getFullYear() !== weekEnd.getFullYear()) {
 						return `${weekStart.getFullYear()}年${fmtWeekDay(weekStart)} - ${weekEnd.getFullYear()}年${fmtWeekDay(weekEnd)}`
 					}
@@ -548,33 +562,45 @@
 				if (!count || !this.chartW) return []
 				const s = this.yScale
 				const slot = this.chartW / count
-				const barW = Math.max(2, slot * 0.46)
+				const barW = Math.max(1, Math.min(2, slot * 0.42))
 				return values.map((value, index) => {
-					const y = valueToY(value, this.chartH, s.min, s.max)
+					const numericValue = Number(value)
+					if (!Number.isFinite(numericValue) || numericValue <= 0) return null
+					const y = valueToY(numericValue, this.chartH, s.min, s.max)
 					const h = Math.max(2, this.chartH - y)
 					return {
 						x: index * slot + (slot - barW) / 2,
 						y: this.chartH - h,
 						w: barW,
 						h,
-						color: barColor(value)
+						color: barColor(numericValue)
 					}
 				})
 			},
 			chartImageSrc() {
 				if (!this.chartW || !this.chartH || !this.chartBars.length) return ''
-				const bars = this.chartBars.map((bar) =>
-					`<rect x="${bar.x}" y="${bar.y}" width="${bar.w}" height="${bar.h}" fill="${bar.color}" rx="1"/>`
+				const s = this.yScale
+				const gridLines = (s.ticks || []).map((value) => {
+					const y = valueToY(value, this.chartH, s.min, s.max)
+					if (value === s.min) {
+						return `<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>`
+					}
+					return `<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 5"/>`
+				}).join('')
+				const bars = this.chartBars.filter(Boolean).map((bar) =>
+					`<rect x="${bar.x}" y="${bar.y}" width="${bar.w}" height="${bar.h}" fill="${bar.color}" rx="0.5"/>`
 				).join('')
 				let touch = ''
 				if (this.touchActive && this.touchPoint) {
-					touch = `<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`
+					touch =
+						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>`
 				}
 				const inner =
+					gridLines +
+					`<line x1="0.5" y1="0" x2="0.5" y2="${this.chartH}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>` +
 					`<line x1="0" y1="${this.thresholdY}" x2="${this.chartW}" y2="${this.thresholdY}" stroke="rgba(167,139,250,0.9)" stroke-width="1" stroke-dasharray="4 5"/>` +
 					bars +
-					touch +
-					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					touch
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -655,7 +681,11 @@
 				}
 				const cells = []
 				for (let i = 0; i < firstWeekday; i++) {
-					cells.push({ day: 0, active: false, disabled: false })
+					cells.push({
+						day: 0,
+						active: false,
+						disabled: false
+					})
 				}
 				for (let d = 1; d <= daysInMonth; d++) {
 					const disabled = isFutureDate(year, month, d)
@@ -667,7 +697,11 @@
 					})
 				}
 				while (cells.length % 7 !== 0) {
-					cells.push({ day: 0, active: false, disabled: false })
+					cells.push({
+						day: 0,
+						active: false,
+						disabled: false
+					})
 				}
 				return cells
 			}
@@ -765,7 +799,8 @@
 				this.trendStatus = data.status || (avg > 0 ? spo2StatusText(avg) : '暂无数据')
 				const validPts = series.filter((p) => Number(p.value) > 0)
 				const last = validPts.length ? validPts[validPts.length - 1] : (data.latest || null)
-				this.trendTime = (last && (last.time || last.fullTime)) ? (last.time || formatRecordTime(last.fullTime)) : '--'
+				this.trendTime = (last && (last.time || last.fullTime)) ? (last.time || formatRecordTime(last.fullTime)) :
+					'--'
 
 				this.statsMax = Number(stats.maxValue) > 0 ? Math.round(Number(stats.maxValue)) : '--'
 				this.statsMin = Number(stats.minValue) > 0 ? Math.round(Number(stats.minValue)) : '--'
@@ -1022,7 +1057,9 @@
 				values.forEach((v) => this.measureSamples.push(v))
 				const latest = values[values.length - 1]
 				this.liveSpo2 = latest
-				if (latest > 0) { this.finishMeasure(latest) }
+				if (latest > 0) {
+					this.finishMeasure(latest)
+				}
 				console.log('[boold] 实时血氧', latest, 'samples=', this.measureSamples.length)
 
 				// 首个有效值直接结算
@@ -1062,7 +1099,10 @@
 				await this.stopRealMeasure(true)
 
 				let measureId = createMeasureId()
-				uni.showLoading({ title: '保存中', mask: true })
+				uni.showLoading({
+					title: '保存中',
+					mask: true
+				})
 				try {
 					await this.uploadOxygenOnce(value, measureId)
 				} catch (e) {
@@ -1074,7 +1114,9 @@
 
 				let url = '/pages/index/booldSuccess?spo2=' + value
 				if (measureId) url += '&measureId=' + encodeURIComponent(measureId)
-				uni.navigateTo({ url })
+				uni.navigateTo({
+					url
+				})
 			},
 			async uploadOxygenOnce(spo2, measureId) {
 				if (!hasLogin()) {
@@ -1107,7 +1149,11 @@
 		}
 	}
 </script>
-
+<style>
+	page {
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;
@@ -1121,7 +1167,6 @@
 		position: relative;
 		overflow: hidden;
 		padding: 36rpx 28rpx;
-		height: 232rpx;
 		border-radius: 28rpx;
 		background: #0d1f3d;
 		box-sizing: border-box;
@@ -1201,7 +1246,7 @@
 		padding: 6rpx;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
 	}
 
@@ -1227,21 +1272,16 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
-		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
 		color: #ffffff;
-		font-weight: 600;
+		font-weight: 500;
 	}
 
 	.card {
 		margin-top: 28rpx;
 		padding: 32rpx 28rpx 28rpx;
-	background: #1A1B25;
-	border-radius: 20rpx 20rpx 20rpx 20rpx;
-	border: 1rpx solid rgba(255,255,255,0.1);
+		background: #1A1B25;
+		border-radius: 20rpx 20rpx 20rpx 20rpx;
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 		box-sizing: border-box;
 	}
 
@@ -1317,6 +1357,7 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-top: 16rpx;
+		padding-bottom: 28rpx;
 	}
 
 	.trend-meta-left {
@@ -1369,7 +1410,6 @@
 	}
 
 	.trend-chart {
-		margin-top: 24rpx;
 	}
 
 	.trend-body {
@@ -1380,8 +1420,7 @@
 	.y-axis {
 		position: relative;
 		width: 48rpx;
-		margin-right: 8rpx;
-		flex-shrink: 0;
+		left: -10rpx;
 	}
 
 	.y-label {
@@ -1397,7 +1436,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 400rpx;
 		min-width: 0;
 	}
 
@@ -1458,13 +1497,15 @@
 		font-size: 20rpx;
 		color: #8e8e93;
 		line-height: 28rpx;
+		padding-bottom: 24rpx;
 	}
 
 	.legend {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-top: 24rpx;
+		padding-top: 24rpx;
+		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.legend-item {
@@ -1504,7 +1545,7 @@
 		padding: 36rpx 0;
 		background: #1A1B25;
 		border-radius: 20rpx 20rpx 20rpx 20rpx;
-		border: 1rpx solid rgba(255,255,255,0.1);
+		border: 1rpx solid rgba(255, 255, 255, 0.1);
 	}
 
 	.stats-col {
@@ -1523,13 +1564,14 @@
 	}
 
 	.stats-label {
+		font-weight: 500;
 		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
+		color: #FFFFFF;
+		
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top:28rpx;
 		display: flex;
 		align-items: baseline;
 	}
@@ -1570,7 +1612,7 @@
 		position: relative;
 		z-index: 1;
 		display: flex;
-		
+
 		align-items: center;
 		margin-bottom: 16rpx;
 	}
@@ -1813,7 +1855,7 @@
 		overflow: hidden;
 	}
 
-	.cal-btn + .cal-btn {
+	.cal-btn+.cal-btn {
 		margin-left: 24rpx;
 	}
 
@@ -1982,6 +2024,7 @@
 	}
 
 	@keyframes disc-breathe {
+
 		0%,
 		100% {
 			transform: scale(0.9);
@@ -2042,7 +2085,7 @@
 		box-sizing: border-box;
 	}
 
-	.cancel-btn + .cancel-btn {
+	.cancel-btn+.cancel-btn {
 		margin-left: 24rpx;
 	}
 

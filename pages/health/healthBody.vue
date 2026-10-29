@@ -724,13 +724,19 @@ export default {
 					}))
 					.filter((item) => item.categoryName)
 					.sort((a, b) => a.sort - b.sort)
+				// 「全身」固定放在最上面
+				const wholePos = organs.findIndex((o) => o.categoryName === '全身')
+				if (wholePos > 0) {
+					const wholeItem = organs.splice(wholePos, 1)[0]
+					organs.unshift(wholeItem)
+				}
 				this.partList = organs
 				if (this.activePart >= organs.length) {
 					this.activePart = 0
 				}
 				// 默认选中「全身」（档案数据挂在它下面）
 				const wholeIdx = organs.findIndex((o) => o.categoryName === '全身')
-				if (wholeIdx > 0) this.activePart = wholeIdx
+				if (wholeIdx >= 0) this.activePart = wholeIdx
 				await this.loadPartBubbles()
 				await this.loadArchiveDetail()
 			} catch (e) {

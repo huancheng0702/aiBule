@@ -121,7 +121,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style scoped>
 	.page {
 		height: 100vh;

@@ -607,7 +607,10 @@
 			},
 			gridYs() {
 				const s = this.yScale
-				return s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				// 顶部也保留一条虚线，底部由实线基准线绘制
+				return [valueToY(s.max, this.chartH, s.min, s.max)].concat(
+					s.ticks.filter((v) => v > s.min && v < s.max).map((v) => valueToY(v, this.chartH, s.min, s.max))
+				)
 			},
 			linePath() {
 				// 控制点限制在绘图区上下界内，避免平滑曲线冲出 0 基线或顶部
@@ -619,15 +622,19 @@
 			chartImageSrc() {
 				if (!this.chartW || !this.chartH || !this.linePath) return ''
 				const s = this.yScale
-				const grids = (this.gridYs || []).map((y) =>
-					`<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 5"/>`
-				).join('')
+				const grids = (this.gridYs || []).map((y) => {
+					const thresholdY = valueToY(100, this.chartH, s.min, s.max)
+					const isThreshold = Math.abs(y - thresholdY) < 0.5
+					const color = isThreshold ? 'rgba(255,94,123,0.75)' : 'rgba(255,255,255,0.12)'
+					return `<line x1="0" y1="${y}" x2="${this.chartW}" y2="${y}" stroke="${color}" stroke-width="1" stroke-dasharray="4 5"/>`
+				}).join('')
 				let touch = ''
 				if (this.touchActive && this.touchPoint) {
 					touch =
 						`<line x1="${this.touchPoint.x}" y1="0" x2="${this.touchPoint.x}" y2="${this.chartH}" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>` +
 						`<circle cx="${this.touchPoint.x}" cy="${this.touchPoint.y}" r="5" fill="#3B82F6" stroke="#ffffff" stroke-width="2"/>`
 				}
+				const bottomY = valueToY(s.min, this.chartH, s.min, s.max)
 				const inner =
 					`<defs><linearGradient id="hrvAreaGrad" x1="0" y1="0" x2="0" y2="1">` +
 					`<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>` +
@@ -638,7 +645,8 @@
 					`<path d="${this.areaPath}" fill="url(#hrvAreaGrad)"/>` +
 					`<path d="${this.linePath}" fill="none" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>` +
 					touch +
-					`<line x1="0" y1="${valueToY(s.min, this.chartH, s.min, s.max)}" x2="${this.chartW}" y2="${valueToY(s.min, this.chartH, s.min, s.max)}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0.5" y1="0" x2="0.5" y2="${bottomY}" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="butt"/>` +
+					`<line x1="0.5" y1="${bottomY}" x2="${this.chartW - 0.5}" y2="${bottomY}" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-linecap="butt"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1171,7 +1179,11 @@
 		}
 	}
 </script>
-
+<style>
+	page{
+		background-color: #000;
+	}
+</style>
 <style lang="scss" scoped>
 	.page {
 		min-height: 100vh;
@@ -1308,13 +1320,7 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
-		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
-		color: #ffffff;
-		font-weight: 600;
+		color: #fff;
 	}
 
 	.card {
@@ -1460,8 +1466,7 @@
 	.y-axis {
 		position: relative;
 		width: 48rpx;
-		margin-right: 8rpx;
-		flex-shrink: 0;
+		left:-10rpx;
 	}
 
 	.y-label {
@@ -1477,7 +1482,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 260rpx;
 		min-width: 0;
 	}
 
@@ -1519,7 +1524,6 @@
 	.trend-x {
 		display: flex;
 		justify-content: space-between;
-		margin-top: 12rpx;
 		margin-left: 56rpx;
 	}
 
@@ -1568,12 +1572,11 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
+		color: #fff;
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top: 28rpx;
 		display: flex;
 		align-items: baseline;
 	}

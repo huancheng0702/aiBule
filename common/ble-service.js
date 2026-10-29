@@ -43,6 +43,7 @@ let scanTimer = null
 let reconnecting = false
 let lastUploadedSportKey = ''
 let lastSyncInfoAt = 0
+let lastSleepSessionEndMs = 0
 
 function throttledSendSyncInfo(force = false) {
 	const now = Date.now()
@@ -491,7 +492,7 @@ function buildSleepDataList(session) {
 		dataType: 'sleep',
 		sleepType: 1,
 		measureTime: formatMs(startMs),
-		endTime: formatMs(endMs),
+		endTime: formatMs(startMs),
 		source: '1'
 	}]
 	let cursor = startMs
@@ -509,23 +510,62 @@ function buildSleepDataList(session) {
 		})
 		cursor = to
 	})
+	// 会话内未覆盖的尾部空白（cursor → endMs）按"体动 (type 5)"上报
+	if (endMs - cursor >= 60000) {
+		list.push({
+			dataType: 'sleep',
+			sleepType: 5,
+			measureTime: formatMs(cursor),
+			endTime: formatMs(endMs),
+			source: '1'
+		})
+	}
 	return list
 }
 
 /** 上报一晚完整的睡眠会话（按开始时间+总时长去重，持久化到本地避免重复上报） */
-function uploadSleepSession(session) {
+function uploadSleepSession(session, isLast) {
 	if (!session) return
 	const startMs = Number(session.startMs) || 0
 	const totalMin = Number(session.totalMin) || 0
 	if (!startMs || totalMin <= 0) return
+	const endMs = Number(session.endMs) || startMs + totalMin * 60000
 	const key = `${formatMs(startMs)}|${totalMin}`
 	if (!markSleepKey(key)) {
 		console.log('[ble-service] 睡眠会话已上报过，跳过:', key)
 		return
 	}
-	const dataList = buildSleepDataList(session)
+	// 新的一夜：重置追踪，避免把上一晚的尾部和今晚头部连成 awake 段
+	if (lastSleepSessionEndMs > 0 && startMs - lastSleepSessionEndMs > 3 * 3600 * 1000) {
+		lastSleepSessionEndMs = 0
+	}
+	let dataList = buildSleepDataList(session)
+	// 会话之间的空白时间按"体动 (type 5)"上报
+	if (lastSleepSessionEndMs > 0 && startMs > lastSleepSessionEndMs) {
+		const gapMs = startMs - lastSleepSessionEndMs
+		if (gapMs >= 60000 && gapMs <= 3 * 3600 * 1000) {
+			dataList = [{
+				dataType: 'sleep',
+				sleepType: 5,
+				measureTime: formatMs(lastSleepSessionEndMs),
+				endTime: formatMs(startMs),
+				source: '1'
+			}, ...dataList]
+		}
+	}
+	// 最后一个会话：末尾按"苏醒 (type 4)"上报最终醒来
+	if (isLast && endMs > startMs) {
+		dataList = [...dataList, {
+			dataType: 'sleep',
+			sleepType: 4,
+			measureTime: formatMs(endMs),
+			endTime: formatMs(endMs + 60000),
+			source: '1'
+		}]
+	}
 	if (!dataList.length) return
 	submitDeviceData(dataList, '睡眠')
+	lastSleepSessionEndMs = Math.max(lastSleepSessionEndMs, endMs)
 }
 
 /** 判断某条睡眠 payload 是否是聚合结构（Android 正常路径），否则按 iOS 原始事件流处理 */
@@ -544,13 +584,13 @@ function handleSleepPayload(data) {
 		if (events.length) {
 			const completed = ingestSleepEvents(events)
 			console.log('[ble-service] 睡眠事件聚合：收到事件', events.length, '条，结算会话', completed.length, '个')
-			completed.forEach(uploadSleepSession)
+			completed.forEach((s, i) => uploadSleepSession(s, i === completed.length - 1))
 			return
 		}
 	}
 	const sessions = Array.isArray(data.sessions) && data.sessions.length ? data.sessions : [data]
 	let latest = null
-	sessions.forEach((s) => {
+	sessions.forEach((s, i) => {
 		const sleep = normalizeSleep({
 			...s,
 			typeMap: data.typeMap,
@@ -558,7 +598,7 @@ function handleSleepPayload(data) {
 		})
 		if (!sleep) return
 		latest = sleep
-		reportSleepToCloud(sleep)
+		reportSleepToCloud(sleep, i === sessions.length - 1)
 	})
 	if (latest) {
 		state.sleep = latest
@@ -617,16 +657,26 @@ function schedulePostConnectInit() {
 				await CoolWearBLE.syncTime()
 			} catch (e) {}
 			try {
-				await CoolWearBLE.setSensorOn({ open: true })
-			} catch (e) {}
-			// 先同步设备基础信息/时间，再写用户信息，避免设备侧用默认用户信息覆盖真实资料
-			await CoolWearBLE.sendSyncInfo().catch(() => {})
-			try {
 				await BleService.syncUserInfo()
 			} catch (e) {}
 			await BleService.enableAutoMeasure().catch(() => {})
 		} else {
 			console.log('[ble-service] 重连：跳过设备配置，仅上报')
+		}
+		// 触发设备把缓存的历史数据（含睡眠）dump 出来：
+		// 官方 demo MainActivity.onResume：setEnableGsDataTrans(false) + sendSyncInfo()
+		// 关闭实时通道 → sendSyncInfo 让设备上传缓存 → 延迟后 reopen 实时通道。
+		if (!isIos()) {
+			try {
+				await CoolWearBLE.setSensorOn({ open: false })
+			} catch (e) {}
+		}
+		await CoolWearBLE.sendSyncInfo().catch(() => {})
+		// dump 完成后再 reopen 实时通道（给 live 数据用）；iOS 不需要 reopen
+		if (!isIos()) {
+			setTimeout(() => {
+				if (state.connected) CoolWearBLE.setSensorOn({ open: true }).catch(() => {})
+			}, 6000)
 		}
 		flushPendingUploads()
 		pullCachedHealthEvents()
@@ -1044,7 +1094,7 @@ function reportSportToCloud(sport) {
 		})
 }
 
-function reportSleepToCloud(sleep) {
+function reportSleepToCloud(sleep, isLast) {
 	if (!sleep) return
 	const startMs = Number(sleep.startMs) || 0
 	const totalMin = Number(sleep.totalMin) || 0
@@ -1060,7 +1110,7 @@ function reportSleepToCloud(sleep) {
 		endMs: Number(sleep.endMs) || startMs + totalMin * 60000,
 		totalMin,
 		segments: sleep.segments || []
-	})
+	}, isLast)
 }
 
 function emit() {
@@ -1863,6 +1913,10 @@ function pickBatteryField(o, keys) {
 
 		beginManualMeasure() {
 			state.manualMeasure = state.connected
+			// 实时测量时确保实时通道已打开（前台可能因 dump 历史而暂时关闭了通道）
+			if (state.connected && !isIos()) {
+				CoolWearBLE.setSensorOn({ open: true }).catch(() => {})
+			}
 			return state.manualMeasure
 		},
 
@@ -1936,13 +1990,15 @@ function pickBatteryField(o, keys) {
 		/** App 回前台：重开 sensor 上传开关、主动触发设备重传缓存、补报队列、回放原生缓存事件 */
 		async onAppShow() {
 			if (state.connected) {
-				try {
-					await CoolWearBLE.setSensorOn({ open: true })
-				} catch (e) {}
-				// 对齐官方 demo 的 MainActivity.onResume：回前台时主动 sendSyncInfo，
-				// 让设备把后台缓存的心率/血氧/HRV/睡眠重新上传。（仅安卓；iOS 原有逻辑已正常，不动）
 				if (!isIos()) {
+					// 官方 demo MainActivity.onResume：先关实时通道再 sendSyncInfo，让设备上传缓存（含睡眠）。
+					try {
+						await CoolWearBLE.setSensorOn({ open: false })
+					} catch (e) {}
 					await CoolWearBLE.sendSyncInfo().catch(() => {})
+					setTimeout(() => {
+						if (state.connected) CoolWearBLE.setSensorOn({ open: true }).catch(() => {})
+					}, 6000)
 				}
 			}
 			flushPendingUploads()
@@ -2031,6 +2087,16 @@ function pickBatteryField(o, keys) {
 			return state.sleep ? {
 				...state.sleep
 			} : null
+		},
+
+		/** 补报本地缓存的待上报数据 */
+		async flushPendingUploads() {
+			return flushPendingUploads()
+		},
+
+		/** 回放原生缓存的健康事件并上报 */
+		async pullCachedHealthEvents() {
+			return pullCachedHealthEvents()
 		},
 
 		/**

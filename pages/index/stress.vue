@@ -3,7 +3,7 @@
 		<!-- 最近一次摘要 -->
 		<view class="hero-card">
 			<!-- 顶部卡片背景图，自行补充 src -->
-			<image class="hero-bg" src="/static/yaliceliang.png" mode="aspectFill"></image>
+			<image class="hero-bg" src="/static/yaliceliang.png" mode=""></image>
 			<view class="hero-body">
 				<view class="hero-left">
 					<text class="hero-label">最近一次 · {{ latestTime }}</text>
@@ -428,7 +428,7 @@
 				chartValues: [],
 				chartTimes: [],
 				chartHasReal: [],
-				yLabels: [120, 90, 60, 30],
+				yLabels: [120, 90, 60, 30, 0],
 				xLabels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
 				legendList: [
 					{ color: '#3B82F6', label: '放松' },
@@ -486,7 +486,8 @@
 				return `${y}年${m}月${day}日`
 			},
 			gridYs() {
-				return [30, 60, 90].map((v) => valueToY(v, this.chartH))
+				// 顶部 120 也绘制虚线，底部 0 保留为实线基准线
+				return [Y_MAX, 90, 60, 30].map((v) => valueToY(v, this.chartH))
 			},
 			chartBars() {
 				const values = this.chartValues
@@ -530,9 +531,10 @@
 				}
 				const inner =
 					grids +
+					`<line x1="0.5" y1="0" x2="0.5" y2="${this.chartH}" stroke="rgba(255,255,255,0.22)" stroke-width="1" stroke-linecap="butt"/>` +
 					bars +
 					touch +
-					`<line x1="0" y1="${this.chartH - 1}" x2="${this.chartW}" y2="${this.chartH - 1}" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>`
+					`<line x1="0.5" y1="${this.chartH - 0.5}" x2="${this.chartW - 0.5}" y2="${this.chartH - 0.5}" stroke="rgba(255,255,255,0.28)" stroke-width="1" stroke-linecap="butt"/>`
 				return toSvgDataUrl(inner, this.chartW, this.chartH, 'preserveAspectRatio="none"')
 			},
 			touchPoint() {
@@ -1072,7 +1074,6 @@
 		position: relative;
 		overflow: hidden;
 		padding: 36rpx 28rpx;
-		height: 232rpx;
 		border-radius: 28rpx;
 		background: #0d1f3d;
 		box-sizing: border-box;
@@ -1196,13 +1197,7 @@
 		position: relative;
 		z-index: 1;
 		font-size: 28rpx;
-		color: #8e8e93;
-		line-height: 40rpx;
-	}
-
-	.period-item.active .period-text {
-		color: #ffffff;
-		font-weight: 600;
+		color: #fff;
 	}
 
 	.card {
@@ -1280,13 +1275,13 @@
 		font-weight: 600;
 		color: #ffffff;
 		line-height: 44rpx;
+		padding-bottom: 28rpx;
 	}
 
 	.trend-meta {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-top: 16rpx;
 	}
 
 	.trend-meta-left {
@@ -1349,8 +1344,9 @@
 
 	.y-axis {
 		width: 48rpx;
-		height: 220rpx;
 		margin-right: 8rpx;
+		position: relative;
+		left:-10rpx;
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
@@ -1367,7 +1363,7 @@
 	.trend-plot {
 		position: relative;
 		flex: 1;
-		height: 220rpx;
+		height: 285rpx;
 		min-width: 0;
 	}
 
@@ -1494,12 +1490,11 @@
 
 	.stats-label {
 		font-size: 24rpx;
-		color: #8e8e93;
-		line-height: 34rpx;
+		color: #fff;
 	}
 
 	.stats-value-row {
-		margin-top: 12rpx;
+		margin-top: 28rpx;
 		display: flex;
 		align-items: baseline;
 	}

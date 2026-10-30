@@ -239,7 +239,6 @@ public class CoolWearBLEModule extends UniModule {
                 Log.d(TAG, "connect state changed: " + status);
                 if (status != null && status == K6_Action.RCVD.BLUE_CONNECTED) {
                     BluetoothHelper.getInstance().devicePairFinish(1);
-                    BluetoothHelper.getInstance().getSendBlueData().sendSwitchGSensor(1);
                 }
                 JSONObject payload = new JSONObject();
                 payload.put("status", status);
@@ -407,6 +406,16 @@ public class CoolWearBLEModule extends UniModule {
             @Override
             public boolean bleDataResult(K6_DevInfoStruct info) {
                 fireEvent("onDeviceInfo", toDeviceInfoMap(info));
+                return false;
+            }
+        });
+
+        rcv.addBleDataResultListener(K6_Action.RCVD.RCVD_OTA_PROGRESS, new K6BleDataResult<Integer>() {
+            @Override
+            public boolean bleDataResult(Integer progress) {
+                JSONObject payload = new JSONObject();
+                payload.put("progress", progress == null ? 0 : progress);
+                fireEvent("onOtaProgress", payload);
                 return false;
             }
         });
@@ -871,12 +880,10 @@ public class CoolWearBLEModule extends UniModule {
     public void sendSyncInfo(UniJSCallback callback) {
         try {
             // 官方 demo 连接后调用 sendAsynInfo（同步用户信息/时间/语言等），
-            // 历史睡眠数据还需要 sendSleepMonitor 打开设备侧睡眠监测。
-            BluetoothHelper.getInstance().getSendDataManager().sendAsynInfo();
-            // 关键：真正让设备"重新上传缓存数据"（心率/血氧/HRV/睡眠）的是这条 sendSyncInfo，
+            // 真正让设备"重新上传缓存数据"（心率/血氧/HRV/睡眠）的是 sendSyncInfo，
             // 官方 demo 的 MainActivity.onResume 就是靠它触发重传。sendAsynInfo 只同步时间/语言，不拉数据。
+            BluetoothHelper.getInstance().getSendDataManager().sendAsynInfo();
             BluetoothHelper.getInstance().getSendBlueData().sendSyncInfo();
-            BluetoothHelper.getInstance().getSendDataManager().sendSleepMonitor();
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());
@@ -1022,6 +1029,26 @@ public class CoolWearBLEModule extends UniModule {
                 return;
             }
             BluetoothHelper.getInstance().getSendBlueData().sendChangeName(name.trim());
+            success(callback);
+        } catch (Exception e) {
+            fail(callback, e.getMessage());
+        }
+    }
+
+    @UniJSMethod(uiThread = true)
+    public void otaUpgrade(JSONObject options, UniJSCallback callback) {
+        try {
+            String filePath = null;
+            if (options != null) {
+                if (options.containsKey("filePath")) filePath = options.getString("filePath");
+                else if (options.containsKey("path")) filePath = options.getString("path");
+                else if (options.containsKey("file")) filePath = options.getString("file");
+            }
+            if (filePath == null || filePath.trim().isEmpty()) {
+                fail(callback, "filePath is required");
+                return;
+            }
+            BluetoothHelper.getInstance().getTransfer().otaUpgrade(filePath.trim(), "1", "1");
             success(callback);
         } catch (Exception e) {
             fail(callback, e.getMessage());

@@ -365,13 +365,13 @@ function buildIosConfigure() {
 
 	let clLayoutLoginBtnLeft_Portrait = 15 * screenScale;
 	let clLayoutLoginBtnRight_Portrait = -15 * screenScale;
-	let clLayoutLoginBtnHeight_Portrait = 48 * screenScale;
-	let clLayoutLoginBtnBottom_Portrait = -165 * screenScale;
+	let clLayoutLoginBtnHeight_Portrait = 50 * screenScale;
+	let clLayoutLoginBtnBottom_Portrait = -155 * screenScale;
 
 	let clLayoutAppPrivacyLeft_Portrait = 40 * screenScale;
 	let clLayoutAppPrivacyRight_Portrait = -16 * screenScale;
 	let clLayoutAppPrivacyHeight_Portrait = 56 * screenScale;
-	let clLayoutAppPrivacyBottom_Portrait = -38 * screenScale;
+	let clLayoutAppPrivacyBottom_Portrait = -35 * screenScale;
 
 	let clLayoutSloganLeft_Portrait = 0;
 	let clLayoutSloganRight_Portrait = 0;
@@ -381,8 +381,8 @@ function buildIosConfigure() {
 	//微信登录控件
 	let clLayoutWxBtnLeft_Portrait = 15 * screenScale;
 	let clLayoutWxBtnRight_Portrait = -15 * screenScale;
-	let clLayoutWxBtnHeight_Portrait = 48 * screenScale;
-	let clLayoutWxBtnBottom_Portrait = -97 * screenScale;
+	let clLayoutWxBtnHeight_Portrait = 50 * screenScale;
+	let clLayoutWxBtnBottom_Portrait = -91 * screenScale;
 
 	return {
 		clBackgroundImg: 'static/loginBanner.png',
@@ -423,7 +423,7 @@ function buildIosConfigure() {
 			[0.4, 0.4, 0.4, 1.0],
 			[0.17, 0.54, 1.0, 1.0]
 		], //2 item,commomTextColor and appPrivacyTextColor
-		clAppPrivacyTextFont: 11 * screenScale,
+		clAppPrivacyTextFont: 12 * screenScale,
 		clAppPrivacyTextAlignment: 1, //0: center 1: left 2: right
 		clAppPrivacyFirst: ['《' + PRIVACY_LINKS.privacyPolicy.title + '》', PRIVACY_LINKS.privacyPolicy.url], // 2 item, name and url
 		clAppPrivacySecond: ['《' + PRIVACY_LINKS.userAgreement.title + '》', PRIVACY_LINKS.userAgreement

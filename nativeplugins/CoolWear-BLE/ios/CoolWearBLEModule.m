@@ -17,6 +17,9 @@ static NSString * const kEventChannel = @"CoolWearBLE";
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CBPeripheral *> *peripheralMap;
 @property (nonatomic, strong) NSMutableSet<NSString *> *emittedDevices;
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *healthCache;
+@property (nonatomic, strong) NSData *otaFileData;
+@property (nonatomic, strong) NSDictionary *cachedDeviceInfo;
+@property (nonatomic, strong) NSDictionary *cachedOtaStatusInfo;
 
 @end
 
@@ -364,6 +367,7 @@ static const NSUInteger kHealthCacheLimit = 300;
         case DATA_TYPE_DEVINFO: {
             if ([data isKindOfClass:[NSDictionary class]]) {
                 NSDictionary *dict = (NSDictionary *)data;
+                self.cachedDeviceInfo = dict;
                 NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:dict];
                 id ver = [self pickFirst:dict keys:@[@"softwareVer", @"firmware", @"SoftwareVer", @"softwareVersion", @"version", @"softVersion", @"fwVersion"]];
                 if (ver != nil) {
@@ -381,6 +385,26 @@ static const NSUInteger kHealthCacheLimit = 300;
                 [self fireEvent:@"onDeviceInfo" data:payload];
             } else {
                 [self fireEvent:@"onDeviceInfo" data:@{@"raw": data ?: @""}];
+            }
+            break;
+        }
+        case DATA_TYPE_OTA_STATUS: {
+            if ([data isKindOfClass:[NSDictionary class]]) {
+                self.cachedOtaStatusInfo = (NSDictionary *)data;
+                if (self.otaFileData) {
+                    CE_SendOtaDataCmd *cmd = [[CE_SendOtaDataCmd alloc]
+                        initWithData:self.otaFileData
+                        otaStatusInfo:self.cachedOtaStatusInfo
+                        deviceInfo:self.cachedDeviceInfo ?: @{}
+                        complteProgress:^(CGFloat rate) {
+                            int progress = (int)(rate * 100.0);
+                            [self fireEvent:@"onOtaProgress" data:@{@"progress": @(progress)}];
+                            if (rate >= 1.0) {
+                                self.otaFileData = nil;
+                            }
+                        }];
+                    [[CEProductK6 shareInstance] sendCmdToDevice:cmd complete:nil];
+                }
             }
             break;
         }
@@ -491,6 +515,33 @@ UNI_EXPORT_METHOD(@selector(connect:callback:))
         if (callback) {
             callback([self errResult:exception.reason], NO);
         }
+    }
+}
+
+UNI_EXPORT_METHOD(@selector(otaUpgrade:callback:))
+- (void)otaUpgrade:(NSDictionary *)options callback:(UniModuleKeepAliveCallback)callback {
+    @try {
+        NSString *filePath = nil;
+        if ([options isKindOfClass:[NSDictionary class]]) {
+            filePath = options[@"filePath"] ?: options[@"path"] ?: options[@"file"];
+        }
+        if (filePath.length == 0) {
+            if (callback) callback([self errResult:@"filePath is required"], NO);
+            return;
+        }
+        NSData *fileData = [NSData dataWithContentsOfFile:filePath];
+        if (!fileData) {
+            if (callback) callback([self errResult:@"file not found"], NO);
+            return;
+        }
+        self.otaFileData = fileData;
+        CE_RequestDevInfoCmd *devCmd = [[CE_RequestDevInfoCmd alloc] init];
+        [[CEProductK6 shareInstance] sendCmdToDevice:devCmd complete:nil];
+        CE_RequestOTAStatusCmd *otaCmd = [[CE_RequestOTAStatusCmd alloc] init];
+        [[CEProductK6 shareInstance] sendCmdToDevice:otaCmd complete:nil];
+        if (callback) callback([self okResult:nil], NO);
+    } @catch (NSException *exception) {
+        if (callback) callback([self errResult:exception.reason], NO);
     }
 }
 

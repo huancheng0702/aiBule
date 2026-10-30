@@ -90,7 +90,9 @@
 	import CoolWearBLE from '@/common/coolwear-ble.js'
 	import {
 		getDeviceList,
-		unbindDevice
+		unbindDevice,
+		syncDeviceStatus,
+		getLatestFirmware
 	} from '@/common/api/device.js'
 
 	const BLE_EVENT_NAMES = [
@@ -291,12 +293,23 @@
 					title: '检测中...',
 					mask: true
 				})
-				setTimeout(() => {
+				getLatestFirmware({
+					deviceModel: this.deviceName || 'ring',
+					currentVersion: this.firmware || ''
+				}).then((res) => {
 					uni.hideLoading()
 					this.checkingFirmware = false
+					const latest = this.parseLatestFirmware(res)
+					if (!latest || !latest.version) {
+						uni.showToast({
+							title: '已是最新版本',
+							icon: 'none'
+						})
+						return
+					}
+					this.latestFirmware = latest.version
 					const currentFw = this.firmware || '--'
-					const latestFw = this.latestFirmware || '--'
-					if (!latestFw || latestFw === '--' || currentFw === latestFw) {
+					if (currentFw === latest.version) {
 						uni.showToast({
 							title: '已是最新版本',
 							icon: 'none'
@@ -305,25 +318,120 @@
 					}
 					uni.showModal({
 						title: '发现新固件',
-						content: `当前 ${this.firmware}，最新 ${this.latestFirmware}，是否立即升级？`,
+						content: `当前 ${currentFw}，最新 ${latest.version}，是否立即升级？`,
 						confirmText: '升级',
-						success: (res) => {
-							if (!res.confirm) return
-							uni.showLoading({
-								title: '升级中...',
-								mask: true
-							})
-							setTimeout(() => {
-								uni.hideLoading()
-								this.firmware = this.latestFirmware
-								uni.showToast({
-									title: '升级完成',
-									icon: 'success'
-								})
-							}, 1200)
+						success: (r) => {
+							if (!r.confirm) return
+							this.startOtaUpgrade(latest.downloadUrl)
 						}
 					})
-				}, 1000)
+				}).catch((e) => {
+					uni.hideLoading()
+					this.checkingFirmware = false
+					uni.showToast({
+						title: (e && (e.message || e.errMsg)) || '检测失败',
+						icon: 'none'
+					})
+				})
+			},
+			parseLatestFirmware(res) {
+				const body = (res && res.data != null) ? res.data : res
+				const obj = Array.isArray(body) ? (body.length ? body[0] : null) : body
+				if (!obj || typeof obj !== 'object') return null
+				const version = obj.version || obj.firmwareVersion || obj.latestVersion || obj.newVersion || obj.fwVersion || obj.ver
+				const downloadUrl = obj.downloadUrl || obj.url || obj.download || obj.fileUrl || obj.otaUrl || obj.link
+				if (!version) return null
+				return {
+					version: String(version),
+					downloadUrl: downloadUrl ? String(downloadUrl) : ''
+				}
+			},
+			async startOtaUpgrade(downloadUrl) {
+				if (!downloadUrl) {
+					uni.showToast({
+						title: '缺少固件下载地址',
+						icon: 'none'
+					})
+					return
+				}
+				uni.showLoading({
+					title: '下载固件中...',
+					mask: true
+				})
+				let filePath = ''
+				try {
+					const dl = await uni.downloadFile({
+						url: downloadUrl
+					})
+					if (!dl || dl.statusCode !== 200 || !dl.tempFilePath) {
+						throw new Error('固件下载失败')
+					}
+					filePath = dl.tempFilePath
+				} catch (e) {
+					uni.hideLoading()
+					uni.showToast({
+						title: (e && (e.message || e.errMsg)) || '下载失败',
+						icon: 'none'
+					})
+					return
+				}
+				uni.hideLoading()
+				uni.showLoading({
+					title: '升级中 0%',
+					mask: true
+				})
+				let unsub = null
+				let finished = false
+				const finish = (ok, msg) => {
+					if (finished) return
+					finished = true
+					if (unsub) {
+						try {
+							unsub()
+						} catch (e) {}
+						unsub = null
+					}
+					clearTimeout(timer)
+					uni.hideLoading()
+					if (ok) {
+						this.firmware = this.latestFirmware || this.firmware
+						uni.showToast({
+							title: msg || '升级完成',
+							icon: 'success'
+						})
+						try {
+							syncDeviceStatus({
+								deviceMac: (BleService.getState().device || {}).mac || '',
+								deviceVersion: this.firmware
+							})
+						} catch (e) {}
+					} else {
+						uni.showToast({
+							title: msg || '升级失败',
+							icon: 'none'
+						})
+					}
+				}
+				const timer = setTimeout(() => {
+					finish(false, '升级超时')
+				}, 5 * 60 * 1000)
+				unsub = CoolWearBLE.on('onOtaProgress', (data) => {
+					const p = (data && (data.progress != null ? data.progress : (data.value != null ? data.value : 0))) || 0
+					uni.showLoading({
+						title: `升级中 ${p}%`,
+						mask: true
+					})
+					if (p >= 100) {
+						finish(true, '升级完成')
+					}
+				})
+				try {
+					await CoolWearBLE.otaUpgrade({
+						filePath
+					})
+				} catch (e) {
+					finish(false, (e && (e.message || e.errMsg)) || '升级失败')
+				}
 			},
 			openUnbindPopup() {
 				this.showUnbindPopup = true

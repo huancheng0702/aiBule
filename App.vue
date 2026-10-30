@@ -1,11 +1,10 @@
 <script>
 	import BleService from '@/common/ble-service.js'
-	import { applyLaunchAuth } from '@/common/auth.js'
 
 	export default {
 		onLaunch: function() {
 			console.log('App Launch')
-			applyLaunchAuth()
+			// 登录判断与入口路由统一在启动页 pages/launch/launch 中处理
 			// 进入App即申请蓝牙权限（iOS会弹系统框，Android申请定位+蓝牙）
 			BleService.requestPermissions().catch((e) => {
 				console.log('[App] bluetooth permission', e && e.message)

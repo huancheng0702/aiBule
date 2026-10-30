@@ -1,13 +1,13 @@
 <template>
 	<view class="content">
 		<view class="container">
-			<view v-if="!shanyanOpened" class="oneBtn" @click="onRetryShanYan">
+			<view class="oneBtn" @click="onRetryShanYan">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					本机号码一键登录
 				</view>
 			</view>
-		<!-- 	<view class="oneBtn" @click="onOpenSmsLogin">
+	<!-- 		<view class="oneBtn" @click="onOpenSmsLogin">
 				<image src="/static/btnBan.png" class="benBan" mode=""></image>
 				<view class="btntext">
 					验证码登录
@@ -21,7 +21,7 @@
 					:src="agreed ? '/static/celiangSuccess.png' : '/static/checkCircle.png'" class="agreImg" mode="">
 				</image>
 				<view class="agreText">
-					我已阅读并同意 <text class="agreLink" @click="openContent(5)">《隐私政策》</text>及 <text class="agreLink"
+					我已阅读并同意<text class="agreLink" @click="openContent(5)">《隐私政策》</text>及<text class="agreLink"
 						@click="openContent(1)">《用户协议》</text>
 				</view>
 			</view>
@@ -154,9 +154,21 @@
 				return false
 			},
 			openContent(contentId) {
-				uni.navigateTo({
-					url: '/pages/webAgreement?contentId=' + contentId
-				})
+				if(contentId==5){
+					uni.navigateTo({
+						url: '/pages/webview?src=https://fx.tailunkaluo.com/h5/content.html?id=5&id=5'
+					})
+				}
+				if(contentId==1){
+					uni.navigateTo({
+						url: '/pages/webview?src=https://fx.tailunkaluo.com/h5/content.html?id=1&id=1'
+					})
+				}
+							
+			
+				// uni.navigateTo({
+				// 	url: '/pages/webAgreement?contentId=' + contentId
+				// })
 			},
 			onOpenSmsLogin() {
 				if (!this.ensureAgree()) return
@@ -528,8 +540,8 @@
 		align-items: flex-start;
 		margin-top: 36rpx;
 		image {
-			width: 36rpx;
-			height: 36rpx;
+			width: 38rpx;
+			height: 38rpx;
 			margin-right: 15rpx;
 		}
 

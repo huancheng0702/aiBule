@@ -11,22 +11,24 @@
 			</view>
 		</view>
 
-		<!-- AI 光环形象 -->
-		<view class="hero">
-			<image class="hero-img" src="/static/aiAgentIcon.png" mode=""></image>
-		</view>
-
-		<!-- 快捷提问 -->
-		<view class="suggest-grid">
-			<view v-for="(item, index) in suggestions" :key="index" class="suggest-card" @click="onSuggest(item)">
-				<image class="suggest-icon" :src="item.icon" mode=""></image>
-				<text class="suggest-text">{{ item.msgCon }}</text>
-			</view>
-		</view>
+	
 
 		<!-- 对话区域：仅此处内部滚动 -->
 		<scroll-view class="chat-list" scroll-y :scroll-into-view="scrollIntoView"
-			:scroll-with-animation="scrollWithAnimation">
+			:scroll-with-animation="scrollWithAnimation"
+			:style="{ paddingTop: chatTopPadding + 'px', paddingBottom: chatBottomPadding + 'px' }">
+			<!-- AI 光环形象 -->
+			<view class="hero">
+				<image class="hero-img" src="/static/aiAgentIcon.png" mode=""></image>
+			</view>
+			
+			<!-- 快捷提问 -->
+			<view class="suggest-grid">
+				<view v-for="(item, index) in suggestions" :key="index" class="suggest-card" @click="onSuggest(item)">
+					<image class="suggest-icon" :src="item.icon" mode=""></image>
+					<text class="suggest-text">{{ item.msgCon }}</text>
+				</view>
+			</view>
 			<view v-for="(msg, index) in messages" :id="'msg-' + index" :key="index" class="chat-row" :class="msg.role">
 				<template v-if="msg.role === 'user'">
 					<view class="bubble user-bubble">
@@ -153,6 +155,8 @@
 		data() {
 			return {
 				statusBarHeight: 20,
+				chatTopPadding: 0,
+				chatBottomPadding: 0,
 				inputValue: '',
 				scrollIntoView: '',
 				scrollWithAnimation: false,
@@ -191,6 +195,10 @@
 		created() {
 			const sys = uni.getSystemInfoSync()
 			this.statusBarHeight = sys.statusBarHeight + 10 || 20
+			// 头部与输入栏改为 fixed 后，用内边距把中间滚动区让出来，避免内容被遮挡
+			const rpx = (sys.windowWidth || 375) / 750
+			this.chatTopPadding = this.statusBarHeight + 110 * rpx
+			this.chatBottomPadding = 124 * rpx
 			this.loadQuickQuestions()
 			this.loadHistory(true)
 		},
@@ -431,7 +439,8 @@
 
 <style scoped lang="scss">
 	.tab-page {
-		height: 100vh;
+		position: relative;
+		height: 100%;
 		padding: 0 28rpx 160rpx;
 		box-sizing: border-box;
 		background: #0d0d0f;
@@ -441,11 +450,20 @@
 		overflow: hidden;
 	}
 
+	/* 顶部固定 */
 	.header {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 100;
 		display: flex;
 		align-items: center;
+		padding-left: 28rpx;
+		padding-right: 28rpx;
 		padding-bottom: 16rpx;
-		flex-shrink: 0;
+		box-sizing: border-box;
+		background: #0d0d0f;
 	}
 
 	.menu-btn {
@@ -634,10 +652,16 @@
 		height: 1rpx;
 	}
 
+	/* 底部固定 */
 	.input-wrap {
-		flex-shrink: 0;
+		position: fixed;
+		left: 28rpx;
+		right: 28rpx;
+		bottom: 160rpx;
+		z-index: 100;
 		padding: 12rpx 0 16rpx;
 		box-sizing: border-box;
+		background: #0d0d0f;
 	}
 
 	.input-bar {
@@ -786,10 +810,6 @@
 
 	.history-filter-item {
 		padding: 6rpx 22rpx;
-	}
-
-	.history-filter-item.active {
-	
 	}
 
 	.history-filter-text {

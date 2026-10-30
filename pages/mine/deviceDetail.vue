@@ -293,10 +293,7 @@
 					title: '检测中...',
 					mask: true
 				})
-				getLatestFirmware({
-					deviceModel: this.deviceName || 'ring',
-					currentVersion: this.firmware || ''
-				}).then((res) => {
+				getLatestFirmware().then((res) => {
 					uni.hideLoading()
 					this.checkingFirmware = false
 					const latest = this.parseLatestFirmware(res)

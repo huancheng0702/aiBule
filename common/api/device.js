@@ -19,8 +19,9 @@ export function syncDeviceStatus(data) {
 }
 
 export function getLatestFirmware(params = {}) {
-	// TODO: 后端提供固件检查接口后，替换路径与参数；返回 { version, downloadUrl, forceUpdate? }
-	return uni.$get('/appApi/device/firmware/latest', params)
+	// 固件检查接口：GET /appApi/firmware/latest，无请求参数
+	// 返回 data: { version, downloadUrl, description, status, publishTime, ... }
+	return uni.$get('/appApi/firmware/latest', params)
 }
 
 export function saveDeviceConfig(data) {
